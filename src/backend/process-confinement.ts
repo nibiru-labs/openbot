@@ -201,10 +201,16 @@ export function customAgentStatePaths(): ProviderStatePaths {
   return { writable: [], protected: [] };
 }
 
-/** Pi can write sessions, but cannot change the settings or extensions a later full-access run loads. */
+/** Pi can write sessions and reader locks, but cannot change shared credentials, settings or extensions. */
 export function piStatePaths(env: NodeJS.ProcessEnv = process.env, home = homedir()): ProviderStatePaths {
   const root = env.PI_CODING_AGENT_DIR?.trim() || join(home, ".pi", "agent");
-  return { writable: [join(root, "sessions")], protected: [] };
+  return {
+    writable: [
+      join(root, "sessions"),
+      ...["auth.json", "models-store.json", "trust.json", "settings.json"].map((name) => join(root, `${name}.lock`)),
+    ],
+    protected: [],
+  };
 }
 
 /** Only session data is writable. Muse settings, credentials, hooks, and plugins stay read-only. */

@@ -340,7 +340,12 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
   #spawn(rpc: PiRpc, cwd: string, args: string[], environment: Record<string, string>): void {
     const extra = this.options.extraEnv?.() ?? {};
     for (const value of Object.values(extra)) this.#secrets.add(value);
-    const target = cliSpawnTarget(this.cli.executable, ["--mode", "rpc", ...args]);
+    const target = cliSpawnTarget(this.cli.executable, [
+      "--mode",
+      "rpc",
+      ...(this.options.confine ? ["--no-approve"] : []),
+      ...args,
+    ]);
     rpc.start(this.options.confine?.(target) ?? target, cwd, { ...process.env, ...extra, ...environment });
   }
 

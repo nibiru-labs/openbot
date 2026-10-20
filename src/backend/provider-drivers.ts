@@ -37,6 +37,7 @@ import {
 } from "./opencode-config";
 import { readOpenCodeGoUsage } from "./opencode-usage";
 import { PiAgentClient } from "./pi-client";
+import { piCustomProviderEnv } from "./pi-provider-env";
 import {
   antigravityStatePaths,
   clineStatePaths,
@@ -368,12 +369,13 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
           ? {
               confine: (target) => {
                 const paths = piStatePaths();
-                for (const path of paths.writable) mkdirSync(path, { recursive: true, mode: 0o700 });
+                // Pi creates and removes its lock directories itself. Precreating a lock would
+                // make every reader wait on a lock that no process owns.
                 return confineSpawnTarget(target, confinement, paths);
               },
             }
           : {}),
-        extraEnv: () => ({ ...context.agentEnvironment?.() }),
+        extraEnv: () => ({ ...context.agentEnvironment?.(), ...piCustomProviderEnv(context.customProviders) }),
         ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
         mcpServers: context.mcpServers,
         ...(context.reportMcpDrops ? { reportMcpDrops: context.reportMcpDrops } : {}),
@@ -386,6 +388,7 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
       new PiAgentClient(cli, {
         requestTimeoutMs: timeout,
         profileGeneration: true,
+        extraEnv: () => ({ ...context.agentEnvironment?.(), ...piCustomProviderEnv(context.customProviders) }),
         ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
       }),
     authState: (account) => ({ kind: "pi", email: account?.email ?? null }),
