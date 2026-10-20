@@ -1,3 +1,4 @@
+import { agentProviderDescriptor } from "@openbot/contracts/agent-providers";
 import { supportedAttachmentExtensions } from "@openbot/contracts/attachment-files";
 import {
   type AgentWait,
@@ -325,6 +326,7 @@ export function ConversationComposer() {
                 skills={installedSkills()}
                 editingDeliveryId={editingDeliveryId()}
                 canSteer={Boolean(props.activeTurnId)}
+                deferredSteer={Boolean(props.agent && agentProviderDescriptor(props.agent.provider).steer !== "native")}
                 onSteer={props.onSteerQueuedMessage}
                 onRunAsTask={props.tasks?.onRunQueuedMessage}
                 onCancel={props.onCancelQueuedMessage}

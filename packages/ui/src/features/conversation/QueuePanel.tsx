@@ -19,6 +19,8 @@ interface QueuePanelProps {
   skills?: ComposerSkill[] | undefined;
   editingDeliveryId?: string | null | undefined;
   canSteer: boolean;
+  /** The provider takes follow-up input after its current turn. */
+  deferredSteer?: boolean | undefined;
   onSteer: (deliveryId: string) => void;
   /** Starts a separate task with a queued message. Absent where the host keeps no tasks. */
   onRunAsTask?: ((deliveryId: string) => void) | undefined;
@@ -492,27 +494,57 @@ export function QueuePanel(props: QueuePanelProps) {
                       <Show when={editing}>
                         <span class="agent-queue-editing-badge">{t("queue.item.editing")}</span>
                       </Show>
-                      <Show when={!editing && delivery.status === "queued" && delivery.steerFallback}>
-                        {(fallback) => (
-                          <span class="agent-queue-editing-badge" title={t(STEER_FALLBACK_REASON[fallback()])}>
-                            {t("queue.item.notSteered")}
-                            <span class="sr-only"> {t(STEER_FALLBACK_REASON[fallback()])}</span>
-                          </span>
-                        )}
+                      <Show
+                        when={
+                          !editing && delivery.status === "queued" && (props.deferredSteer || delivery.steerFallback)
+                        }
+                      >
+                        <span
+                          class="agent-queue-editing-badge"
+                          title={
+                            delivery.steerFallback
+                              ? t(STEER_FALLBACK_REASON[delivery.steerFallback])
+                              : t("queue.item.waitingForTurn")
+                          }
+                        >
+                          {t("queue.item.received")}
+                        </span>
                       </Show>
-                      <LabelTooltip content={t("queue.item.steerTooltip")}>
+                      <LabelTooltip
+                        content={t(
+                          props.deferredSteer || delivery.steerFallback
+                            ? "queue.item.sendNextTooltip"
+                            : "queue.item.steerTooltip",
+                        )}
+                      >
                         <LabelTooltipTrigger
                           as={Button}
                           variant="ghost"
                           type="button"
                           class="agent-queue-steer"
-                          disabled={!props.canSteer || !actionable}
-                          aria-label={t("queue.item.steerLabel", { position: delivery.position ?? "" })}
-                          onClick={() => props.onSteer(delivery.id)}
+                          disabled={(!props.canSteer && !props.deferredSteer && !delivery.steerFallback) || !actionable}
+                          aria-label={t(
+                            props.deferredSteer || delivery.steerFallback
+                              ? "queue.item.sendNextLabel"
+                              : "queue.item.steerLabel",
+                            { position: delivery.position ?? "" },
+                          )}
+                          onClick={() => {
+                            if (props.deferredSteer || delivery.steerFallback) {
+                              const ids = sourceDeliveries()
+                                .filter((item) => item.status === "queued")
+                                .map((item) => item.id);
+                              props.onReorder([delivery.id, ...ids.filter((id) => id !== delivery.id)]);
+                            } else props.onSteer(delivery.id);
+                          }}
                         >
                           <SteerIcon />
                           <span>
-                            {delivery.status === "starting" ? t("queue.item.steering") : t("queue.item.steer")}
+                            {delivery.status === "starting"
+                              ? t("queue.item.steering")
+                              : props.deferredSteer || delivery.steerFallback
+                                ? t("queue.item.sendNext")
+                                : t("queue.item.steer")}
                           </span>
                         </LabelTooltipTrigger>
                       </LabelTooltip>

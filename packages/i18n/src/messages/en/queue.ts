@@ -13,6 +13,11 @@ export const messages = defineMessages("queue", {
   "queue.item.steerTooltip": "Steer message",
   "queue.item.steering": "Steering",
   "queue.item.steer": "Steer",
+  "queue.item.waitingForTurn": "Received. The agent will read this after the current work finishes.",
+  "queue.item.received": "Received · queued",
+  "queue.item.sendNext": "Send next",
+  "queue.item.sendNextLabel": "Send queued message {position} next",
+  "queue.item.sendNextTooltip": "Already received. Move to the front of the queue; the current work continues.",
   "queue.item.notSteered": "Not steered",
   "queue.item.steerFallback.providerUnsupported":
     "This provider cannot steer a running turn, so the message waits in the queue.",

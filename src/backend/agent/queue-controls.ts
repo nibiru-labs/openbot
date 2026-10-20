@@ -269,6 +269,9 @@ export class QueueControls {
           this.#mailbox.restoreUnsteered(input.deliveryId, turnId).pipe(
             toQueueOperationFailed,
             Effect.andThen(
+              this.#mailbox.markSteerFallback(input.deliveryId, "steer-failed").pipe(toQueueOperationFailed),
+            ),
+            Effect.andThen(
               queueStep(() => {
                 this.#mailboxSync.syncMailboxMessages(snapshot);
                 this.#mailboxSync.emitQueue(agent.id);

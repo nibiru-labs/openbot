@@ -335,9 +335,20 @@ const Turns = createSimpleContext({
       const serverId = activeServerId();
       const analytics = desktopAnalytics.scope();
       void turnsPort()
-        .agent.steerQueuedMessage({ agentId: agent.id, deliveryId, expectedTurnId: turnId })
+        .agent.steerQueuedMessage({ agentId: agent.id, deliveryId, expectedTurnId: turnId }, serverId)
         .then(() => analytics.track("queue_action", { action: "steer", result: "succeeded" }))
-        .catch((error) => {
+        .catch(async (error) => {
+          // A provider refusal does not undo receipt. Read the persisted queue rather than
+          // matching localized errors, so permission and transport failures still surface.
+          const queue = await turnsPort()
+            .agent.listQueue(agent.id, serverId)
+            .catch(() => undefined);
+          const retained = queue?.deliveries.find((item) => item.id === deliveryId);
+          if (queue && retained?.status === "queued" && retained.steerFallback) {
+            if (scopeIsCurrent() && activeServerId() === serverId)
+              setQueues((current) => ({ ...current, [agent.id]: queue }));
+            return;
+          }
           analytics.track("queue_action", { action: "steer", result: "failed", failure_code: "steer_failed" });
           appendUiError(agent.id, error, currentText().t("app.errorStatus.steer"), serverId);
         });
