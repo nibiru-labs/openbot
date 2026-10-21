@@ -345,6 +345,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun run test:provider-update-busy
 
+      - name: Run the steer, interrupt and queue pause E2E test
+        if: ${{ !cancelled() }}
+        run: bun run test:steer-interrupt-pause
+
       - name: Upload the reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -360,6 +364,7 @@ jobs:
             .openbot-build/messaging-discord-access-e2e/
             .openbot-build/zero-filled-settings-e2e/
             .openbot-build/provider-update-busy-e2e/
+            .openbot-build/steer-interrupt-pause-e2e/
           if-no-files-found: ignore
 
   surfaces:
