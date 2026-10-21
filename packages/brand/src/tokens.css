@@ -72,6 +72,8 @@
   --openbot-price-glow: rgba(180, 200, 255, 0.22);
   --openbot-bg-host-inset: #101216;
   --openbot-bg-notch: #000000;
+  /* The frame around the window card. It darkens the canvas toward black, so the light theme has its own. */
+  --openbot-window-frame: color-mix(in srgb, var(--openbot-bg-canvas) 50%, var(--openbot-bg-notch));
   --openbot-mask-solid: #000000;
   --openbot-transparent: rgba(0, 0, 0, 0);
   --openbot-drawer-scrim: #000000;

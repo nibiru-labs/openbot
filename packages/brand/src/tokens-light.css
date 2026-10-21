@@ -42,6 +42,7 @@
   --openbot-dialog-ring: rgba(20, 20, 20, 0.08);
   --openbot-bg-glass: rgba(255, 255, 255, 0.76);
   --openbot-bg-host-inset: #ebedf0;
+  --openbot-window-frame: #e4e4e8;
   --openbot-scroll-edge-overlay: rgba(245, 245, 247, 0.72);
 
   --openbot-border: rgba(20, 20, 20, 0.08);
