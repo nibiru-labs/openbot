@@ -96,6 +96,7 @@ export function ConversationComposer() {
     stopVoiceRecording,
     cancelVoiceRecording,
     submitComposer,
+    submitStopAndSend,
     submitting,
     unreferencedDraftAttachments,
     updateCurrentDraft,
@@ -240,7 +241,7 @@ export function ConversationComposer() {
       when={props.activeTurnId && !editingDeliveryId() && !composerHasContent() && voicePhase() !== "recording"}
       fallback={
         <>
-          <Show when={props.onArmInterruptSend && props.activeTurnId && !editingDeliveryId() && composerHasContent()}>
+          <Show when={props.canStopAndSend && props.activeTurnId && !editingDeliveryId() && composerHasContent()}>
             <LabelTooltip content={t("composer.send.stopAndSendTooltip")}>
               <LabelTooltipTrigger
                 as={Button}
@@ -249,10 +250,7 @@ export function ConversationComposer() {
                 class="voice-button"
                 aria-label={t("composer.send.stopAndSend")}
                 disabled={attachmentBusy() || submitting() || !agentReady()}
-                onClick={() => {
-                  props.onArmInterruptSend?.();
-                  void submitComposer();
-                }}
+                onClick={submitStopAndSend}
               >
                 <RunNowIcon />
               </LabelTooltipTrigger>

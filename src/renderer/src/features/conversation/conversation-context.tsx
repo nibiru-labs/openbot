@@ -778,26 +778,27 @@ const Conversation = createSimpleContext({
       });
     }
 
-    /** Agents whose next sent message stops the running turn and starts next ("Stop and send"). */
-    const interruptingSends = new Set<string>();
-
-    /** The next message sent to this local agent stops its running turn and starts next. */
-    function armInterruptSend(agentId: string) {
-      interruptingSends.add(agentConversationKey(activeServerId(), agentId));
-    }
-
     async function sendMessage(
       body: string,
       attachmentDraftIds: string[],
       replyToMessageId: string | null,
       target?: { agentId: string; serverId: string },
       clientMessageId?: string,
+      options?: { interrupt?: boolean },
     ): Promise<SendMessageResult> {
       const agentId = target?.agentId ?? activeAgent()?.id;
       const serverId = target?.serverId ?? activeServerId();
       if (!agentId || (!body.trim() && attachmentDraftIds.length === 0))
         return { error: currentText().t("chat.errorStatus.send") };
-      return sendMessageToAgent(agentId, body, attachmentDraftIds, replyToMessageId, serverId, clientMessageId);
+      return sendMessageToAgent(
+        agentId,
+        body,
+        attachmentDraftIds,
+        replyToMessageId,
+        serverId,
+        clientMessageId,
+        options?.interrupt === true,
+      );
     }
 
     /** The failure goes back to the pending message, which shows it with Retry. */
@@ -808,11 +809,10 @@ const Conversation = createSimpleContext({
       replyToMessageId: string | null = null,
       serverId = activeServerId(),
       clientMessageId?: string,
+      interrupt = false,
     ): Promise<SendMessageResult> {
       const analytics = desktopAnalytics.scope();
       const properties = analyticsAgentProperties(agentId);
-      // Read once: a retry of a failed send waits like any other message.
-      const interrupt = interruptingSends.delete(agentConversationKey(serverId, agentId));
       try {
         const input = {
           agentId,
@@ -1002,7 +1002,6 @@ const Conversation = createSimpleContext({
       clearRecentReply,
       searchAgentMessages,
       sendMessage,
-      armInterruptSend,
       markAgentMessagesRead,
       markAllAgentMessagesRead,
       presentPromptResolution,

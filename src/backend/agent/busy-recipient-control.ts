@@ -36,8 +36,8 @@ export class BusyRecipientControls {
   readonly #now: () => number;
   /** `sender\0recipient` -> the time of the last interrupt. */
   readonly #lastInterrupt = new Map<string, number>();
-  /** recipient -> the times others interrupted it, newest last. */
-  readonly #interruptsOf = new Map<string, number[]>();
+  /** recipient -> the times others interrupted it, newest last. Each entry is its own object, so a rollback removes exactly its own. */
+  readonly #interruptsOf = new Map<string, Array<{ at: number }>>();
   /** The deliveries that started a turn by an interrupt. A turn that runs one cannot interrupt. */
   readonly #interruptDeliveries = new Set<string>();
 
@@ -81,6 +81,11 @@ export class BusyRecipientControls {
     );
   }
 
+  /**
+   * The check and the reservation run in one synchronous step, before the stop is sent. Requests
+   * from several fibers therefore see each other's reservation. A stop that fails gives its
+   * reservation back, so a refused stop does not use up the cooldown or the limit.
+   */
   #interrupt(input: BusyRecipientControl): Effect.Effect<BusyRecipientOutcome> {
     return Effect.suspend(() => {
       const recipient = input.recipientAgentId;
@@ -88,17 +93,47 @@ export class BusyRecipientControls {
       if (!turnId) return Effect.succeed<BusyRecipientOutcome>({ agentId: recipient, result: "queued" });
       const refusal = this.#refusal(input);
       if (refusal) return Effect.succeed(queued(recipient, refusal));
+      const reservation = this.#reserve(input);
       return this.#hooks.runNow(recipient, input.deliveryId).pipe(
-        Effect.map((): BusyRecipientOutcome => {
-          const now = this.#now();
-          this.#lastInterrupt.set(pairKey(input.senderAgentId, recipient), now);
-          this.#interruptsOf.set(recipient, [...this.#recentInterrupts(recipient), now]);
-          this.#interruptDeliveries.add(input.deliveryId);
-          return { agentId: recipient, result: "interrupted" };
-        }),
-        Effect.catch((cause) => Effect.succeed(queued(recipient, failureText(cause)))),
+        Effect.as<BusyRecipientOutcome>({ agentId: recipient, result: "interrupted" }),
+        Effect.catch((cause) =>
+          Effect.sync(() => {
+            this.#release(reservation);
+            return queued(recipient, failureText(cause));
+          }),
+        ),
       );
     });
+  }
+
+  #reserve(input: BusyRecipientControl): Reservation {
+    const now = this.#now();
+    const pair = pairKey(input.senderAgentId, input.recipientAgentId);
+    const reservation: Reservation = {
+      pair,
+      recipient: input.recipientAgentId,
+      previousLast: this.#lastInterrupt.get(pair),
+      entry: { at: now },
+      deliveryId: input.deliveryId,
+    };
+    this.#lastInterrupt.set(pair, now);
+    this.#interruptsOf.set(input.recipientAgentId, [
+      ...this.#recentInterrupts(input.recipientAgentId),
+      reservation.entry,
+    ]);
+    // Set before the stop: the turn the stop starts can run this message and start its own tool call.
+    this.#interruptDeliveries.add(input.deliveryId);
+    return reservation;
+  }
+
+  #release(reservation: Reservation): void {
+    if (reservation.previousLast === undefined) this.#lastInterrupt.delete(reservation.pair);
+    else this.#lastInterrupt.set(reservation.pair, reservation.previousLast);
+    this.#interruptsOf.set(
+      reservation.recipient,
+      (this.#interruptsOf.get(reservation.recipient) ?? []).filter((entry) => entry !== reservation.entry),
+    );
+    this.#interruptDeliveries.delete(reservation.deliveryId);
   }
 
   #refusal(input: BusyRecipientControl): string | null {
@@ -114,10 +149,19 @@ export class BusyRecipientControls {
     return null;
   }
 
-  #recentInterrupts(agentId: string): number[] {
+  #recentInterrupts(agentId: string): Array<{ at: number }> {
     const since = this.#now() - INTERRUPT_WINDOW_MS;
-    return (this.#interruptsOf.get(agentId) ?? []).filter((time) => time > since);
+    return (this.#interruptsOf.get(agentId) ?? []).filter((entry) => entry.at > since);
   }
+}
+
+/** What one interrupt reserved, so a failed stop can give it back. */
+interface Reservation {
+  pair: string;
+  recipient: string;
+  previousLast: number | undefined;
+  entry: { at: number };
+  deliveryId: string;
 }
 
 function pairKey(senderAgentId: string, recipientAgentId: string): string {

@@ -51,7 +51,7 @@ let turns = 0;
 let calls = 0;
 /** threadId -> turnId of the held turn. */
 const held = new Map();
-/** request id -> what to do with the answer. */
+/** request id -> the turn whose tool calls wait for it, shared by the calls of one turn. */
 const pending = new Map();
 process.stdout.on("error", (error) => {
   if (error.code === "EPIPE") process.exit(0);
@@ -86,9 +86,14 @@ const answer = (message) => {
       write({ method: "turn/started", params: { threadId: params.threadId, turn: { id: turnId } } });
       if (input.includes("HOLD")) held.set(params.threadId, turnId);
       else if (input.includes("CALL")) {
-        const id = "call-" + (++calls);
-        pending.set(id, { threadId: params.threadId, turnId });
-        write({ id, method: "item/tool/call", params: { threadId: params.threadId, turnId, callId: id, namespace: "openbot", tool: "send_message", arguments: control().call } });
+        // calls sends several tool calls at once, as a model may; call sends one.
+        const specs = control().calls ?? [control().call];
+        const shared = { threadId: params.threadId, turnId, remaining: specs.length };
+        for (const spec of specs) {
+          const id = "call-" + (++calls);
+          pending.set(id, shared);
+          write({ id, method: "item/tool/call", params: { threadId: params.threadId, turnId, callId: id, namespace: "openbot", tool: "send_message", arguments: spec } });
+        }
       } else setImmediate(() => finish(params.threadId, turnId, "completed"));
       return;
     }
@@ -120,10 +125,10 @@ process.stdin.on("data", (chunk) => {
         log({ method: message.method, id: message.id ?? null, params: message.params ?? null });
         if (message.id !== undefined) answer(message);
       } else if (pending.has(message.id)) {
-        const call = pending.get(message.id);
+        const shared = pending.get(message.id);
         pending.delete(message.id);
         log({ method: "tool-answer", id: message.id, params: { result: message.result ?? null, error: message.error ?? null } });
-        finish(call.threadId, call.turnId, "completed");
+        if (--shared.remaining === 0) finish(shared.threadId, shared.turnId, "completed");
       }
     }
     newline = buffer.indexOf("\\n");
@@ -344,6 +349,73 @@ try {
   assert.equal(calls("turn/interrupt").length, interruptsBefore);
   assert.equal(status(holdFour), "running");
   report.checks.push("A second interrupt within the cooldown is refused with a reason and the message stays queued");
+
+  // Overlapping requests: the cooldown and the limit must hold when the calls arrive together.
+  const interruptSpec = (text: string) => ({
+    recipientAgentIds: [target.id],
+    text,
+    expectsReply: false,
+    busy: "interrupt",
+  });
+  const overlapping = async (senderIds: string[], specs: unknown[], expected: number) => {
+    const start = calls("tool-answer").length;
+    const interruptsBefore = calls("turn/interrupt").length;
+    await writeFile(controlPath, JSON.stringify({ calls: specs }));
+    await Promise.all(senderIds.map((senderId) => send(senderId, "CALL-OVERLAP")));
+    await waitFor("every overlapping tool answer", () => calls("tool-answer").length >= start + expected);
+    const outcomes = calls("tool-answer")
+      .slice(start)
+      .map((entry) => entry.outcome?.result ?? "none");
+    return { outcomes, stopped: calls("turn/interrupt").length - interruptsBefore };
+  };
+
+  // One new sender, two calls at once: the cooldown lets one stop through. The first sender is still
+  // inside its cooldown for this target, so it cannot be used here.
+  const cooling = await runCauseEffect(
+    agents.createAgent({
+      name: "Cooling",
+      description: "Synthetic",
+      avatarSeed: "cooling",
+      avatarHue: null,
+      initialMessage: "Hello.",
+    }),
+  );
+  await waitFor("the cooling sender's first turn to end", () =>
+    agents.listQueue(cooling.id).deliveries.every((item) => item.status === "completed"),
+  );
+  await waitFor("the held turn of the target", () => runningTurn(target.id));
+  const sameSender = await overlapping([cooling.id], [interruptSpec("HOLD-COOL-1"), interruptSpec("HOLD-COOL-2")], 2);
+  assert.deepEqual([...sameSender.outcomes].sort(), ["interrupted", "queued"]);
+  assert.equal(sameSender.stopped, 1);
+  report.checks.push("Two overlapping interrupts from one sender stop the turn once; the second waits on the cooldown");
+
+  // Two senders at once, with one interrupt left in the window: the limit lets one stop through.
+  const second = await runCauseEffect(
+    agents.createAgent({
+      name: "Second",
+      description: "Synthetic",
+      avatarSeed: "second",
+      avatarHue: null,
+      initialMessage: "Hello.",
+    }),
+  );
+  const third = await runCauseEffect(
+    agents.createAgent({
+      name: "Third",
+      description: "Synthetic",
+      avatarSeed: "third",
+      avatarHue: null,
+      initialMessage: "Hello.",
+    }),
+  );
+  await waitFor("the new senders' first turns to end", () =>
+    [second.id, third.id].every((id) => agents.listQueue(id).deliveries.every((item) => item.status === "completed")),
+  );
+  await waitFor("the held turn of the target", () => runningTurn(target.id));
+  const limited = await overlapping([second.id, third.id], [interruptSpec("HOLD-LIMIT")], 2);
+  assert.equal(limited.outcomes.filter((result) => result === "interrupted").length, 1);
+  assert.equal(limited.stopped, 1);
+  report.checks.push("Two overlapping interrupts from two senders stop the turn once; the limit holds for the second");
 
   report.passed = true;
 } catch (error) {

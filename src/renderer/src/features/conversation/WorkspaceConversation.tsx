@@ -142,7 +142,6 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     activeMessages,
     conversations,
     sendMessage,
-    armInterruptSend,
     markAgentMessagesRead,
     loadOlderAgentMessages,
     loadLatestAgentMessages,
@@ -508,14 +507,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         // The Team API has no pause, run-now or stop-and-send route.
         onSetQueuePaused={activeServer()?.kind === "remote" ? undefined : setQueuePaused}
         onRunQueuedMessageNow={activeServer()?.kind === "remote" ? undefined : runQueuedMessageNow}
-        onArmInterruptSend={
-          activeServer()?.kind === "remote"
-            ? undefined
-            : () => {
-                const agent = activeAgent();
-                if (agent) armInterruptSend(agent.id);
-              }
-        }
+        canStopAndSend={activeServer()?.kind !== "remote"}
         onActivateBrowserTab={activateBrowserTab}
         onCloseBrowserTab={closeBrowserTab}
         onOpenRemoteDesktop={openRemoteDesktopWorkspace}
