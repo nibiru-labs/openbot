@@ -204,8 +204,9 @@ export function deliveryPromptInput(context: DeliveryContext, sources: DeliveryP
       : delivery.expectsReply === false
         ? [
             NO_ANSWER_LINE,
-            "Use it if it changes your work, and continue with what you were doing.",
-            "Do not send a reply, an acknowledgement, or a result for it. OpenBot sends the sender nothing back.",
+            "It can still ask you to act: to do work, correct a record, make a decision, or meet a deadline. When it does and the action is yours, do it in this turn. When you cannot do it, tell the sender why with openbot.send_message and expectsReply false.",
+            "When it only informs you, use it if it changes your work, and continue with what you were doing.",
+            "Do not send an acknowledgement for it. OpenBot sends the sender nothing back.",
           ]
         : [
             `After completing the request, send a concise result back to ${senderName} with openbot.send_message.`,

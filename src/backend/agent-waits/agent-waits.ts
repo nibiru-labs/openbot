@@ -2,6 +2,7 @@ import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type { AgentEvent, AgentWait, AgentWaitsSnapshot } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
 import { z } from "zod";
+import { ROUTINE_NO_UPDATE_TOOL } from "../agent/routine-quiet-runs";
 import { type OpenBotToolResponse, openBotToolFailure, openBotToolResult } from "../agent/routine-tools";
 import type { MailboxStore } from "../mailbox-store";
 import type { DynamicToolCallParams } from "../protocol";
@@ -158,8 +159,14 @@ export class AgentWaits {
   }
 }
 
+/**
+ * The age at which an open wait is stale. A routine run wakes a wait again and again, and an agent
+ * that only waits again each time hides a blocked request from the user for hours.
+ */
+export const STALE_WAIT_MS = 2 * 60 * 60 * 1_000;
+
 /** The part of a run's input that continues its woken waits. */
-export function wokenWaitsPromptText(waits: readonly AgentWait[]): string | null {
+export function wokenWaitsPromptText(waits: readonly AgentWait[], now: Date = new Date()): string | null {
   if (waits.length === 0) return null;
   return [
     "--- open waits that this run wakes ---",
@@ -169,9 +176,20 @@ export function wokenWaitsPromptText(waits: readonly AgentWait[]): string | null
       `Wait ID: ${wait.id}`,
       `Opened: ${wait.createdAt}`,
       `Your note: ${wait.note}`,
+      ...staleWaitLines(wait, now),
       "The request it continues:",
       wait.requestText,
     ]),
     "--- end of open waits ---",
   ].join("\n");
+}
+
+/** The report that a stale wait asks for. A wait with an unreadable open time is not stale. */
+function staleWaitLines(wait: AgentWait, now: Date): string[] {
+  const openedMs = Date.parse(wait.createdAt);
+  if (!Number.isFinite(openedMs) || now.getTime() - openedMs < STALE_WAIT_MS) return [];
+  const hours = Math.floor((now.getTime() - openedMs) / (60 * 60 * 1_000));
+  return [
+    `This wait is open for ${hours} hours. Do not only wait again. When this run brings no change for it, tell the user now what blocks it, who must act, and the one action that unblocks it. This report is required: do not call openbot.${ROUTINE_NO_UPDATE_TOOL} in this run.`,
+  ];
 }

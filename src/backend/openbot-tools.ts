@@ -519,7 +519,7 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
       expectsReply: z
         .boolean()
         .describe(
-          "True, the default, for a request, question, or delegated task: the recipient answers you and OpenBot sends its result back. False for information the recipient may act on but must not answer, such as a status update, a heads-up, or your own reply to a task. A false message ends the exchange.",
+          "True, the default, for a request, question, escalation, or delegated task: the recipient answers you and OpenBot sends its result back. False only for information that asks nothing of the recipient, such as a status update, a heads-up, or your own reply to a task. A false message ends the exchange.",
         )
         .optional(),
     },
