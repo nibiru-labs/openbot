@@ -29,3 +29,16 @@
   background: var(--openbot-bg-surface);
   box-shadow: var(--openbot-shadow-block);
 }
+
+/* An agent message is a soft muted bubble with no border. The user's message keeps its dark pill. */
+:root[data-appearance="light"] .message-entry-agent .ui-bubble > .ui-bubble-content {
+  border: 0;
+  border-radius: var(--openbot-radius-bubble);
+  background: var(--openbot-bg-control);
+}
+
+/* A checked option shows a filled accent badge, not only a coloured outline. */
+:root[data-appearance="light"] .ui-block-option[data-checked] .ui-block-option-key {
+  background: var(--openbot-question-option);
+  color: var(--openbot-text-on-accent);
+}
