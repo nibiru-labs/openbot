@@ -27,6 +27,7 @@ import {
 import { type HiddenAgent, isHiddenAgentsSnapshot } from "./ipc-hidden-agents";
 import { isQueueSnapshot, type QueueSnapshot } from "./ipc-queue";
 import { isSidebarLayoutSnapshot, type SidebarLayoutSnapshot } from "./ipc-sidebar-layout";
+import type { AgentPauseReason } from "./ipc-token-budget";
 import { isBoolean, isDynamicRecord, isNumber, isString } from "./runtime-values";
 
 export type AgentTurnOrigin = "user" | "routine" | "agent" | "unknown";
@@ -137,6 +138,18 @@ export type AgentEvent =
       provider: AgentProviderId;
       resetsAt: number | null;
       agentCount: number;
+    }
+  /**
+   * An agent stopped or waits for the user: its token budget ran out, or a turn went past the turn
+   * limit. Local only, like `usage-limit-reached`. The chat holds the matching `agent-pause` marker.
+   */
+  | {
+      type: "agent-paused";
+      agentId: string;
+      threadId: string;
+      reason: Exclude<AgentPauseReason, "plan-limit">;
+      usedTokens: number;
+      limitTokens: number;
     };
 
 export function isAgentEvent(value: unknown): value is AgentEvent {
@@ -295,6 +308,14 @@ export function isAgentEvent(value: unknown): value is AgentEvent {
         isNumber(value.agentCount) &&
         Number.isSafeInteger(value.agentCount) &&
         value.agentCount >= 0
+      );
+    case "agent-paused":
+      return (
+        isIdentifier(value.agentId) &&
+        isIdentifier(value.threadId) &&
+        (value.reason === "hour-budget" || value.reason === "turn-budget") &&
+        isNumber(value.usedTokens) &&
+        isNumber(value.limitTokens)
       );
     default:
       return false;

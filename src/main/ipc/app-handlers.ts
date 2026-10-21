@@ -28,6 +28,7 @@ import { exportDiagnostics, exportOpenBotData } from "../maintenance-service";
 import type { RemoteSessionCache } from "../remote-session-cache";
 import type { RemoteSessionReusePreferenceStore } from "../remote-session-reuse-preference-store";
 import { readSetupState, writeSetupState } from "../setup-store";
+import type { TokenBudgetPreferenceStore } from "../token-budget-preference-store";
 import type { UpdateService } from "../update-service";
 import {
   parseAgentMemoryLimitPreference,
@@ -39,6 +40,7 @@ import {
   parseExternalDestination,
   parseRemoteSessionReusePreference,
   parseSetup,
+  parseTokenBudgetPreference,
 } from "./app-inputs";
 import { stringPayload } from "./validation";
 
@@ -84,6 +86,7 @@ export interface AppIpcDependencies {
   analyticsPreferenceFile: string;
   approvalAutomation: ApprovalAutomation;
   busyMessageMode: BusyMessageModePreferenceStore;
+  tokenBudget: TokenBudgetPreferenceStore;
   agentMemoryLimit: AgentMemoryLimitSetting;
   remoteSessionReuse: RemoteSessionReusePreferenceStore;
   remoteSessionCache: RemoteSessionCache;
@@ -108,6 +111,7 @@ export function appIpcHandlers({
   analyticsPreferenceFile,
   approvalAutomation,
   busyMessageMode,
+  tokenBudget,
   agentMemoryLimit,
   remoteSessionReuse,
   remoteSessionCache,
@@ -157,6 +161,10 @@ export function appIpcHandlers({
       getBusyMessageModePreference: handler(() => busyMessageMode.get()),
       setBusyMessageModePreference: payloadHandler(parseBusyMessageModePreference, (parsed) =>
         runCauseEffect(busyMessageMode.set(parsed)),
+      ),
+      getTokenBudgetPreference: handler(() => tokenBudget.get()),
+      setTokenBudgetPreference: payloadHandler(parseTokenBudgetPreference, (parsed) =>
+        runCauseEffect(tokenBudget.set(parsed).pipe(Effect.tap(() => service.tokenBudgetChanged()))),
       ),
       getAgentMemoryLimitPreference: handler(() => agentMemoryLimit.get()),
       setAgentMemoryLimitPreference: payloadHandler(parseAgentMemoryLimitPreference, (parsed) =>

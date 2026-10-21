@@ -22,6 +22,8 @@ export interface AgentRemovalHooks {
   listAgents(): AgentSummary[];
   /** Removes the agent's tasks, with their threads and provider session files. */
   deleteTasks(agentId: string): Effect.Effect<void, AgentRemovalFailed>;
+  /** Drops the token budget state and the pending pause of the agent. */
+  forgetBudget(agentId: string): void;
 }
 
 export interface AgentRemovalOptions {
@@ -191,6 +193,7 @@ export class AgentRemoval {
       this.#turn.forgetAgent(agent.id);
       this.#drain.forgetAgent(agent.id);
       this.#hostedSites.forgetAgent(agent.id);
+      this.#hooks.forgetBudget(agent.id);
       if (agent.threadId) {
         for (const session of providerSessions) {
           this.#conversation.unbindThread(session.externalSessionId);

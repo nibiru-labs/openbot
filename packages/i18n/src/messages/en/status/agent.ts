@@ -6,6 +6,12 @@ export const messages = defineMessages("status.agent", {
   "status.agent.contextCleared": "Context cleared. A new chat starts here.",
   "status.agent.modelSwitchedForLimit": "Usage limit reached. Switched to {model}.",
   "status.agent.modelReturnedAfterLimit": "Usage limit ended. Switched back to {model}.",
+  "status.agent.pausedHourBudget":
+    "Token budget reached: {used} tokens in the last hour (limit {limit}). New work waits until you continue.",
+  "status.agent.pausedTurnBudget":
+    "Stopped after a step: this turn used {used} tokens (limit {limit}). The work is kept. Continue to carry on.",
+  "status.agent.pausedPlanLimit":
+    "The plan limit stopped this turn. The work is kept, and it carries on when the limit ends.",
   "status.agent.marketplaceSuggested": "Suggested a Marketplace app: {app}.",
   "status.agent.screenCaptureScreen": "Capture the main screen and send the image to the agent's model.",
   "status.agent.screenCaptureDisplay": "Capture the display {name} and send the image to the agent's model.",
