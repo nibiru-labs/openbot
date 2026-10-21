@@ -68,6 +68,8 @@ export const messages = defineMessages("chat", {
   "chat.marker.openRoutine": "Open routine {name}",
   "chat.marker.unavailable": "Unavailable",
   "chat.marker.contextReset": "New chat started",
+  "chat.marker.pause.continue": "Continue",
+  "chat.marker.pause.continued": "Continued",
   "chat.usageLimit.title": "{provider} usage limit reached",
   "chat.usageLimit.onHold": "Message on hold",
   "chat.usageLimit.bodyReset": "Your message has not started. Send it to another model now, or wait until {reset}.",

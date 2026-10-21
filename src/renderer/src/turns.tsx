@@ -396,6 +396,16 @@ const Turns = createSimpleContext({
         .catch((error) => appendUiError(agent.id, error, currentText().t("app.errorStatus.queuePause"), serverId));
     }
 
+    /** Continues an agent that an `agent-pause` marker holds. */
+    function continueAgentPause(messageId: string) {
+      const agent = activeAgent();
+      if (!agent) return;
+      const serverId = activeServerId();
+      void turnsPort()
+        .agent.continueAgentPause({ agentId: agent.id, messageId })
+        .catch((error) => appendUiError(agent.id, error, currentText().t("app.errorStatus.continuePause"), serverId));
+    }
+
     /** Stops the running turn for one queued message, which starts next. */
     function runQueuedMessageNow(deliveryId: string) {
       const agent = activeAgent();
@@ -504,6 +514,7 @@ const Turns = createSimpleContext({
       updateQueuedMessage,
       reorderQueue,
       setQueuePaused,
+      continueAgentPause,
       runQueuedMessageNow,
       clearQueue,
       stopActiveTurn,

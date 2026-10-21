@@ -121,6 +121,7 @@ const Settings = createSimpleContext({
     let notificationPreferenceChanged = false;
     let busyMessageModeChanged = false;
     let agentMemoryLimitChanged = false;
+    let tokenBudgetChanged = false;
     let keepRemoteSessionsChanged = false;
 
     createEffect(
@@ -257,6 +258,21 @@ const Settings = createSimpleContext({
           settingsPort().setAgentMemoryLimitPreference({ limit: value.agentMemoryLimit }),
           (preference) => preference.limit,
         );
+      }
+      if (
+        previous.tokenBudgetPerHour !== value.tokenBudgetPerHour ||
+        previous.tokenBudgetPerTurn !== value.tokenBudgetPerTurn
+      ) {
+        tokenBudgetChanged = true;
+        const saved = settingsPort().setTokenBudgetPreference({
+          perHour: value.tokenBudgetPerHour,
+          perTurn: value.tokenBudgetPerTurn,
+        });
+        // Each answer writes back only the limit that this change set, as the notification switches do.
+        if (previous.tokenBudgetPerHour !== value.tokenBudgetPerHour)
+          persistField("tokenBudgetPerHour", saved, (preference) => preference.perHour);
+        if (previous.tokenBudgetPerTurn !== value.tokenBudgetPerTurn)
+          persistField("tokenBudgetPerTurn", saved, (preference) => preference.perTurn);
       }
       if (previous.keepRemoteSessions !== value.keepRemoteSessions) {
         keepRemoteSessionsChanged = true;
@@ -427,6 +443,16 @@ const Settings = createSimpleContext({
           .then((preference) => {
             if (agentMemoryLimitChanged) return;
             setGeneralSettings((current) => ({ ...current, agentMemoryLimit: preference.limit }));
+          }),
+        settingsPort()
+          .getTokenBudgetPreference()
+          .then((preference) => {
+            if (tokenBudgetChanged) return;
+            setGeneralSettings((current) => ({
+              ...current,
+              tokenBudgetPerHour: preference.perHour,
+              tokenBudgetPerTurn: preference.perTurn,
+            }));
           }),
         settingsPort()
           .getRemoteSessionReusePreference()

@@ -20,6 +20,7 @@ export interface TurnsPort {
     | "respondToPrompt"
     | "runQueuedMessageNow"
     | "setQueuePaused"
+    | "continueAgentPause"
     | "steerQueuedMessage"
     | "updateQueuedMessage"
   >;

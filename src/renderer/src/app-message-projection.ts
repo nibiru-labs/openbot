@@ -1,5 +1,6 @@
 import type { AgentSummary, ConversationMessage, QueueDeliveryStatus } from "@openbot/contracts/ipc";
 import {
+  AGENT_PAUSE_ITEM_TYPE,
   CONVERSATION_PLAN_ITEM_TYPE,
   hostedSiteConversationEvent,
   isContextResetMarker,
@@ -288,6 +289,14 @@ function chatActionMarker(
     };
   }
   if (isContextResetMarker(message)) return { kind: "context-reset", timestamp: message.createdAt };
+  if (message.itemType === AGENT_PAUSE_ITEM_TYPE && message.author === "system" && message.pause)
+    return {
+      kind: "agent-pause",
+      messageId: message.id,
+      pause: message.pause,
+      text: message.text,
+      timestamp: message.createdAt,
+    };
   const switchReason = modelSwitchReason(message);
   if (switchReason)
     return { kind: "model-switch", reason: switchReason, text: message.text, timestamp: message.createdAt };

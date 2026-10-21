@@ -474,6 +474,7 @@ export function ConversationTimeline() {
                                     fallback={
                                       <ChatActionMarker
                                         onOpenSkill={props.server?.id === "local" ? openSkillSettings : undefined}
+                                        onContinuePause={props.onContinuePause}
                                         marker={marker()}
                                         agents={props.agents}
                                         announce={animateEntrance}

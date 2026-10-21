@@ -61,6 +61,8 @@ export const navItems: ReadonlyArray<SettingsNavItem> = [
       { titleKey: "settings.sendShortcut.title", descriptionKey: "settings.sendShortcut.description" },
       { titleKey: "settings.busyMessage.title", descriptionKey: "settings.busyMessage.description" },
       { titleKey: "settings.agentMemoryLimit.title", descriptionKey: "settings.agentMemoryLimit.description" },
+      { titleKey: "settings.tokenBudget.hour.title", descriptionKey: "settings.tokenBudget.hour.description" },
+      { titleKey: "settings.tokenBudget.turn.title", descriptionKey: "settings.tokenBudget.turn.description" },
       { titleKey: "settings.externalLinks.title", descriptionKey: "settings.externalLinks.description" },
       { titleKey: "settings.launchAtLogin.title", descriptionKey: "settings.launchAtLogin.description" },
       { titleKey: "settings.keepRemoteSessions.title", descriptionKey: "settings.keepRemoteSessions.description" },
