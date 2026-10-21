@@ -26,6 +26,7 @@ import type {
 // for the checker, and the runtime value is still `{ kind, channel }`.
 
 import type { ManagedProviderId } from "./agent-providers";
+import type { AppAppearancePreference, SetAppAppearancePreferenceInput } from "./app-appearance";
 import type { AppLanguagePreference, SetAppLanguagePreferenceInput } from "./app-language";
 import type { AppLogoColorPreference, SetAppLogoColorPreferenceInput } from "./app-logo-color";
 import type { BillingPortalRequest, BillingState } from "./billing";
@@ -561,6 +562,13 @@ export const IPC_ENDPOINTS = {
     // Every window draws the logo, and the Dynamic Island has no Settings of its own, so the choice
     // is broadcast in the same way as the language.
     appLogoColorPreference: event<AppLogoColorPreference>()("app:logo-color-preference"),
+    getAppAppearancePreference: request<undefined, AppAppearancePreference>()("app:get-appearance-preference"),
+    setAppAppearancePreference: request<SetAppAppearancePreferenceInput, AppAppearancePreference>()(
+      "app:set-appearance-preference",
+    ),
+    // The windows follow the scheme through `nativeTheme`; the event keeps the Settings control of
+    // every open window on the saved choice.
+    appAppearancePreference: event<AppAppearancePreference>()("app:appearance-preference"),
     // The native Preferences menu item and its shortcut live in main, while the dialog lives in
     // the renderer, so the menu click is broadcast rather than handled: every window opens its
     // own Settings.

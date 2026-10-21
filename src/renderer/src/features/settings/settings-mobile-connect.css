@@ -460,7 +460,7 @@
   width: 10px;
   height: 10px;
   flex: 0 0 auto;
-  color: var(--openbot-text-muted-on-light);
+  color: var(--openbot-ink-muted-on-light);
   stroke-width: 2.5;
   opacity: 0;
   transform: rotate(-45deg) scale(0.6);

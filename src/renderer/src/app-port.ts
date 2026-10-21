@@ -5,13 +5,16 @@ import type { OpenBotDesktopApi } from "@openbot/contracts/ipc";
  * (`openUrl`, `openExternal`) that several domains share.
  */
 export interface AppPort {
+  getAppAppearancePreference: OpenBotDesktopApi["getAppAppearancePreference"];
   getAppInfo: OpenBotDesktopApi["getAppInfo"];
   getAppLanguagePreference: OpenBotDesktopApi["getAppLanguagePreference"];
   getAppLogoColorPreference: OpenBotDesktopApi["getAppLogoColorPreference"];
+  onAppAppearancePreference: OpenBotDesktopApi["onAppAppearancePreference"];
   onAppLanguagePreference: OpenBotDesktopApi["onAppLanguagePreference"];
   onAppLogoColorPreference: OpenBotDesktopApi["onAppLogoColorPreference"];
   openExternal: OpenBotDesktopApi["openExternal"];
   openUrl: OpenBotDesktopApi["openUrl"];
+  setAppAppearancePreference: OpenBotDesktopApi["setAppAppearancePreference"];
   setAppLanguagePreference: OpenBotDesktopApi["setAppLanguagePreference"];
   setAppLogoColorPreference: OpenBotDesktopApi["setAppLogoColorPreference"];
   agent: Pick<

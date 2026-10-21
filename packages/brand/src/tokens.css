@@ -7,8 +7,9 @@
  * two hundred tokens, and a token added for one surface was simply absent on the
  * other two. Keep this file the only declaration site.
  *
- * The values here are the base, always-dark palette. Mobile is the one surface
- * with a light theme; it layers tokens-native.css on top of this file.
+ * The values here are the base, dark palette. Mobile layers its light theme from
+ * tokens-native.css on top of this file, and the desktop renderer layers its light
+ * theme from tokens-light.css. The public web app stays dark.
  */
 
 :root {
@@ -113,6 +114,12 @@
   --openbot-text-readable: rgba(255, 255, 255, 0.52);
   --openbot-text-muted-on-light: rgba(20, 20, 20, 0.52);
   --openbot-text-dim-on-light: rgba(20, 20, 20, 0.36);
+  /* Ink on a surface that is light in every theme: a QR code card, the onboarding drawing, a
+     highlight. The *-on-light family above inverts in the desktop light theme; these do not. */
+  --openbot-ink-on-light: #141414;
+  --openbot-ink-muted-on-light: rgba(20, 20, 20, 0.52);
+  --openbot-ink-dim-on-light: rgba(20, 20, 20, 0.36);
+  --openbot-ink-border-on-light: rgba(20, 20, 20, 0.14);
   --openbot-download-card-muted: rgba(20, 20, 20, 0.68);
   --openbot-download-card-chip: rgba(20, 20, 20, 0.1);
   --openbot-download-card-border: rgba(20, 20, 20, 0.16);

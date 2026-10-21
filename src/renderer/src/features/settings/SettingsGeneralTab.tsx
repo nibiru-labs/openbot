@@ -1,4 +1,10 @@
-import { AGENT_MEMORY_LIMITS, type AgentMemoryLimit, type AppVariant } from "@openbot/contracts/ipc";
+import {
+  AGENT_MEMORY_LIMITS,
+  type AgentMemoryLimit,
+  APP_APPEARANCES,
+  type AppAppearance,
+  type AppVariant,
+} from "@openbot/contracts/ipc";
 import type { AppTextKey } from "@openbot/i18n";
 import {
   Item,
@@ -20,8 +26,15 @@ import { LanguageSelect } from "@openbot/ui/features/settings/LanguageSelect";
 import { LogoColorPicker } from "@openbot/ui/features/settings/LogoColorPicker";
 import { SendShortcutSelect } from "@openbot/ui/features/settings/SendShortcutSelect";
 import { Show } from "solid-js";
+import { useAppearanceChoice } from "../../appearance";
 import { useI18n } from "../../i18n-context";
 import { useLogoColorChoice } from "../../logo-color";
+
+const APPEARANCE_KEYS = {
+  system: "settings.colorScheme.system",
+  light: "settings.colorScheme.light",
+  dark: "settings.colorScheme.dark",
+} as const satisfies Record<AppAppearance, AppTextKey>;
 
 const linkTargetOptions: GeneralSettingsValue["externalLinkTarget"][] = ["Default browser", "OpenBot"];
 
@@ -51,6 +64,7 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
   const linkTargetLabel = (value: GeneralSettingsValue["externalLinkTarget"] | undefined) =>
     value === undefined ? "" : i18n.t(LINK_TARGET_KEYS[value]);
   const logoColor = useLogoColorChoice();
+  const appearance = useAppearanceChoice();
   return (
     <>
       <SettingsSection title={i18n.t("settings.appearance.title")}>
@@ -62,6 +76,34 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
             </ItemContent>
             <ItemActions>
               <LanguageSelect value={i18n.language()} onChange={i18n.changeLanguage} mount={props.selectMount} />
+            </ItemActions>
+          </Item>
+          <Item data-settings-row="settings.colorScheme.title" class="settings-modal-row">
+            <ItemContent>
+              <ItemTitle>{i18n.t("settings.colorScheme.title")}</ItemTitle>
+              <ItemDescription>{i18n.t("settings.colorScheme.description")}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <Select<AppAppearance>
+                class="settings-modal-select"
+                options={[...APP_APPEARANCES]}
+                value={appearance.appearance()}
+                onChange={(value) => value && appearance.changeAppearance(value)}
+                placement="bottom-end"
+                itemComponent={(selectProps) => (
+                  <SelectItem item={selectProps.item}>{i18n.t(APPEARANCE_KEYS[selectProps.item.rawValue])}</SelectItem>
+                )}
+              >
+                <SelectTrigger size="sm" aria-label={i18n.t("settings.colorScheme.title")}>
+                  <SelectValue<AppAppearance>>
+                    {(state) => {
+                      const selected = state.selectedOption();
+                      return selected ? i18n.t(APPEARANCE_KEYS[selected]) : "";
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent mount={props.selectMount} />
+              </Select>
             </ItemActions>
           </Item>
           <Item data-settings-row="settings.logoColor.title" class="settings-modal-row settings-logo-color-row">

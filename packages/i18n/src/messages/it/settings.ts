@@ -6,6 +6,11 @@ export const messages = {
   "settings.language.description": "OpenBot mostra menu, pulsanti e messaggi in questa lingua.",
   "settings.language.system": "Predefinita di sistema",
   "settings.appearance.title": "Aspetto",
+  "settings.colorScheme.title": "Tema",
+  "settings.colorScheme.description": "«Sistema» segue l'aspetto del dispositivo.",
+  "settings.colorScheme.system": "Sistema",
+  "settings.colorScheme.light": "Chiaro",
+  "settings.colorScheme.dark": "Scuro",
   "settings.logoColor.title": "Colore del logo",
   "settings.logoColor.description": "Mostrato nel Dock, nella barra delle applicazioni e nella Dynamic Island.",
   "settings.logoColor.buildNote":

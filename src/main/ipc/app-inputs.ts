@@ -24,6 +24,7 @@ import type {
   ReplaceHostedSiteInput,
   SaveSetupInput,
   SetAnalyticsPreferenceInput,
+  SetAppAppearancePreferenceInput,
   SetAppLanguagePreferenceInput,
   SetAppLogoColorPreferenceInput,
   SetDynamicIslandInteractiveInput,
@@ -39,6 +40,7 @@ import {
   isAgentMemoryLimit,
   isAgentModel,
   isAgentProvider,
+  isAppAppearance,
   isAppLanguage,
   isAppLogoColor,
   isBrowserDockAction,
@@ -103,6 +105,11 @@ export function parseRemoteSessionReusePreference(input: unknown): RemoteSession
 export function parseAppLanguagePreference(input: unknown): SetAppLanguagePreferenceInput {
   if (!isDynamicRecord(input) || !isAppLanguage(input.language)) throw new Error("Language preference is required.");
   return { language: input.language };
+}
+
+export function parseAppAppearancePreference(input: unknown): SetAppAppearancePreferenceInput {
+  if (!isDynamicRecord(input) || !isAppAppearance(input.appearance)) throw new Error("Appearance is required.");
+  return { appearance: input.appearance };
 }
 
 export function parseAppLogoColorPreference(input: unknown): SetAppLogoColorPreferenceInput {
