@@ -51,3 +51,19 @@
 :root[data-appearance="light"] .sidebar-section-name {
   font-size: var(--openbot-text-md);
 }
+
+/* The pinned strip is one row of large avatars that scrolls sideways, and the selected bot has a soft
+   highlight. The strip itself hides while nothing is pinned, as it did before. */
+:root[data-appearance="light"] .sidebar-pinned-list {
+  width: 100%;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  margin: 0;
+  overflow-x: auto;
+  padding: 4px 12px 8px;
+}
+
+:root[data-appearance="light"] .sidebar-pinned-row[aria-pressed="true"] {
+  border-radius: var(--openbot-radius-lg);
+  background: var(--openbot-bg-control);
+}
