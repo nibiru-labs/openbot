@@ -21,11 +21,13 @@ export interface NewMessageTally {
   count: number;
   /** The last id the reader has accounted for. `undefined` before the first page arrives. */
   anchorId: string | undefined;
+  /** Every id the reader has accounted for, so a row that arrives above the newest one counts too. */
+  seenIds?: ReadonlySet<string>;
 }
 
 /** The reader has seen everything: no count, and the newest row becomes the anchor. */
 export function anchorNewMessages(rows: readonly TimelineRow[]): NewMessageTally {
-  return { count: 0, anchorId: rows.at(-1)?.id };
+  return { count: 0, anchorId: rows.at(-1)?.id, seenIds: new Set(rows.map((row) => row.id)) };
 }
 
 /**
@@ -55,13 +57,21 @@ export function tallyNewMessages(
    * was deleted, because a page scrolled out of the window, or because this is the first page of
    * a thread the reader just opened, and none of those is news.
    */
-  if (anchorIndex < 0) return { count: previous.count, anchorId: latestId };
+  const seenIds = new Set(previous.seenIds);
+  for (const row of rows) seenIds.add(row.id);
+  if (anchorIndex < 0) return { count: previous.count, anchorId: latestId, seenIds };
+  /*
+   * A body that grows while it streams, and an older page that only prepends, both add nothing. A row
+   * can arrive above the newest one: the rows of a running turn sort above a routine marker that
+   * follows the turn. So every unseen row after the first seen one counts.
+   */
+  const seen = previous.seenIds ?? new Set(rows.slice(0, anchorIndex + 1).map((row) => row.id));
+  const firstSeenIndex = rows.findIndex((row) => seen.has(row.id));
   let arrived = 0;
-  // A body that grows while it streams, and an older page that only prepends, both add nothing.
-  for (let index = anchorIndex + 1; index < rows.length; index += 1) {
-    if (rows[index]?.countable) arrived += 1;
+  for (const row of rows.slice(firstSeenIndex + 1)) {
+    if (row.countable && !seen.has(row.id)) arrived += 1;
   }
-  return { count: previous.count + arrived, anchorId: latestId };
+  return { count: previous.count + arrived, anchorId: latestId, seenIds };
 }
 
 /** Rows the reader would call a new message. */

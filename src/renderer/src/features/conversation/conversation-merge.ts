@@ -64,9 +64,15 @@ export function missingReplyOriginals(page: Pick<ConversationPage, "messages" | 
  * is shown whole. Otherwise it is the tail, and what the user is looking at
  * decides how much of it applies: a window loaded *around* a message keeps only
  * messages already on screen, because anything else in the snapshot belongs to
- * the far end of a gap. A window at the latest end keeps those, plus everything
- * after the last one it recognises - that is the new arrivals, and it is why a
- * refresh does not drop the older pages loaded above them.
+ * the far end of a gap. A window at the latest end keeps everything from the
+ * first message it recognises on - that is the loaded messages and the new
+ * arrivals, and it is why a refresh does not drop the older pages loaded above
+ * them.
+ *
+ * A new arrival can sort above a loaded message: a running turn starts before
+ * the routine marker that follows it, so the turn's later plan, answer and steer
+ * sort above that marker. So the window keeps arrivals between loaded messages
+ * too, not only those after the last one.
  */
 export function windowedSnapshotMessages<Message extends { id: string }>(
   loaded: readonly Message[],
@@ -76,6 +82,6 @@ export function windowedSnapshotMessages<Message extends { id: string }>(
   if (!window.hasOlder) return [...snapshot];
   const loadedIds = new Set(loaded.map((message) => message.id));
   if (window.mode === "around") return snapshot.filter((message) => loadedIds.has(message.id));
-  const lastLoadedIndex = snapshot.reduce((last, message, index) => (loadedIds.has(message.id) ? index : last), -1);
-  return snapshot.filter((message, index) => loadedIds.has(message.id) || index > lastLoadedIndex);
+  const firstLoadedIndex = snapshot.findIndex((message) => loadedIds.has(message.id));
+  return firstLoadedIndex < 0 ? [...snapshot] : snapshot.slice(firstLoadedIndex);
 }
