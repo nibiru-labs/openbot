@@ -42,3 +42,12 @@
   background: var(--openbot-question-option);
   color: var(--openbot-text-on-accent);
 }
+
+/* The list rows get more air, and the section names sit one step above the row labels' size. */
+:root[data-appearance="light"] .sidebar-section-toggle {
+  height: 40px;
+}
+
+:root[data-appearance="light"] .sidebar-section-name {
+  font-size: var(--openbot-text-md);
+}
