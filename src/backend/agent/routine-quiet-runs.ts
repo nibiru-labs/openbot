@@ -115,3 +115,26 @@ function carriesContent(message: ConversationMessage): boolean {
     Boolean(message.imageGeneration)
   );
 }
+
+/**
+ * The report a turn gives the user, as text: its answers, without work notes, quiet answers and the
+ * no-update marker. An answer with a file or an image counts as a report even with no text. Empty
+ * when the turn has nothing to report.
+ */
+export function routineRunReport(snapshot: ConversationSnapshot, turnId: string): string {
+  return snapshot.messages
+    .filter(
+      (message) =>
+        message.author === "assistant" &&
+        message.turnId === turnId &&
+        isTextAnswer(message) &&
+        !isNoUpdateAnswer(message.text) &&
+        message.itemType !== ROUTINE_QUIET_ANSWER_ITEM_TYPE,
+    )
+    .map((message) => {
+      const attachments = message.attachments?.length ? `[${message.attachments.length} attachments]` : "";
+      return [message.text.trim(), attachments].filter(Boolean).join(" ");
+    })
+    .filter(Boolean)
+    .join("\n");
+}
