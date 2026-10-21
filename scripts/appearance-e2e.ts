@@ -63,7 +63,8 @@ async function openGeneralSettings(page: Page) {
 
 async function chooseAppearance(page: Page, next: AppAppearance) {
   await openGeneralSettings(page);
-  await page.getByRole("button", { name: t("settings.colorScheme.title"), exact: true }).click();
+  // The trigger is named by its title and then the selected value, as the Language button is.
+  await page.getByRole("button", { name: new RegExp(`^${t("settings.colorScheme.title")} `) }).click();
   await page.getByRole("option", { name: LABELS[next], exact: true }).click();
   await page.waitForFunction(
     async (appearance) => (await window.openbot.getAppAppearancePreference()).appearance === appearance,
@@ -105,8 +106,9 @@ try {
     await closeSettings(page);
     await page.screenshot({ path: resolve(OUT, `workspace-${appearance}.png`) });
     results.push({ appearance, settings });
+    // The tokens and the color scheme follow the choice. `prefers-color-scheme` follows it only for
+    // System: an explicit choice is applied through the root attribute, so the page does not depend on it.
     const scheme = appearance === "system" ? (settings.nativeLight ? "light" : "dark") : appearance;
-    assert.equal(settings.nativeLight, scheme === "light", `Main did not set the native theme to ${appearance}.`);
     assert.equal(settings.attribute, scheme, `The window did not select the ${scheme} tokens.`);
     assert.equal(settings.colorScheme, scheme, `The window color scheme is not ${scheme}.`);
     assert.equal(settings.canvas, CANVAS[scheme], `The canvas is not the ${scheme} canvas.`);
