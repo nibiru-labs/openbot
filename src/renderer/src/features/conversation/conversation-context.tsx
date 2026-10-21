@@ -778,6 +778,14 @@ const Conversation = createSimpleContext({
       });
     }
 
+    /** Agents whose next sent message stops the running turn and starts next ("Stop and send"). */
+    const interruptingSends = new Set<string>();
+
+    /** The next message sent to this local agent stops its running turn and starts next. */
+    function armInterruptSend(agentId: string) {
+      interruptingSends.add(agentConversationKey(activeServerId(), agentId));
+    }
+
     async function sendMessage(
       body: string,
       attachmentDraftIds: string[],
@@ -803,6 +811,8 @@ const Conversation = createSimpleContext({
     ): Promise<SendMessageResult> {
       const analytics = desktopAnalytics.scope();
       const properties = analyticsAgentProperties(agentId);
+      // Read once: a retry of a failed send waits like any other message.
+      const interrupt = interruptingSends.delete(agentConversationKey(serverId, agentId));
       try {
         const input = {
           agentId,
@@ -810,6 +820,7 @@ const Conversation = createSimpleContext({
           attachmentDraftIds,
           ...(replyToMessageId ? { replyToMessageId } : {}),
           ...(clientMessageId ? { clientMessageId } : {}),
+          ...(interrupt ? { interrupt: true } : {}),
         };
         const receipt = await conversationPort().agent.sendMessage(input, serverId);
         const errorKey = agentConversationKey(serverId, agentId);
@@ -991,6 +1002,7 @@ const Conversation = createSimpleContext({
       clearRecentReply,
       searchAgentMessages,
       sendMessage,
+      armInterruptSend,
       markAgentMessagesRead,
       markAllAgentMessagesRead,
       presentPromptResolution,

@@ -8,7 +8,7 @@ import { createVerticalDragPreview } from "../../components/createVerticalDragPr
 import type { ComposerAgent, ComposerSkill } from "../../data";
 import { useText } from "../../text";
 import { fileBadge } from "./AttachmentCards";
-import { EditIcon, QueueIcon, SteerIcon, TrashIcon } from "./ConversationIcons";
+import { EditIcon, PauseIcon, QueueIcon, ResumeIcon, RunNowIcon, SteerIcon, TrashIcon } from "./ConversationIcons";
 import { createSmoothHeightResize } from "./createSmoothHeightResize";
 
 interface QueuePanelProps {
@@ -25,6 +25,14 @@ interface QueuePanelProps {
   onCancel: (deliveryId: string) => void;
   onEdit: (delivery: QueueDelivery) => void;
   onReorder: (deliveryIds: string[]) => void;
+  /** No queued message starts until the user resumes the queue. */
+  paused?: boolean | undefined;
+  /** Pauses or resumes the queue. Absent where the host cannot pause it. */
+  onSetPaused?: ((paused: boolean) => void) | undefined;
+  /** Stops the current work and starts this message next. Absent where the host cannot. */
+  onRunNow?: ((deliveryId: string) => void) | undefined;
+  /** Cancels every queued message after the user confirms. */
+  onClearAll?: (() => void) | undefined;
   /** `floating` is the glass queue over a browser page, with quiet glass row actions. */
   variant?: "docked" | "floating";
 }
@@ -37,6 +45,7 @@ interface DragSlot {
 export function QueuePanel(props: QueuePanelProps) {
   const { t } = useText();
   const [deleteHeldId, setDeleteHeldId] = createSignal<string | null>(null);
+  const [confirmClear, setConfirmClear] = createSignal(false);
   const [draggedId, setDraggedId] = createSignal<string | null>(null);
   const [dragOverId, setDragOverId] = createSignal<string | null>(null);
   const [announcement, setAnnouncement] = createSignal("");
@@ -66,6 +75,7 @@ export function QueuePanel(props: QueuePanelProps) {
       }),
   );
   const initialSourceDeliveries = untrack(sourceDeliveries);
+  const queuedCount = createMemo(() => sourceDeliveries().filter((delivery) => delivery.status === "queued").length);
   const [renderedDeliveries, setRenderedDeliveries] = createSignal<QueueDelivery[]>(initialSourceDeliveries);
   const visibleDeliveries = createMemo(() =>
     renderedDeliveries().filter((delivery) => delivery.id !== hiddenEditingId()),
@@ -407,6 +417,48 @@ export function QueuePanel(props: QueuePanelProps) {
             </p>
           )}
         </Show>
+        <Show when={props.onSetPaused || props.onClearAll}>
+          <div class="agent-queue-toolbar">
+            <p class="agent-queue-toolbar-status" role="status">
+              {props.paused
+                ? t("queue.paused.status", { count: queuedCount() })
+                : t("queue.waiting.status", { count: queuedCount() })}
+            </p>
+            <Show when={props.onSetPaused}>
+              {(setPaused) => (
+                <LabelTooltip content={t(props.paused ? "queue.resume.tooltip" : "queue.pause.tooltip")}>
+                  <LabelTooltipTrigger
+                    as={Button}
+                    variant="ghost"
+                    type="button"
+                    class="agent-queue-steer agent-queue-pause"
+                    aria-pressed={props.paused ? "true" : "false"}
+                    onClick={() => setPaused()(!props.paused)}
+                  >
+                    <Show when={props.paused} fallback={<PauseIcon />}>
+                      <ResumeIcon />
+                    </Show>
+                    <span>{t(props.paused ? "queue.resume" : "queue.pause")}</span>
+                  </LabelTooltipTrigger>
+                </LabelTooltip>
+              )}
+            </Show>
+            <Show when={props.onClearAll && queuedCount() > 0}>
+              <LabelTooltip content={t("queue.clearAll.tooltip")}>
+                <LabelTooltipTrigger
+                  as={Button}
+                  variant="destructive-ghost"
+                  type="button"
+                  class="agent-queue-icon-button agent-queue-delete"
+                  aria-label={t("queue.clearAll.label")}
+                  onClick={() => setConfirmClear(true)}
+                >
+                  <TrashIcon />
+                </LabelTooltipTrigger>
+              </LabelTooltip>
+            </Show>
+          </div>
+        </Show>
         <div class="agent-queue-panel-resize" ref={(element) => (queueResizeContainer = element)}>
           <div class="agent-queue-panel-list" ref={(element) => (queueList = element)}>
             <For each={visibleDeliveries()}>
@@ -516,6 +568,23 @@ export function QueuePanel(props: QueuePanelProps) {
                           </span>
                         </LabelTooltipTrigger>
                       </LabelTooltip>
+                      <Show when={props.onRunNow}>
+                        {(runNow) => (
+                          <LabelTooltip content={t("queue.item.runNowTooltip")}>
+                            <LabelTooltipTrigger
+                              as={Button}
+                              variant="ghost"
+                              type="button"
+                              class="agent-queue-icon-button agent-queue-run-now"
+                              disabled={!actionable}
+                              aria-label={t("queue.item.runNowLabel", { position: delivery.position ?? "" })}
+                              onClick={() => runNow()(delivery.id)}
+                            >
+                              <RunNowIcon />
+                            </LabelTooltipTrigger>
+                          </LabelTooltip>
+                        )}
+                      </Show>
                       <Show when={props.onRunAsTask}>
                         {(runAsTask) => (
                           <LabelTooltip content={t("queue.item.runAsTask")}>
@@ -574,6 +643,19 @@ export function QueuePanel(props: QueuePanelProps) {
           {announcement()}
         </div>
       </section>
+      <ConfirmDialog
+        open={confirmClear()}
+        onCancel={() => setConfirmClear(false)}
+        onConfirm={() => {
+          setConfirmClear(false);
+          props.onClearAll?.();
+        }}
+        title={t("queue.clearAll.title", { count: queuedCount() })}
+        description={t("queue.clearAll.body")}
+        confirmLabel={t("queue.clearAll.confirm")}
+        cancelLabel={t("queue.deleteHeld.keep")}
+        initialFocus="cancel"
+      />
       <ConfirmDialog
         open={deleteHeldId() !== null}
         onCancel={() => setDeleteHeldId(null)}

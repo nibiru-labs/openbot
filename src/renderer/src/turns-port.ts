@@ -18,6 +18,8 @@ export interface TurnsPort {
     | "respondToApproval"
     | "respondToBrowserTakeover"
     | "respondToPrompt"
+    | "runQueuedMessageNow"
+    | "setQueuePaused"
     | "steerQueuedMessage"
     | "updateQueuedMessage"
   >;

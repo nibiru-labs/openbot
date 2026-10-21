@@ -324,6 +324,8 @@ import type {
   QueuedMessageReceipt,
   QueueSnapshot,
   ReorderQueueInput,
+  RunQueuedMessageNowInput,
+  SetQueuePausedInput,
   SteerQueuedMessageInput,
   UpdateQueuedMessageInput,
 } from "./ipc-queue";
@@ -1125,6 +1127,9 @@ export const IPC_ENDPOINTS = {
     editQueuedMessage: scopedRequest<EditQueuedMessageInput, QueueSnapshot>()("agent:edit-queued-message"),
     updateQueuedMessage: scopedRequest<UpdateQueuedMessageInput, void>()("agent:update-queued-message"),
     reorderQueue: scopedRequest<ReorderQueueInput, void>()("agent:reorder-queue"),
+    // Local only: a joined server's Team API has no queue pause or run-now route.
+    setQueuePaused: scopedRequest<SetQueuePausedInput, void>()("agent:set-queue-paused"),
+    runQueuedMessageNow: scopedRequest<RunQueuedMessageNowInput, void>()("agent:run-queued-message-now"),
     interrupt: scopedRequest<InterruptTurnInput, void>()("agent:interrupt"),
     clearContext: scopedRequest<string, void>()("agent:clear-context"),
     respondToPrompt: scopedRequest<RespondToPromptInput, void>()("agent:respond-to-prompt"),

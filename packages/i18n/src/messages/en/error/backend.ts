@@ -298,5 +298,13 @@ export const messages = defineMessages("error.backend", {
   "error.backend.taskOpenLimitReached":
     "This agent has {count} open tasks. Close a task, then start or open another one.",
   "error.backend.taskRemoteUnsupported": "Tasks are only available for agents on this computer.",
+  "error.backend.queueControlRemoteUnsupported": "Pause and Run now are only available for agents on this computer.",
+  "error.backend.runNowQueuedOnly": "Only a queued message can run now.",
+  "error.backend.agentControlCooldown":
+    "You interrupted this agent less than a minute ago. Your message waits in its queue.",
+  "error.backend.agentControlLimit":
+    "Teammates interrupted this agent too often in the last few minutes. Your message waits in its queue.",
+  "error.backend.agentControlChain":
+    "This turn started because a teammate interrupted you. Finish it before you interrupt another agent. Your message waits in its queue.",
   "error.backend.taskStartFailed": "OpenBot could not start the task. Do the work in this turn instead.",
 });

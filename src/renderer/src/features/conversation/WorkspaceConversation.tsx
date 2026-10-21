@@ -128,6 +128,9 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     steerQueuedMessage,
     updateQueuedMessage,
     reorderQueue,
+    setQueuePaused,
+    runQueuedMessageNow,
+    clearQueue,
     stopActiveTurn,
     usageLimits,
     usageLimitedModels,
@@ -139,6 +142,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     activeMessages,
     conversations,
     sendMessage,
+    armInterruptSend,
     markAgentMessagesRead,
     loadOlderAgentMessages,
     loadLatestAgentMessages,
@@ -500,6 +504,18 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         onSteerQueuedMessage={steerQueuedMessage}
         onUpdateQueuedMessage={updateQueuedMessage}
         onReorderQueue={reorderQueue}
+        onClearQueue={clearQueue}
+        // The Team API has no pause, run-now or stop-and-send route.
+        onSetQueuePaused={activeServer()?.kind === "remote" ? undefined : setQueuePaused}
+        onRunQueuedMessageNow={activeServer()?.kind === "remote" ? undefined : runQueuedMessageNow}
+        onArmInterruptSend={
+          activeServer()?.kind === "remote"
+            ? undefined
+            : () => {
+                const agent = activeAgent();
+                if (agent) armInterruptSend(agent.id);
+              }
+        }
         onActivateBrowserTab={activateBrowserTab}
         onCloseBrowserTab={closeBrowserTab}
         onOpenRemoteDesktop={openRemoteDesktopWorkspace}

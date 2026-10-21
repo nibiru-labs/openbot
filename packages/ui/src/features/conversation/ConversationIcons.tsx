@@ -103,6 +103,32 @@ export function SteerIcon() {
   );
 }
 
+export function PauseIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="ui-glyph-20">
+      <path d="M7.25 5.5v9" />
+      <path d="M12.75 5.5v9" />
+    </svg>
+  );
+}
+
+export function ResumeIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="ui-glyph-20">
+      <path d="M6.75 5.25v9.5l7.5-4.75z" />
+    </svg>
+  );
+}
+
+/** Stop the current work and run this now. */
+export function RunNowIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" class="ui-glyph-20">
+      <path d="M10.75 3.75 5.5 11h4l-1 5.25L14.5 9h-4z" />
+    </svg>
+  );
+}
+
 export function CopyIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" class="ui-glyph-20">

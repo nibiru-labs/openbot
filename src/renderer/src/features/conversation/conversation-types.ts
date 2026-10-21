@@ -250,6 +250,14 @@ export interface ConversationProps {
     target?: ConversationTarget,
   ) => Promise<boolean>;
   onReorderQueue: (deliveryIds: string[]) => void;
+  /** Pauses or resumes the agent's queue. Local agents only. */
+  onSetQueuePaused?: ((paused: boolean) => void) | undefined;
+  /** Stops the running turn and starts one queued message next. Local agents only. */
+  onRunQueuedMessageNow?: ((deliveryId: string) => void) | undefined;
+  /** Cancels every queued message of the agent. */
+  onClearQueue?: (() => void) | undefined;
+  /** Makes the next message sent stop the running turn and start next. Local agents only. */
+  onArmInterruptSend?: (() => void) | undefined;
   onActivateBrowserTab: (tabId: string) => void;
   onCloseBrowserTab: (tabId: string) => void | Promise<void>;
   onOpenRemoteDesktop: (serverId: string, trigger: HTMLElement) => Promise<void>;

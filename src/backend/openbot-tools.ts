@@ -510,7 +510,7 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
   {
     name: "send_message",
     description:
-      "Queue an asynchronous message and optional local files for one or more OpenBot agents. When replying, pass the original message id as replyToMessageId. Set expectsReply false to pass information on without asking the recipient for an answer.",
+      "Queue an asynchronous message and optional local files for one or more OpenBot agents. When replying, pass the original message id as replyToMessageId. Set expectsReply false to pass information on without asking the recipient for an answer. To change what a busy teammate does now, set busy to steer or interrupt.",
     shape: {
       recipientAgentIds: z.array(z.string()).min(1).max(32),
       text: z.string().min(1).max(100_000),
@@ -520,6 +520,12 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
         .boolean()
         .describe(
           "True, the default, for a request, question, escalation, or delegated task: the recipient answers you and OpenBot sends its result back. False only for information that asks nothing of the recipient, such as a status update, a heads-up, or your own reply to a task. A false message ends the exchange.",
+        )
+        .optional(),
+      busy: z
+        .enum(["queue", "steer", "interrupt"])
+        .describe(
+          "What the message does when a recipient is busy. queue, the default, waits until its current work ends. steer adds the message to that work at its next step, without stopping it: use it for new facts or a correction the recipient must consider now. interrupt stops that work and starts this message next: use it only when the current work is wrong or no longer needed. Interrupts have a cooldown and a limit; a refused steer or interrupt leaves the message queued.",
         )
         .optional(),
     },

@@ -95,10 +95,12 @@ import {
   parseReadConversationPage,
   parseReorderQueue,
   parseRunQueuedMessageAsTask,
+  parseRunQueuedMessageNow,
   parseSearchConversationFiles,
   parseSearchConversationMessages,
   parseSendMessage,
   parseSetAgentAvatar,
+  parseSetQueuePaused,
   parseSidebarLayoutAction,
   parseStartAgentTask,
   parseSteerQueuedMessage,
@@ -112,6 +114,10 @@ import { scopedHandler, scopedQueryHandler } from "./scoped-handler";
 const modelLogger = createOpenBotLogger("provider-models");
 
 /** A joined server without `agent-tasks-v1`, or a task request that it cannot carry, fails with a reason. */
+function queueControlRemoteUnsupported(): never {
+  throw new Error(sourceText("error.backend.queueControlRemoteUnsupported"));
+}
+
 function taskRemoteUnsupported(): never {
   throw new Error(sourceText("error.backend.taskRemoteUnsupported"));
 }
@@ -513,7 +519,8 @@ export function agentIpcHandlers({
       }),
       sendMessage: scopedHandler(parseSendMessage, {
         local: (input) => runCauseEffect(service.sendMessage(input, host.conversationSender())),
-        remote: (input, serverId) => {
+        remote: ({ interrupt, ...input }, serverId) => {
+          if (interrupt) queueControlRemoteUnsupported();
           if (input.taskId) {
             // `agent-tasks-v1` carries text only.
             if (input.attachmentDraftIds?.length) taskRemoteUnsupported();
@@ -628,6 +635,15 @@ export function agentIpcHandlers({
               body: { deliveryId: parsed.deliveryId },
             }),
           ),
+      }),
+      // Local only: the released Team API has no queue pause or run-now route.
+      setQueuePaused: scopedHandler(parseSetQueuePaused, {
+        local: (parsed) => runCauseEffect(service.setQueuePaused(parsed)),
+        remote: queueControlRemoteUnsupported,
+      }),
+      runQueuedMessageNow: scopedHandler(parseRunQueuedMessageNow, {
+        local: (parsed) => runCauseEffect(service.runQueuedMessageNow(parsed)),
+        remote: queueControlRemoteUnsupported,
       }),
       steerQueuedMessage: scopedHandler(parseSteerQueuedMessage, {
         local: (parsed) => runCauseEffect(service.steerQueuedMessage(parsed)),

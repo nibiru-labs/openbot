@@ -28,6 +28,8 @@ export interface QueueControlsHooks {
   channelAssignment(deliveryId: string): ChannelAssignment | null;
   /** The thread of the open task that a delivery runs in, or null for the agent's own chat. */
   taskThreadId(deliveryId: string): string | null;
+  /** Stops the turn the user stopped with Stop, so the next queued message starts after it. */
+  interrupt(agentId: string, turnId: string): Effect.Effect<void, QueueOperationFailed>;
 }
 
 export interface QueueControlsOptions {
@@ -212,6 +214,39 @@ export class QueueControls {
       .reorderQueue(input.agentId, [...executionDeliveryIds, ...input.deliveryIds])
       .pipe(toQueueOperationFailed);
     this.#mailboxSync.emitQueue(input.agentId);
+  }, Effect.uninterruptible);
+
+  /** No queued message starts while the queue is paused. The running turn goes on. */
+  readonly setPaused = Effect.fn("QueueControls.setPaused")(function* (
+    this: QueueControls,
+    agentId: string,
+    paused: boolean,
+  ): Effect.fn.Return<void, QueueOperationFailed> {
+    yield* this.#store.existing(agentId).pipe(toQueueOperationFailed);
+    yield* this.#mailbox.setQueuePaused(agentId, paused).pipe(toQueueOperationFailed);
+    this.#mailboxSync.emitQueue(agentId);
+    if (!paused) this.#drain.scheduleDrain(agentId);
+  }, Effect.uninterruptible);
+
+  /**
+   * The user's "do this now": the message moves to the front and the running turn of the agent's
+   * own chat stops, so the message starts next even while the queue is paused. A message that waits
+   * for an idle agent starts at once.
+   */
+  readonly runNow = Effect.fn("QueueControls.runNow")(function* (
+    this: QueueControls,
+    agentId: string,
+    deliveryId: string,
+  ): Effect.fn.Return<void, QueueOperationFailed> {
+    const agent = yield* this.#store.existing(agentId).pipe(toQueueOperationFailed);
+    if (this.#hooks.channelAssignment(deliveryId) || this.#hooks.taskThreadId(deliveryId))
+      return yield* new QueueOperationFailed({ cause: new Error(sourceText("error.backend.useChannelTaskControls")) });
+    yield* this.#mailbox.runNext(agent.id, deliveryId).pipe(toQueueOperationFailed);
+    this.#mailboxSync.emitQueue(agent.id);
+    const turnId = this.#conversation.ensureSnapshot(agent.id, agent.threadId).activeTurnId;
+    // The stopped turn schedules the drain as it ends, and the drain starts this message first.
+    if (turnId) yield* this.#hooks.interrupt(agent.id, turnId);
+    else this.#drain.scheduleDrain(agent.id);
   }, Effect.uninterruptible);
 
   readonly steer = Effect.fn("QueueControls.steer")(function* (this: QueueControls, input: SteerQueuedMessageInput) {

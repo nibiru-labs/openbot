@@ -26,4 +26,23 @@ export const messages = defineMessages("queue", {
   "queue.deleteHeld.title": "Delete queued message?",
   "queue.deleteHeld.body": "Another device is editing this message. The agent will not receive it.",
   "queue.deleteHeld.keep": "Keep",
+  "queue.waiting.status": { one: "{count} message waits", other: "{count} messages wait" },
+  "queue.paused.status": {
+    one: "Paused · {count} message kept",
+    other: "Paused · {count} messages kept",
+  },
+  "queue.pause": "Pause",
+  "queue.pause.tooltip": "Start no queued message until you resume. Current work continues, and nothing is lost.",
+  "queue.resume": "Resume",
+  "queue.resume.tooltip": "Start the queued messages again, in order",
+  "queue.clearAll.label": "Delete all queued messages",
+  "queue.clearAll.tooltip": "Delete all queued messages",
+  "queue.clearAll.title": {
+    one: "Delete {count} queued message?",
+    other: "Delete {count} queued messages?",
+  },
+  "queue.clearAll.body": "The agent will not receive them. Current work continues.",
+  "queue.clearAll.confirm": "Delete all",
+  "queue.item.runNowLabel": "Stop current work and run queued message {position} now",
+  "queue.item.runNowTooltip": "Run now: stop current work and start this message next",
 });

@@ -17,6 +17,8 @@ import {
   Image,
   ImageRemoveButton,
   Input,
+  LabelTooltip,
+  LabelTooltipTrigger,
   LoaderCircle,
   MessageCircleQuestionMark,
   Mic,
@@ -35,7 +37,7 @@ import {
   ComposerUsageLimitNotice,
 } from "@openbot/ui/features/conversation/ComposerNotice";
 import { ComposerCompactionNotice, ContextUsageMeter } from "@openbot/ui/features/conversation/ContextUsage";
-import { CloseIcon, StopIcon } from "@openbot/ui/features/conversation/ConversationIcons";
+import { CloseIcon, RunNowIcon, StopIcon } from "@openbot/ui/features/conversation/ConversationIcons";
 import { type OpenWaitItem, OpenWaits } from "@openbot/ui/features/conversation/OpenWaits";
 import { RichMessageText } from "@openbot/ui/features/conversation/RichMessageText";
 import { VoiceRecordingMorph, voiceButtonLabel } from "@openbot/ui/features/conversation/VoiceRecordingMorph";
@@ -122,7 +124,8 @@ export function ConversationComposer() {
     !agentReady() &&
     !(props.agent && (props.agentStatus.phase === "starting" || props.agentStatus.phase === "restarting"));
   // The mention picker grows out of the same edge as the queue, so only one of them holds it.
-  const queueVisible = () => queuePanelVisible() && !pickerOpen();
+  // A paused queue stays in view with nothing in it, so the user can resume it.
+  const queueVisible = () => (queuePanelVisible() || Boolean(props.queue?.paused)) && !pickerOpen();
   const awaitingVisible = () => awaitingReplies().length > 0 && !pickerOpen();
   const waitItems = createMemo(() => openWaitItems(props.waits ?? [], props.queue));
   const waitsVisible = () => waitItems().length > 0 && Boolean(props.onCancelWait) && !pickerOpen();
@@ -236,41 +239,61 @@ export function ConversationComposer() {
     <Show
       when={props.activeTurnId && !editingDeliveryId() && !composerHasContent() && voicePhase() !== "recording"}
       fallback={
-        <Button
-          variant="ghost"
-          type="button"
-          class="voice-button"
-          aria-label={
-            editingDeliveryId()
-              ? t("composer.send.saveQueued")
-              : voicePhase() === "recording"
-                ? t("composer.send.voice")
-                : t("composer.send.message")
-          }
-          aria-keyshortcuts={
-            voicePhase() === "recording" ? undefined : sendShortcutAriaKey(deviceSendShortcut(props.platform))
-          }
-          title={
-            voicePhase() === "recording"
-              ? undefined
-              : t(sendShortcutHintKey(deviceSendShortcut(props.platform), editingDeliveryId() ? "save" : "send"))
-          }
-          data-cuelume-emphasis="normal"
-          disabled={
-            attachmentBusy() ||
-            submitting() ||
-            !agentReady() ||
-            Boolean(providerUpdateRequired()) ||
-            voicePhase() === "preparing" ||
-            voicePhase() === "requesting" ||
-            voicePhase() === "transcribing"
-          }
-          onClick={submitComposer}
-        >
-          <Show when={submitting()} fallback={<ArrowUp aria-hidden="true" />}>
-            <LoaderCircle class="composer-spinner" aria-hidden="true" />
+        <>
+          <Show when={props.onArmInterruptSend && props.activeTurnId && !editingDeliveryId() && composerHasContent()}>
+            <LabelTooltip content={t("composer.send.stopAndSendTooltip")}>
+              <LabelTooltipTrigger
+                as={Button}
+                variant="ghost"
+                type="button"
+                class="voice-button"
+                aria-label={t("composer.send.stopAndSend")}
+                disabled={attachmentBusy() || submitting() || !agentReady()}
+                onClick={() => {
+                  props.onArmInterruptSend?.();
+                  void submitComposer();
+                }}
+              >
+                <RunNowIcon />
+              </LabelTooltipTrigger>
+            </LabelTooltip>
           </Show>
-        </Button>
+          <Button
+            variant="ghost"
+            type="button"
+            class="voice-button"
+            aria-label={
+              editingDeliveryId()
+                ? t("composer.send.saveQueued")
+                : voicePhase() === "recording"
+                  ? t("composer.send.voice")
+                  : t("composer.send.message")
+            }
+            aria-keyshortcuts={
+              voicePhase() === "recording" ? undefined : sendShortcutAriaKey(deviceSendShortcut(props.platform))
+            }
+            title={
+              voicePhase() === "recording"
+                ? undefined
+                : t(sendShortcutHintKey(deviceSendShortcut(props.platform), editingDeliveryId() ? "save" : "send"))
+            }
+            data-cuelume-emphasis="normal"
+            disabled={
+              attachmentBusy() ||
+              submitting() ||
+              !agentReady() ||
+              Boolean(providerUpdateRequired()) ||
+              voicePhase() === "preparing" ||
+              voicePhase() === "requesting" ||
+              voicePhase() === "transcribing"
+            }
+            onClick={submitComposer}
+          >
+            <Show when={submitting()} fallback={<ArrowUp aria-hidden="true" />}>
+              <LoaderCircle class="composer-spinner" aria-hidden="true" />
+            </Show>
+          </Button>
+        </>
       }
     >
       <Button
@@ -330,6 +353,10 @@ export function ConversationComposer() {
                 onCancel={props.onCancelQueuedMessage}
                 onEdit={editQueuedMessage}
                 onReorder={reorderPresentedQueue}
+                paused={props.queue?.paused}
+                onSetPaused={props.onSetQueuePaused}
+                onRunNow={props.onRunQueuedMessageNow}
+                onClearAll={props.onClearQueue}
               />
             </Loading>
           </Show>

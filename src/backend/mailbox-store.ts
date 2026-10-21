@@ -211,6 +211,8 @@ export class MailboxStore {
   readonly #files: AttachmentFiles;
   readonly #database: OpenBotDatabase;
   readonly #queueUpdates = new Set<string>();
+  /** Queued deliveries the user ran now: each starts while its queue is paused. Not persisted. */
+  readonly #runNow = new Set<string>();
   readonly #deliveryGate = new MailboxDeliveryGate();
   readonly #stagedGeneratedAttachments = new Map<string, StoredGeneratedAttachment>();
   #state: StoredState = structuredClone(EMPTY_STATE);
@@ -688,8 +690,73 @@ export class MailboxStore {
         .map((delivery) =>
           this.#publicDelivery(delivery, positions, this.#requireMessage(delivery.messageId, messages)),
         ),
+      ...(this.isQueuePaused(agentId) ? { paused: true } : {}),
     };
   }
+
+  isQueuePaused(agentId: string): boolean {
+    return this.#state.pausedAgentIds.includes(agentId);
+  }
+
+  /**
+   * A paused queue keeps every message and takes new ones; it only starts no turn for them. A resume
+   * forgets the messages the user ran now, because the whole queue may start again.
+   */
+  setQueuePaused = Effect.fn("MailboxStore.setQueuePaused")(function* (
+    this: MailboxStore,
+    agentId: string,
+    paused: boolean,
+  ): Effect.fn.Return<void, StoredStateFailure> {
+    if (this.isQueuePaused(agentId) === paused) return;
+    yield* storedSync(() => {
+      const previous = this.#state.pausedAgentIds;
+      this.#state.pausedAgentIds = paused ? [...previous, agentId] : previous.filter((id) => id !== agentId);
+      try {
+        this.#persist(paused ? "queue.paused" : "queue.resumed");
+      } catch (error) {
+        this.#state.pausedAgentIds = previous;
+        throw error;
+      }
+      if (!paused)
+        for (const deliveryId of this.#runNow)
+          if (this.getDelivery(deliveryId)?.delivery.recipientAgentId === agentId) this.#runNow.delete(deliveryId);
+    });
+  }, Effect.uninterruptible).bind(this);
+
+  /**
+   * Moves one queued message to the front of the visible queue, behind the channel, messaging and
+   * task work that reserved the agent first, and lets it start while the queue is paused.
+   */
+  runNext = Effect.fn("MailboxStore.runNext")(function* (
+    this: MailboxStore,
+    agentId: string,
+    deliveryId: string,
+  ): Effect.fn.Return<void, StoredStateFailure> {
+    const delivery = this.#state.deliveries.find((candidate) => candidate.id === deliveryId);
+    if (delivery?.recipientAgentId !== agentId || delivery.status !== "queued")
+      return yield* new StoredStateFailure({ cause: new Error(sourceText("error.backend.runNowQueuedOnly")) });
+    const executionMessageIds = this.#executionMessageIds();
+    const queued = this.#queuedFor(agentId);
+    const ordered = [
+      ...queued.filter((candidate) => executionMessageIds.has(candidate.messageId)),
+      delivery,
+      ...queued.filter((candidate) => candidate !== delivery && !executionMessageIds.has(candidate.messageId)),
+    ];
+    yield* storedSync(() => {
+      const previous = new Map(ordered.map((candidate) => [candidate.id, candidate.queueOrder]));
+      ordered.forEach((candidate, index) => {
+        candidate.queueOrder = index;
+        this.#changes.deliveryIds.add(candidate.id);
+      });
+      try {
+        this.#persist("queue.run-next");
+      } catch (error) {
+        for (const candidate of ordered) candidate.queueOrder = previous.get(candidate.id) ?? candidate.queueOrder;
+        throw error;
+      }
+      this.#runNow.add(deliveryId);
+    });
+  }, Effect.uninterruptible).bind(this);
 
   /**
    * The queued channel, messaging and task work of this agent, in queue order. `listQueue` hides it, so a
@@ -1106,8 +1173,14 @@ export class MailboxStore {
   nextQueued(agentId: string, taskId: string | null = null): DeliveryContext | null {
     if (this.laneActive(agentId, taskId)) return null;
     const messages = this.#messagesById();
+    // A paused queue starts only the work that reserved the agent from elsewhere, and what the user ran now.
+    const paused = this.isQueuePaused(agentId);
+    const executionMessageIds = paused ? this.#executionMessageIds() : null;
     const delivery = this.#queuedFor(agentId).find(
-      (candidate) => this.#taskIdOf(candidate, messages) === taskId && !this.#isHeldReply(candidate),
+      (candidate) =>
+        this.#taskIdOf(candidate, messages) === taskId &&
+        !this.#isHeldReply(candidate) &&
+        (!executionMessageIds || executionMessageIds.has(candidate.messageId) || this.#runNow.has(candidate.id)),
     );
     return delivery && this.#mayStart(delivery) ? this.#context(delivery, undefined, messages) : null;
   }

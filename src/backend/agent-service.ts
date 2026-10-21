@@ -71,6 +71,7 @@ import type {
   Routine,
   RoutineRun,
   RunQueuedMessageAsTaskInput,
+  RunQueuedMessageNowInput,
   SaveAgentProfileInput,
   SaveAgentProfileResult,
   SaveMcpServerInput,
@@ -81,6 +82,7 @@ import type {
   SetAgentSessionSettingInput,
   SetMcpServerEnabledInput,
   SetMessageReactionInput,
+  SetQueuePausedInput,
   SharedTable,
   SidebarLayoutSnapshot,
   SidebarSection,
@@ -126,6 +128,7 @@ import { AttachmentGateway } from "./agent/attachment-gateway";
 import { AttentionRegistry, type LocalAttentionResponse, type PromptResponder } from "./agent/attention-registry";
 import { BootRecovery } from "./agent/boot-recovery";
 import { BrowserUploads } from "./agent/browser-uploads";
+import { BusyRecipientControls } from "./agent/busy-recipient-control";
 import type { ChatVisualPreviewHost } from "./agent/chat-visual-preview";
 import { ContextCompaction } from "./agent/context-compaction";
 import { ConversationReader } from "./agent/conversation-reader";
@@ -162,7 +165,7 @@ import { ProfileSave, standingProfileChanged, toProfileSaveFailed } from "./agen
 import type { ProviderAccountStore } from "./agent/provider-account-store";
 import { isPlanLimitDiagnostic } from "./agent/provider-diagnostics";
 import { type AgentClientFactory, ProviderRuntime, toProviderOperationFailed } from "./agent/provider-runtime";
-import { QueueControls } from "./agent/queue-controls";
+import { QueueControls, QueueOperationFailed } from "./agent/queue-controls";
 import { quietRoutineRun } from "./agent/routine-quiet-runs";
 import { type RoutineMutationOptions, RoutineScheduler, toRoutineOperationFailed } from "./agent/routine-scheduler";
 import { buildRuntimeSnapshot } from "./agent/runtime-snapshot";
@@ -374,6 +377,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #drain: DrainScheduler;
   readonly #sessionSettings: SessionSettings;
   readonly #queue: QueueControls;
+  readonly #busyRecipients: BusyRecipientControls;
   readonly #attachments: AttachmentGateway;
   readonly #browserUploads: BrowserUploads;
   readonly #mailboxSync: MailboxSync;
@@ -1127,6 +1131,27 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       hooks: {
         channelAssignment: (deliveryId) => this.channels.store.assignmentForDelivery(deliveryId),
         taskThreadId: (deliveryId) => this.#tasks.threadForDelivery(deliveryId),
+        interrupt: (agentId, turnId) =>
+          this.interrupt(agentId, turnId).pipe(
+            Effect.mapError((failure) => new QueueOperationFailed({ cause: failure.cause })),
+          ),
+      },
+    });
+    this.#busyRecipients = new BusyRecipientControls({
+      mailbox,
+      logger: createOpenBotLogger("agent-busy-control"),
+      hooks: {
+        activeTurnId: (agentId) => {
+          const agent = this.#store.list().find((candidate) => candidate.id === agentId);
+          if (!agent) return null;
+          const turnId = this.#conversation.ensureSnapshot(agent.id, agent.threadId).activeTurnId;
+          // A turn the user stopped is ending; a message steered into it would end with it.
+          return turnId && turnId !== this.#stoppedTurns.get(agent.id) ? turnId : null;
+        },
+        steer: (agentId, deliveryId, turnId) =>
+          this.steerQueuedMessage({ agentId, deliveryId, expectedTurnId: turnId }),
+        runNow: (agentId, deliveryId) => this.runQueuedMessageNow({ agentId, deliveryId }),
+        agentName: (agentId) => this.#store.list().find((agent) => agent.id === agentId)?.name ?? agentId,
       },
     });
     this.#turn = new TurnLifecycle({
@@ -1239,6 +1264,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         runsTurn: (agentId) => this.#runsTurn(agentId),
         interrupt: (agentId, turnId, mayStop) =>
           this.#interruptTurn(agentId, turnId, undefined, mayStop).pipe(toToolOperationFailed),
+        controlBusyRecipient: (input) => this.#busyRecipients.control(input),
         turnActivity: (agentId, turnId) => ({
           startedAt: turnId ? this.#turn.turnStartedAt(turnId) : null,
           lastEventAt: this.#turn.lastEventAt(agentId),
@@ -3527,6 +3553,31 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       );
   }
 
+  setQueuePaused(input: SetQueuePausedInput): Effect.Effect<void, AgentLifecycleFailed> {
+    return this.#queue
+      .setPaused(input.agentId, input.paused)
+      .pipe(
+        Effect.mapError((failure) => new AgentLifecycleFailed({ operation: "setQueuePaused", cause: failure.cause })),
+      );
+  }
+
+  runQueuedMessageNow(input: RunQueuedMessageNowInput): Effect.Effect<void, AgentLifecycleFailed> {
+    if (this.#store.isHidden(input.agentId))
+      return Effect.fail(
+        new AgentLifecycleFailed({
+          operation: "runQueuedMessageNow",
+          cause: new Error(sourceText("error.backend.recipientHidden")),
+        }),
+      );
+    return this.#queue
+      .runNow(input.agentId, input.deliveryId)
+      .pipe(
+        Effect.mapError(
+          (failure) => new AgentLifecycleFailed({ operation: "runQueuedMessageNow", cause: failure.cause }),
+        ),
+      );
+  }
+
   steerQueuedMessage(input: SteerQueuedMessageInput): Effect.Effect<void, AgentLifecycleFailed> {
     // A steer gives a queued message to the running turn. The queue of a hidden agent waits.
     if (this.#store.isHidden(input.agentId))
@@ -3671,7 +3722,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         );
     // A turn the user stopped is ending, and a message steered into it would end with it.
     const stoppedTurnId = task ? this.#tasks.stoppedTurn(task.taskId) : this.#stoppedTurns.get(agent.id);
+    // "Stop and send" runs the message next instead of steering it into the turn it stops.
+    const runNow = input.interrupt === true && !task;
     const steerTurnId =
+      !runNow &&
       snapshot.activeTurnId &&
       snapshot.activeTurnId !== stoppedTurnId &&
       (agent.busyMessageMode ?? this.#busyMessageMode()) === "steer"
@@ -3690,6 +3744,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       yield* this.#steerSentMessage(agent, snapshot.threadId ?? agent.threadId, delivery.delivery.id, steerTurnId).pipe(
         Effect.forkIn(this.#scope),
       );
+    // The message is stored: a failed stop leaves it first in the queue, and the sender is told.
+    if (runNow)
+      yield* this.#queue
+        .runNow(agent.id, delivery.delivery.id)
+        .pipe(
+          Effect.mapError((failure) => new AgentLifecycleFailed({ operation: "stop and send", cause: failure.cause })),
+        );
     this.#drain.scheduleDrain(agent.id);
     return receipt;
   }, Effect.uninterruptible).bind(this);
