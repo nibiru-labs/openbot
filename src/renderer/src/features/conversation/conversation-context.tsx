@@ -508,7 +508,11 @@ const Conversation = createSimpleContext({
           kind: "text",
         });
         appended = true;
-        conversation.messages = [...messages, message];
+        // The next snapshot puts the row after its turn's last row. A row without a turn, such as a
+        // routine marker, can follow the running turn, so a row at the end would move up there.
+        const turnEnd = event.turnId ? messages.findLastIndex((row) => row.turnId === event.turnId) + 1 : 0;
+        conversation.messages =
+          turnEnd > 0 ? [...messages.slice(0, turnEnd), message, ...messages.slice(turnEnd)] : [...messages, message];
         if (event.agentId !== activeAgentId()) trimToLatestPage(conversation);
       });
       if (appended) {

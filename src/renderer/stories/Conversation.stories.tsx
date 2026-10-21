@@ -1665,6 +1665,58 @@ export const ReplyBurstWhileReadingLongHistory: Story = {
   render: (storyArgs) => <ReplyBurstConversation args={storyArgs} history={longReadingHistory} />,
 };
 
+/**
+ * A running turn that a routine marker follows, as when a routine starts a turn. Every 400ms the turn
+ * gets a new row above the marker: a step, a steer from the reader, then the reply. The history starts
+ * just under 100 rows, so the timeline starts to draw only the rows near the screen while it grows.
+ */
+function SteeredTurnConversation(props: { args: Parameters<typeof Conversation>[0]; history: RendererAgentMessage[] }) {
+  const [count, setCount] = createSignal(1);
+  const turnRows = () =>
+    Array.from({ length: count() }, (_, index): RendererAgentMessage => {
+      const steer = index % 5 === 2;
+      return {
+        id: `steered-turn-${index + 1}`,
+        turnId: "steered-turn",
+        author: steer ? "you" : "agent",
+        body: steer
+          ? `Steer ${index + 1}: check the staging database first.`
+          : `Step ${index + 1}: I checked one more part of the release plan and noted its owner and date.`,
+        time: "10:01",
+        kind: "text",
+        ...(index === count() - 1 && !steer ? { streaming: true } : {}),
+      };
+    });
+  const marker: RendererAgentMessage = {
+    id: "steered-turn-routine-marker",
+    author: "agent",
+    body: "The release check routine is running.",
+    time: "10:01",
+    kind: "text",
+  };
+  const interval = window.setInterval(() => setCount((current) => current + 1), 400);
+  onCleanup(() => window.clearInterval(interval));
+
+  return (
+    <MockedConversation
+      args={{ ...props.args, activeTurnId: "steered-turn" }}
+      messages={[...props.history, ...turnRows(), marker]}
+    />
+  );
+}
+
+const nearlyVirtualReadingHistory = readingHistoryMessages(96);
+
+export const SteeredTurnWhileReadingHistory: Story = {
+  args: {
+    messages: nearlyVirtualReadingHistory,
+    activeTurnId: "steered-turn",
+    unreadCount: 0,
+    firstUnreadMessageId: null,
+  },
+  render: (storyArgs) => <SteeredTurnConversation args={storyArgs} history={nearlyVirtualReadingHistory} />,
+};
+
 export const ComparisonTableInChat: Story = {
   name: "Comparison table in chat",
   args: {

@@ -40,6 +40,12 @@ const STORIES: StoryCase[] = [
 
     composer: AGENT_COMPOSER,
   },
+  {
+    // New rows of a steered turn arrive above the routine marker that follows it, and the chat
+    // passes 100 rows, where it starts to draw only the rows near the screen.
+    id: "conversation-conversation--steered-turn-while-reading-history",
+    composer: AGENT_COMPOSER,
+  },
 ];
 /* Enough growth for several reveal steps of a reply, several resizes of the thinking line, or several new rows. */
 const GROWTH = 400;
