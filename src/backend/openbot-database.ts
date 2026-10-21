@@ -303,6 +303,11 @@ export class OpenBotDatabase {
     return this.#conversationWrites.persistConversationChanges(input);
   }
 
+  /** Closes the turn rows that no thread waits for, and returns how many it closed. */
+  closeStaleRunningTurns(): number {
+    return this.#conversationWrites.closeStaleRunningTurns();
+  }
+
   upsertProviderHistoryMessage(input: {
     agentId: string;
     threadId: string;

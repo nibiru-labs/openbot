@@ -315,6 +315,9 @@ export class BootRecovery {
       snapshot.revision = revision;
       this.#conversation.setSnapshot(agent.id, snapshot);
     }
+    // A turn row that no thread waits for can only be left over from a lost write: nothing
+    // refers to it any more, so no later write closes it and it would stay running forever.
+    this.#store.database.closeStaleRunningTurns();
   }
 
   readonly backfillProviderHistory = Effect.fn("BootRecovery.backfillProviderHistory")(function* (this: BootRecovery) {

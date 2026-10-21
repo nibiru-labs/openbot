@@ -1313,6 +1313,39 @@ describe("OpenBotDatabase", () => {
     database.close();
   });
 
+  it("closes the turn rows that no thread waits for and keeps the turn that runs", async () => {
+    const database = await createDatabase();
+    const agent = testAgent();
+    database.replaceAgents("agents-import", [agent], "agents.imported");
+    if (!agent.threadId) throw new Error("The test agent has no thread.");
+    const insertTurn = database.connection.prepare(
+      `INSERT INTO projection_turns
+         (turn_id, thread_id, provider_session_id, status, started_at, completed_at, last_event_sequence)
+       VALUES (?, ?, NULL, 'running', '2026-09-07T12:00:00.000Z', NULL, 1)`,
+    );
+    insertTurn.run("ended-turn", agent.threadId);
+    insertTurn.run("running-turn", agent.threadId);
+    database.connection
+      .prepare("UPDATE projection_threads SET active_turn_id = ? WHERE thread_id = ?")
+      .run("running-turn", agent.threadId);
+
+    expect(database.closeStaleRunningTurns()).toBe(1);
+
+    const ended = database.connection
+      .prepare("SELECT status, completed_at FROM projection_turns WHERE turn_id = 'ended-turn'")
+      .get();
+    expect(ended).toMatchObject({ status: "interrupted" });
+    expect(isDynamicRecord(ended) && isString(ended.completed_at)).toBe(true);
+    expect(
+      database.connection
+        .prepare("SELECT status, completed_at FROM projection_turns WHERE turn_id = 'running-turn'")
+        .get(),
+    ).toEqual({ status: "running", completed_at: null });
+    // A second pass has nothing left to close.
+    expect(database.closeStaleRunningTurns()).toBe(0);
+    database.close();
+  });
+
   it("keeps only the latest full mailbox state", async () => {
     const database = await createDatabase();
     const state = {
