@@ -448,7 +448,12 @@ export class TurnLifecycle {
         this.#markProduced(turnId, isRepeatedWork(item));
         // A finished tool step is where a turn past its token limit stops. The stop waits for the
         // provider to end the turn, which this fiber reads, so it runs apart from it.
-        if (notification.method === "item/completed" && isStepBoundary(item))
+        if (
+          notification.method === "item/completed" &&
+          isStepBoundary(item) &&
+          !this.#conversation.isExecutionThread(this.#conversation.publicThreadId(agentId, threadId)) &&
+          !this.#conversation.isTaskThread(this.#conversation.publicThreadId(agentId, threadId))
+        )
           yield* this.#tokenBudget
             .boundary(agentId, turnId)
             .pipe(Effect.forkIn(this.#scope, { startImmediately: true }));

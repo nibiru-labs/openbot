@@ -36,6 +36,8 @@ interface Hold {
 }
 
 interface AgentLedger {
+  /** The samples came from the database, not from the reports of this run only. */
+  seeded: boolean;
   samples: Array<{ at: number; tokens: number }>;
   /** Reports before this time do not count: the user continued then. */
   since: number;
@@ -99,8 +101,10 @@ export class TokenBudget {
   ) {
     if (tokens <= 0) return;
     const now = Date.now();
+    const known = this.#agents.has(agentId);
     const ledger = this.#ledger(agentId, now);
-    ledger.samples.push({ at: now, tokens });
+    // The database stored this report before it came here, so a ledger read from it holds the report.
+    if (known || !ledger.seeded) ledger.samples.push({ at: now, tokens });
     if (turnId !== null) {
       const turn = this.#turns.get(turnId) ?? { agentId, tokens: 0, armed: false, stopped: false };
       turn.tokens += tokens;
@@ -191,12 +195,13 @@ export class TokenBudget {
   #ledger(agentId: string, now: number): AgentLedger {
     let ledger = this.#agents.get(agentId);
     if (!ledger) {
-      ledger = { samples: [], since: 0, hold: null };
+      ledger = { seeded: false, samples: [], since: 0, hold: null };
       // Seeded once: reports from before this start count for the hour they fall in.
       try {
         ledger.samples = this.#hooks
           .readSince(agentId, now - TOKEN_BUDGET_WINDOW_MS)
           .map((sample) => ({ at: sample.at, tokens: sample.tokens }));
+        ledger.seeded = true;
       } catch {
         // A failed read counts from this start on. The limit then holds later, not never.
       }
