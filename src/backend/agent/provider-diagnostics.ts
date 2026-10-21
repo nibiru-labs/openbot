@@ -283,14 +283,21 @@ export function isUsageLimitDiagnostic(message: string): boolean {
   );
 }
 
+const MINIMAX_TOKEN_PLAN_LIMIT = /Token Plan\s*(?:用量上限|usage limit)/iu;
+
 /**
  * Whether a provider says that a plan window is spent, a limit that resets by itself: "You've hit
  * your session limit · resets 8:40pm", "You've hit your usage limit. Try again at 10:34 AM.",
  * "You've reached your weekly usage limit for your plan. Your limit resets at …". A
  * spent credit balance or quota does not reset, so it is not one: holding work for it would wait
  * forever and hide the provider's reason. A short request-rate throttle says "rate limit".
+ *
+ * MiniMax answers a spent Token Plan window with HTTP 429, error code 2056 and Chinese text only:
+ * "已达到 Token Plan 用量上限：请升级 Token Plan 套餐或购买积分补充用量。 (2056)". The window resets by
+ * itself, and its offer to buy credits does not make it a balance.
  */
 export function isPlanLimitDiagnostic(message: string): boolean {
+  if (MINIMAX_TOKEN_PLAN_LIMIT.test(message)) return true;
   // Codex offers credits next to the reset on Plus and Pro: "… to purchase more credits or try again at 3:00 PM."
   if (isBalanceDiagnostic(message) && !/\btry again at\b/iu.test(message)) return false;
   return (
