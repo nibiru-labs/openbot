@@ -591,6 +591,31 @@ export class ConversationWriter {
   }
 
   /**
+   * Closes the turn rows that no thread waits for, and returns how many it closed.
+   *
+   * A turn that ended while the process was gone, or whose end event was never written, keeps its
+   * row `running` with no `completed_at`. No later write closes it: the thread has no active turn
+   * any more, so nothing refers to the row and the turn stays running forever. This closes those
+   * rows as `interrupted`, and leaves the turn of a thread that still waits for it alone.
+   *
+   * The repair writes no event: the end of the turn is not known, only that no thread runs it any
+   * more, and the row is a projection of the turn's own events.
+   */
+  closeStaleRunningTurns(): number {
+    const result = this.#core.connection
+      .prepare(
+        `UPDATE projection_turns
+         SET status = 'interrupted', completed_at = ?
+         WHERE completed_at IS NULL
+           AND turn_id NOT IN (
+             SELECT active_turn_id FROM projection_threads WHERE active_turn_id IS NOT NULL
+           )`,
+      )
+      .run(new Date().toISOString());
+    return Number(result.changes);
+  }
+
+  /**
    * Upserts one message learned from a paged provider history read.
    *
    * This operation never removes rows that are absent from the provider page. Existing local

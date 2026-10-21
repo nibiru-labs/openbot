@@ -599,15 +599,17 @@ export class ConversationRuntime {
     if (snapshot.threadId && this.#forgottenExecutionThreads.has(snapshot.threadId)) return;
     sortConversationMessages(snapshot.messages);
     const signature = conversationContentSignature(snapshot);
-    if (this.#conversationSignatures.get(snapshot.threadId ?? snapshot.agentId) === signature) {
-      this.#retainPublishedSnapshot(snapshot);
-      return;
-    }
-    if (snapshot.threadId) {
+    // The end of a turn closes its row in the database. The conversation content can be unchanged
+    // when it arrives: the mailbox sync already wrote the cleared active turn, so nothing else
+    // would close that row and it would stay running.
+    const lifecycleEvent = eventType === "turn.completed";
+    const published = this.#conversationSignatures.get(snapshot.threadId ?? snapshot.agentId) === signature;
+    if (snapshot.threadId && (lifecycleEvent || !published)) {
       const cached = this.#cachedSnapshot(snapshot);
       const changedMessages = this.#changedMessages(snapshot);
       const removedMessageIds = this.#removedMessageIds(snapshot);
       if (
+        lifecycleEvent ||
         !cached ||
         changedMessages.length > 0 ||
         removedMessageIds.length > 0 ||
@@ -623,6 +625,10 @@ export class ConversationRuntime {
           detail,
         });
       }
+    }
+    if (published) {
+      this.#retainPublishedSnapshot(snapshot);
+      return;
     }
     this.publishConversation(snapshot, signature);
     this.#retainPublishedSnapshot(snapshot);
