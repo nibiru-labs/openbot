@@ -5,10 +5,10 @@ import type { MailboxStore } from "../mailbox-store";
 import type { BusyRecipientControl, BusyRecipientOutcome } from "./openbot-tool-router";
 
 /** One sender does not stop the same teammate again within this time. */
-export const INTERRUPT_COOLDOWN_MS = 60_000;
+const INTERRUPT_COOLDOWN_MS = 60_000;
 /** A teammate is stopped by others at most `INTERRUPT_LIMIT` times in this window. */
-export const INTERRUPT_WINDOW_MS = 5 * 60_000;
-export const INTERRUPT_LIMIT = 3;
+const INTERRUPT_WINDOW_MS = 5 * 60_000;
+const INTERRUPT_LIMIT = 3;
 
 export interface BusyRecipientControlHooks {
   /** The running turn of the agent's own chat, or null when it is idle. */
