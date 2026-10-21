@@ -6,6 +6,7 @@ import { prefersReducedMotion } from "@openbot/ui/utils";
 import type { JSX } from "@solidjs/web";
 import { onCleanup, onSettled } from "solid-js";
 import { App } from "../App";
+import { syncAppearance } from "../appearance";
 import { syncLogoColor } from "../logo-color";
 import { LANDING_PREVIEW_OPTIONS } from "./landing-fixtures";
 import { createMockOpenBot, type MockOpenBotControls, type MockOpenBotOptions } from "./mock-openbot";
@@ -52,6 +53,8 @@ export function OpenBotPlayground(props: OpenBotPlaygroundProps) {
 
   // The desktop entry point starts this for each window. The preview renders `App` without it.
   onSettled(() => syncLogoColor());
+  // The Theme setting of the mock changes the displayed scheme, as it does in the desktop window.
+  onSettled(() => syncAppearance());
 
   onSettled(() => {
     if (!landingPreview || window.parent === window) return;
