@@ -253,6 +253,23 @@ turn drains the queue as it completes. It keeps the caller's answers, because th
 them (see below). Then it queues a notice from the caller with `expectsReply` false. The notice
 starts one short turn on an idle target, so the provider thread records why the work stopped.
 
+`openbot.send_message` with `busy` set changes the work of a busy recipient, whoever started it
+(`src/backend/agent/busy-recipient-control.ts`). `steer` steers the queued message into the running
+turn of the recipient's own chat, as the user's Steer does. `interrupt` runs the message now, as the
+user's Run now does. Each use is logged with sender, recipient, mode and result. An interrupt is
+refused, and the message stays queued with the reason in the tool result, when the same sender
+interrupted the same recipient less than 60 seconds before, when others interrupted the recipient 3
+times in 5 minutes, or when the caller's own turn started because of an interrupt. The limits are
+in memory only.
+
+The user controls the queue of an agent's own chat. Pause (`MailboxStore.setQueuePaused`, stored as
+`projection_queue_state.paused`) stops `nextQueued` from starting the queued messages; new messages
+are still received and listed, and channel, messaging and task work still runs. Run now
+(`QueueControls.runNow`) moves one message to the front, lets it start while the queue is paused,
+and interrupts the running turn, whose end drains the queue. "Stop and send" is a send with
+`interrupt: true`, which runs the new message now instead of steering it. These three controls are
+local only: the Team API has no route for them. The default busy-message mode is `steer`.
+
 An answer to a request that went to two or more teammates waits in the requester's queue while
 another teammate's copy of that request is queued, starting or running (`MailboxStore.nextQueued`).
 When the last copy ends, the waiting answers start in one turn, and the prompt names each teammate
