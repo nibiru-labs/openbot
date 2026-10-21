@@ -10,6 +10,11 @@ Claude uses its native question tool instead of `ask_user`. The direct tools are
 `attach_files_to_response`, `list_agents`, `send_message`, `search_memories`, `remember`,
 `forget_memory`, `react_to_user_message`, and `routine_no_update`. External plugin registration stays with each provider adapter.
 
+Codex code mode can call tools from a JavaScript `exec` cell, which returns control after about 30
+seconds while the call still runs. The model can then end the turn, and that expires an unanswered
+`ask_user` or `ask_ui`. OpenBot sets `features.code_mode.direct_only_tool_namespaces` to `["openbot"]`,
+so Codex calls OpenBot tools directly and the turn waits for the answer.
+
 `tool_search` uses local keyword matching. Exact names come first, then word matches, with stable
 catalog order for ties. It returns five results by default and at most ten. `tool_describe` returns
 the original schemas for up to ten qualified names, plus guidance from `agent/tool-guidance.ts`.
