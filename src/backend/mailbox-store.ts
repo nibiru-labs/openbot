@@ -1179,7 +1179,8 @@ export class MailboxStore {
     const delivery = this.#queuedFor(agentId).find(
       (candidate) =>
         this.#taskIdOf(candidate, messages) === taskId &&
-        !this.#isHeldReply(candidate) &&
+        // A message run now starts at once, even when it is an answer that waits for a teammate.
+        (this.#runNow.has(candidate.id) || !this.#isHeldReply(candidate)) &&
         (!executionMessageIds || executionMessageIds.has(candidate.messageId) || this.#runNow.has(candidate.id)),
     );
     return delivery && this.#mayStart(delivery) ? this.#context(delivery, undefined, messages) : null;

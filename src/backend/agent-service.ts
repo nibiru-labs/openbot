@@ -1152,6 +1152,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           this.steerQueuedMessage({ agentId, deliveryId, expectedTurnId: turnId }),
         runNow: (agentId, deliveryId) => this.runQueuedMessageNow({ agentId, deliveryId }),
         agentName: (agentId) => this.#store.list().find((agent) => agent.id === agentId)?.name ?? agentId,
+        redact: (text) => this.#mcp.redact(text),
       },
     });
     this.#turn = new TurnLifecycle({

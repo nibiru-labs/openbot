@@ -16,6 +16,8 @@ export interface BusyRecipientControlHooks {
   steer(agentId: string, deliveryId: string, turnId: string): Effect.Effect<void, unknown>;
   runNow(agentId: string, deliveryId: string): Effect.Effect<void, unknown>;
   agentName(agentId: string): string;
+  /** Masks the MCP and custom-endpoint secrets that a provider error can carry. */
+  redact(text: string): string;
 }
 
 /**
@@ -77,7 +79,7 @@ export class BusyRecipientControls {
     if (!turnId) return Effect.succeed({ agentId: input.recipientAgentId, result: "queued" });
     return this.#hooks.steer(input.recipientAgentId, input.deliveryId, turnId).pipe(
       Effect.as<BusyRecipientOutcome>({ agentId: input.recipientAgentId, result: "steered" }),
-      Effect.catch((cause) => Effect.succeed(queued(input.recipientAgentId, failureText(cause)))),
+      Effect.catch((cause) => Effect.succeed(queued(input.recipientAgentId, this.#hooks.redact(failureText(cause))))),
     );
   }
 
@@ -99,7 +101,7 @@ export class BusyRecipientControls {
         Effect.catch((cause) =>
           Effect.sync(() => {
             this.#release(reservation);
-            return queued(recipient, failureText(cause));
+            return queued(recipient, this.#hooks.redact(failureText(cause)));
           }),
         ),
       );
