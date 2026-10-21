@@ -1,0 +1,31 @@
+/*
+ * The light restyle: a softer surface with fewer borders. It loads last, so it wins over the
+ * component rules, and every rule is scoped to the light appearance. The dark scheme keeps the
+ * rules it already has.
+ */
+
+/* The sidebar header has no rule under it, and its section names read as quiet labels. */
+:root[data-appearance="light"] .sidebar-topbar {
+  border-bottom-color: transparent;
+}
+
+:root[data-appearance="light"] .sidebar-section-name {
+  color: var(--openbot-text-muted);
+  font-weight: var(--openbot-weight-medium);
+}
+
+/* The composer is one large rounded field on the surface token, with a faint shadow and no border. */
+:root[data-appearance="light"] .composer {
+  border: 0;
+  border-radius: var(--openbot-radius-bubble);
+  background: var(--openbot-bg-surface);
+  box-shadow: var(--openbot-shadow-composer);
+}
+
+/* A question card is a rounded card on the surface token with a soft shadow, not a bordered box. */
+:root[data-appearance="light"] .ui-block-card {
+  border-color: transparent;
+  border-radius: var(--openbot-radius-xl);
+  background: var(--openbot-bg-surface);
+  box-shadow: var(--openbot-shadow-block);
+}
