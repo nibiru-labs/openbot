@@ -757,7 +757,7 @@ export class TurnLifecycle {
         return;
       }
       if (limited) yield* this.#usageLimits.reached(agentId, resetsAt, model);
-      else if (status === "completed") yield* this.#usageLimits.completed(agentId, model);
+      else if (status === "completed") yield* this.#usageLimits.completed(agentId);
       // After the limit is recorded, so the channel does not assign the task to this agent again
       // before the reset. A channel that took the task back ends this turn as interrupted.
       let requeued = repeatable && channelTurn;
