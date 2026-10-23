@@ -69,6 +69,7 @@ import {
   isSpeechVoice,
   isVoiceLanguage,
   isVoiceModelId,
+  type LocalScriptsNewAgentPreference,
   type MobileConnectedDevice,
   type MobileConnectLink,
   type MobileConnectTicket,
@@ -148,6 +149,12 @@ export function decodeBusyMessageModePreference(value: unknown): BusyMessageMode
   const preference = decodeRecord(value, "busy message mode preference");
   if (!isBusyMessageMode(preference.mode)) throw new Error("Invalid busy message mode.");
   return { mode: preference.mode };
+}
+
+export function decodeLocalScriptsNewAgentPreference(value: unknown): LocalScriptsNewAgentPreference {
+  const preference = decodeRecord(value, "local scripts new agent preference");
+  if (!isBoolean(preference.allowForNewAgents)) throw new Error("Invalid local scripts new agent preference.");
+  return { allowForNewAgents: preference.allowForNewAgents };
 }
 
 export function decodeAgentMemoryLimitPreference(value: unknown): AgentMemoryLimitPreference {

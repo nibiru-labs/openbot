@@ -46,6 +46,9 @@ export const messages = {
   "settings.keepRemoteSessions.description":
     "Die Verbindung zu deinen beigetretenen Servern zwischen Starts beibehalten. OpenBot startet etwa eine Sekunde schneller. Wenn du OpenBot beendest, schließt der OpenBot-Dienst die Verbindung nicht.",
   "settings.permissions.title": "Berechtigungen",
+  "settings.localScriptsNewAgents.title": "Lokale Skripte für neue Agenten erlauben",
+  "settings.localScriptsNewAgents.description":
+    "Auf diesem Computer erstellte Agenten starten mit aktivierten lokalen Skripten. Bestehende Agenten ändern sich nicht, und jeder Agent behält seinen eigenen Schalter.",
   "settings.notifications.title": "Benachrichtigungen",
   "settings.alerts.title": "Hinweise",
   "settings.desktopNotifications.title": "Desktop-Benachrichtigungen",

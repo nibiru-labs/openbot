@@ -46,6 +46,9 @@ export const messages = {
   "settings.keepRemoteSessions.description":
     "Mantenha a conexão com os servidores em que você entrou entre as inicializações. O OpenBot inicia cerca de um segundo mais rápido. Ao sair do OpenBot, o serviço do OpenBot não fecha a conexão.",
   "settings.permissions.title": "Permissões",
+  "settings.localScriptsNewAgents.title": "Permitir scripts locais para novos agentes",
+  "settings.localScriptsNewAgents.description":
+    "Os agentes criados neste computador começam com os scripts locais ativados. Os agentes existentes não mudam e cada agente mantém seu próprio interruptor.",
   "settings.notifications.title": "Notificações",
   "settings.alerts.title": "Alertas",
   "settings.desktopNotifications.title": "Notificações da área de trabalho",

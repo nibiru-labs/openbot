@@ -45,6 +45,9 @@ export const messages = {
   "settings.keepRemoteSessions.description":
     "参加しているサーバーへの接続を起動の間も維持します。OpenBot の起動が約 1 秒速くなります。OpenBot を終了しても、OpenBot サービスは接続を閉じません。",
   "settings.permissions.title": "権限",
+  "settings.localScriptsNewAgents.title": "新しいエージェントにローカルスクリプトを許可",
+  "settings.localScriptsNewAgents.description":
+    "このコンピューターで作成したエージェントは、ローカルスクリプトがオンの状態で始まります。既存のエージェントは変わらず、各エージェントのスイッチはそのまま使えます。",
   "settings.notifications.title": "通知",
   "settings.alerts.title": "アラート",
   "settings.desktopNotifications.title": "デスクトップ通知",

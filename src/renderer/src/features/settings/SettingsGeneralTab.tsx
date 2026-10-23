@@ -198,6 +198,13 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
       <SettingsSection title={i18n.t("settings.permissions.title")}>
         <ItemGroup class="settings-modal-card">
           <SwitchField
+            data-settings-row="settings.localScriptsNewAgents.title"
+            checked={props.value.localScriptsForNewAgents}
+            onChange={(checked) => props.onUpdateSetting("localScriptsForNewAgents", checked)}
+            label={i18n.t("settings.localScriptsNewAgents.title")}
+            description={i18n.t("settings.localScriptsNewAgents.description")}
+          />
+          <SwitchField
             data-settings-row="settings.analytics.title"
             checked={props.value.productAnalytics}
             onChange={(checked) => props.onUpdateSetting("productAnalytics", checked)}

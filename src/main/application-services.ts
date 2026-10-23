@@ -185,6 +185,7 @@ import { InterfaceSizeService } from "./interface-size-service";
 import { prepareToolRuntimeForTest } from "./ipc/mcp-server-handlers";
 import { LanguageService } from "./language-service";
 import { localRoutineFeedDocument } from "./local-routine-calendar";
+import { LocalScriptsNewAgentPreferenceStore } from "./local-scripts-new-agent-preference-store";
 import { createLoginItem } from "./login-item";
 import { LogoColorService } from "./logo-color-service";
 import type { MacHapticFeedback } from "./mac-haptic-feedback";
@@ -306,6 +307,7 @@ const UPDATE_PREFERENCE_FILE = "openbot-update-preference-v1.json";
 const NOTIFICATION_PREFERENCE_FILE = "openbot-notification-preference-v1.json";
 const PUSH_NOTIFICATION_FILE = "openbot-push-notifications-v1.json";
 const BUSY_MESSAGE_MODE_PREFERENCE_FILE = "openbot-busy-message-mode-v1.json";
+const LOCAL_SCRIPTS_NEW_AGENT_PREFERENCE_FILE = "openbot-local-scripts-new-agent-v1.json";
 const AGENT_MEMORY_LIMIT_PREFERENCE_FILE = "openbot-agent-memory-limit-v1.json";
 const SERVER_TIMEZONE_PREFERENCE_FILE = "openbot-server-timezone-v1.json";
 const REMOTE_SESSION_REUSE_PREFERENCE_FILE = "openbot-remote-session-reuse-preference-v1.json";
@@ -496,6 +498,7 @@ export interface ApplicationServices {
   interfaceSize: InterfaceSizeService;
   notificationPreference: NotificationPreferenceStore;
   busyMessageMode: BusyMessageModePreferenceStore;
+  localScriptsNewAgent: LocalScriptsNewAgentPreferenceStore;
   agentMemoryLimit: AgentMemoryLimitSetting;
   agentAccess: AgentAccessStore;
   serverTimezone: ServerTimezonePreferenceStore;
@@ -1035,6 +1038,10 @@ export async function createApplicationServices({
     join(app.getPath("userData"), BUSY_MESSAGE_MODE_PREFERENCE_FILE),
   );
   await runCauseEffect(busyMessageMode.load());
+  const localScriptsNewAgent = new LocalScriptsNewAgentPreferenceStore(
+    join(app.getPath("userData"), LOCAL_SCRIPTS_NEW_AGENT_PREFERENCE_FILE),
+  );
+  await runCauseEffect(localScriptsNewAgent.load());
   const agentMemoryLimit = new AgentMemoryLimitPreferenceStore(
     join(app.getPath("userData"), AGENT_MEMORY_LIMIT_PREFERENCE_FILE),
   );
@@ -1543,6 +1550,7 @@ export async function createApplicationServices({
     webhookRoutines: () => agentWebhookRoutineWriter(events),
     approvalAutomation,
     busyMessageMode: () => busyMessageMode.get().mode,
+    localScriptsForNewAgents: () => localScriptsNewAgent.get().allowForNewAgents,
     agentMemoryLimit: () => agentMemoryLimit.get().limit,
     timezone: () => serverTimezone.effective(),
     // `host` is built later, after the agent service; a channel tool reads it when it runs.
@@ -2726,6 +2734,7 @@ export async function createApplicationServices({
     interfaceSize,
     notificationPreference,
     busyMessageMode,
+    localScriptsNewAgent,
     agentMemoryLimit: agentMemoryLimitSetting,
     agentAccess,
     serverTimezone,

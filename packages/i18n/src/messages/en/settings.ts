@@ -49,6 +49,9 @@ export const messages = defineMessages("settings", {
   "settings.keepRemoteSessions.description":
     "Keep the connection to your joined servers between launches. OpenBot starts about a second faster. When you quit OpenBot, the OpenBot service does not close the connection.",
   "settings.permissions.title": "Permissions",
+  "settings.localScriptsNewAgents.title": "Allow Local scripts for new agents",
+  "settings.localScriptsNewAgents.description":
+    "Agents created on this computer start with Local scripts on. Existing agents do not change, and each agent keeps its own switch.",
   "settings.notifications.title": "Notifications",
   "settings.alerts.title": "Alerts",
   "settings.desktopNotifications.title": "Desktop notifications",

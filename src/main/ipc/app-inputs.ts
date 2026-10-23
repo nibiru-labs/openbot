@@ -16,6 +16,7 @@ import type {
   IdleRestartTarget,
   InstallMarketplaceAgentInput,
   InstallSkillInput,
+  LocalScriptsNewAgentPreference,
   MacPermissionId,
   MarketplaceAgentQuery,
   MarketplaceSkillQuery,
@@ -52,6 +53,7 @@ import {
   isDynamicIslandInteractive,
   isDynamicIslandPreference,
   isDynamicIslandPresentation,
+  isLocalScriptsNewAgentPreference,
   isSkillCategory,
 } from "@openbot/contracts/ipc";
 import {
@@ -90,6 +92,11 @@ export function parseAnalyticsPreference(input: unknown): SetAnalyticsPreference
 export function parseBusyMessageModePreference(input: unknown): BusyMessageModePreference {
   if (!isDynamicRecord(input) || !isBusyMessageMode(input.mode)) throw new Error("Busy message mode is required.");
   return { mode: input.mode };
+}
+
+export function parseLocalScriptsNewAgentPreference(input: unknown): LocalScriptsNewAgentPreference {
+  if (!isLocalScriptsNewAgentPreference(input)) throw new Error("Local scripts new agent preference is required.");
+  return { allowForNewAgents: input.allowForNewAgents };
 }
 
 export function parseAgentMemoryLimitPreference(input: unknown): AgentMemoryLimitPreference {

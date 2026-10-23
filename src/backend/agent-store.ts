@@ -381,6 +381,7 @@ export class AgentStore {
         record.sessionSettingOverrides = structuredClone(source.sessionSettingOverrides);
       record.access = source.access;
       record.computerUse = source.computerUse;
+      if (source.allowAutomation !== undefined) record.allowAutomation = source.allowAutomation;
       if (source.busyMessageMode) record.busyMessageMode = source.busyMessageMode;
       if (source.taskLimit !== undefined) record.taskLimit = source.taskLimit;
       if (source.backupModels) record.backupModels = structuredClone(source.backupModels);

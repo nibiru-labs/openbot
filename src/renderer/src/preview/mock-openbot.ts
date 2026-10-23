@@ -52,6 +52,7 @@ import {
   DEFAULT_APPROVAL_AUTOMATION_PREFERENCE,
   DEFAULT_BUSY_MESSAGE_MODE,
   DEFAULT_DYNAMIC_ISLAND_PREFERENCE,
+  DEFAULT_LOCAL_SCRIPTS_NEW_AGENT_PREFERENCE,
   DEFAULT_PROVIDER_ACCOUNT_ID,
   DEFAULT_PROVIDER_DETECTION_SETTINGS,
   DEFAULT_REMOTE_SESSION_REUSE_PREFERENCE,
@@ -68,6 +69,7 @@ import {
   isAgentMemoryLimit,
   isAgentSummary,
   isReleasedRoutineSchedule,
+  type LocalScriptsNewAgentPreference,
   type MacPermissionId,
   normalizeMcpConfig,
   type OpenAttachmentInput,
@@ -298,6 +300,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   let analyticsPreference = clone<AnalyticsPreference>(options.analyticsPreference ?? { enabled: true });
   let approvalAutomation = clone<ApprovalAutomationPreference>(DEFAULT_APPROVAL_AUTOMATION_PREFERENCE);
   let busyMessageMode: BusyMessageModePreference = { mode: DEFAULT_BUSY_MESSAGE_MODE };
+  let localScriptsNewAgent: LocalScriptsNewAgentPreference = { ...DEFAULT_LOCAL_SCRIPTS_NEW_AGENT_PREFERENCE };
   let agentMemoryLimit: AgentMemoryLimitPreference = { limit: DEFAULT_AGENT_MEMORY_LIMIT };
   let agentAccess: AgentAccessChange = { revision: 0, everyone: {}, roles: [] };
   const agentMemoryLimitListeners = new Set<(preference: AgentMemoryLimitPreference) => void>();
@@ -816,6 +819,11 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     setBusyMessageModePreference: async ({ mode }) => {
       busyMessageMode = { mode };
       return clone(busyMessageMode);
+    },
+    getLocalScriptsNewAgentPreference: async () => clone(localScriptsNewAgent),
+    setLocalScriptsNewAgentPreference: async ({ allowForNewAgents }) => {
+      localScriptsNewAgent = { allowForNewAgents };
+      return clone(localScriptsNewAgent);
     },
     getAgentMemoryLimitPreference: async () => clone(agentMemoryLimit),
     onAgentMemoryLimitPreference: (listener) => {

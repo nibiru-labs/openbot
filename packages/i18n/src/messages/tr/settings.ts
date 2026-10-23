@@ -45,6 +45,9 @@ export const messages = {
   "settings.keepRemoteSessions.description":
     "Katıldığınız sunuculara olan bağlantıyı açılışlar arasında koruyun. OpenBot yaklaşık bir saniye daha hızlı başlar. OpenBot'tan çıktığınızda OpenBot hizmeti bağlantıyı kapatmaz.",
   "settings.permissions.title": "İzinler",
+  "settings.localScriptsNewAgents.title": "Yeni aracılar için yerel betiklere izin ver",
+  "settings.localScriptsNewAgents.description":
+    "Bu bilgisayarda oluşturulan aracılar, yerel betikler açık olarak başlar. Mevcut aracılar değişmez ve her aracı kendi anahtarını korur.",
   "settings.notifications.title": "Bildirimler",
   "settings.alerts.title": "Uyarılar",
   "settings.desktopNotifications.title": "Masaüstü bildirimleri",

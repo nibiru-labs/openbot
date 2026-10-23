@@ -115,6 +115,7 @@ import type {
   ClientAgentSummary,
   CreateAgentInput,
   DuplicateAgentResult,
+  LocalScriptsNewAgentPreference,
   SetAgentAvatarInput,
   UpdateAgentInput,
 } from "./ipc-agents";
@@ -560,6 +561,12 @@ export const IPC_ENDPOINTS = {
     getBusyMessageModePreference: request<undefined, BusyMessageModePreference>()("app:get-busy-message-mode"),
     setBusyMessageModePreference: request<BusyMessageModePreference, BusyMessageModePreference>()(
       "app:set-busy-message-mode",
+    ),
+    getLocalScriptsNewAgentPreference: request<undefined, LocalScriptsNewAgentPreference>()(
+      "app:get-local-scripts-new-agent",
+    ),
+    setLocalScriptsNewAgentPreference: request<LocalScriptsNewAgentPreference, LocalScriptsNewAgentPreference>()(
+      "app:set-local-scripts-new-agent",
     ),
     getAgentMemoryLimitPreference: request<undefined, AgentMemoryLimitPreference>()("app:get-agent-memory-limit"),
     // Server settings set the limit of this computer (`hostAdmin.setAgentMemoryLimit`), here or from a

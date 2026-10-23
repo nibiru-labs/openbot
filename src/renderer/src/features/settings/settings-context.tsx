@@ -120,6 +120,7 @@ const Settings = createSimpleContext({
     let autoInstallUpdatesChanged = false;
     let notificationPreferenceChanged = false;
     let busyMessageModeChanged = false;
+    let localScriptsForNewAgentsChanged = false;
     let agentMemoryLimitChanged = false;
     let keepRemoteSessionsChanged = false;
     let launchAtLoginChanged = false;
@@ -250,6 +251,14 @@ const Settings = createSimpleContext({
           "busyMessageMode",
           settingsPort().setBusyMessageModePreference({ mode: value.busyMessageMode }),
           (preference) => preference.mode,
+        );
+      }
+      if (previous.localScriptsForNewAgents !== value.localScriptsForNewAgents) {
+        localScriptsForNewAgentsChanged = true;
+        persistField(
+          "localScriptsForNewAgents",
+          settingsPort().setLocalScriptsNewAgentPreference({ allowForNewAgents: value.localScriptsForNewAgents }),
+          (preference) => preference.allowForNewAgents,
         );
       }
       // A hidden switch is null and cannot change.
@@ -435,6 +444,12 @@ const Settings = createSimpleContext({
           .then((preference) => {
             if (busyMessageModeChanged) return;
             setGeneralSettings((current) => ({ ...current, busyMessageMode: preference.mode }));
+          }),
+        settingsPort()
+          .getLocalScriptsNewAgentPreference()
+          .then((preference) => {
+            if (localScriptsForNewAgentsChanged) return;
+            setGeneralSettings((current) => ({ ...current, localScriptsForNewAgents: preference.allowForNewAgents }));
           }),
         settingsPort()
           .getAgentMemoryLimitPreference()

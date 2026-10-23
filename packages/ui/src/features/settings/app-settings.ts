@@ -38,6 +38,8 @@ export interface GeneralSettingsValue {
   sendShortcut: SendShortcutMode;
   /** What a message sent to a busy agent does, unless the agent or the message sets its own. */
   busyMessageMode: BusyMessageMode;
+  /** Whether an agent created on this computer starts with Local scripts on. Each agent's own switch still decides for that agent. */
+  localScriptsForNewAgents: boolean;
   /** How many memories one agent on this computer can hold. Read only here: Server settings set it. */
   agentMemoryLimit: AgentMemoryLimit;
   /** Keep each joined server's connection between runs of the app, so the start is faster. */
@@ -71,6 +73,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsValue = {
   taskCompletionSound: true,
   sendShortcut: "enter",
   busyMessageMode: "queue",
+  localScriptsForNewAgents: false,
   agentMemoryLimit: DEFAULT_AGENT_MEMORY_LIMIT,
   keepRemoteSessions: true,
   soundFeedback: false,

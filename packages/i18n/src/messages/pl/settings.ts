@@ -46,6 +46,9 @@ export const messages = {
   "settings.keepRemoteSessions.description":
     "Zachowuj połączenie z dołączonymi serwerami między uruchomieniami. OpenBot startuje około sekundy szybciej. Gdy zamkniesz OpenBot, usługa OpenBot nie zamyka połączenia.",
   "settings.permissions.title": "Uprawnienia",
+  "settings.localScriptsNewAgents.title": "Zezwalaj na skrypty lokalne dla nowych agentów",
+  "settings.localScriptsNewAgents.description":
+    "Agenci utworzeni na tym komputerze zaczynają z włączonymi skryptami lokalnymi. Istniejący agenci się nie zmieniają, a każdy agent zachowuje własny przełącznik.",
   "settings.notifications.title": "Powiadomienia",
   "settings.alerts.title": "Alerty",
   "settings.desktopNotifications.title": "Powiadomienia na pulpicie",

@@ -48,6 +48,26 @@ export function agentAutomationAllowed(agent: { allowAutomation?: boolean | unde
   return agent.allowAutomation === true;
 }
 
+/**
+ * The app setting behind "Allow Local scripts for new agents" in Settings. It is stored with the
+ * other app settings on this computer and read when an agent is created here, so a new agent
+ * starts with Local scripts on. Existing agents never change with it, and each agent's own
+ * switch still decides for that agent. Like the per-agent switch it is a property of this host:
+ * it never crosses the Team API, and no remote or CLI route changes it.
+ */
+export interface LocalScriptsNewAgentPreference {
+  /** Whether an agent created on this host starts with Local scripts on. Off unless the user turns it on. */
+  allowForNewAgents: boolean;
+}
+
+export const DEFAULT_LOCAL_SCRIPTS_NEW_AGENT_PREFERENCE: LocalScriptsNewAgentPreference = {
+  allowForNewAgents: false,
+};
+
+export function isLocalScriptsNewAgentPreference(value: unknown): value is LocalScriptsNewAgentPreference {
+  return isDynamicRecord(value) && isBoolean(value.allowForNewAgents);
+}
+
 export function agentNewChatAllowed(agent: { allowNewChat?: boolean | undefined }): boolean {
   return agent.allowNewChat === true;
 }

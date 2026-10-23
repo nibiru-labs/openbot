@@ -23,6 +23,7 @@ import type { ApprovalAutomation } from "../approval-automation-store";
 import type { BusyMessageModePreferenceStore } from "../busy-message-mode-preference-store";
 import type { InterfaceSizeService } from "../interface-size-service";
 import type { LanguageService } from "../language-service";
+import type { LocalScriptsNewAgentPreferenceStore } from "../local-scripts-new-agent-preference-store";
 import type { LogoColorService } from "../logo-color-service";
 import { MAC_PERMISSION_URLS } from "../mac-permission-urls";
 import { exportDiagnostics, exportOpenBotData } from "../maintenance-service";
@@ -38,6 +39,7 @@ import {
   parseAppLogoColorPreference,
   parseBusyMessageModePreference,
   parseExternalDestination,
+  parseLocalScriptsNewAgentPreference,
   parseRemoteSessionReusePreference,
   parseSetup,
 } from "./app-inputs";
@@ -86,6 +88,7 @@ export interface AppIpcDependencies {
   analyticsPreferenceFile: string;
   approvalAutomation: ApprovalAutomation;
   busyMessageMode: BusyMessageModePreferenceStore;
+  localScriptsNewAgent: LocalScriptsNewAgentPreferenceStore;
   agentMemoryLimit: AgentMemoryLimitSetting;
   remoteSessionReuse: RemoteSessionReusePreferenceStore;
   remoteSessionCache: RemoteSessionCache;
@@ -111,6 +114,7 @@ export function appIpcHandlers({
   analyticsPreferenceFile,
   approvalAutomation,
   busyMessageMode,
+  localScriptsNewAgent,
   agentMemoryLimit,
   remoteSessionReuse,
   remoteSessionCache,
@@ -161,6 +165,10 @@ export function appIpcHandlers({
       getBusyMessageModePreference: handler(() => busyMessageMode.get()),
       setBusyMessageModePreference: payloadHandler(parseBusyMessageModePreference, (parsed) =>
         runCauseEffect(busyMessageMode.set(parsed)),
+      ),
+      getLocalScriptsNewAgentPreference: handler(() => localScriptsNewAgent.get()),
+      setLocalScriptsNewAgentPreference: payloadHandler(parseLocalScriptsNewAgentPreference, (parsed) =>
+        runCauseEffect(localScriptsNewAgent.set(parsed)),
       ),
       getAgentMemoryLimitPreference: handler(() => agentMemoryLimit.get()),
       getRemoteSessionReusePreference: handler(() => remoteSessionReuse.get()),

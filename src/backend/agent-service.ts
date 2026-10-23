@@ -297,6 +297,12 @@ export interface AgentServiceOptions {
    */
   busyMessageMode?: () => BusyMessageMode;
   /**
+   * Whether an agent created on this host starts with Local scripts on. The main process owns
+   * the app setting. Omitted, a new agent starts with Local scripts off, as every one did before
+   * the setting existed.
+   */
+  localScriptsForNewAgents?: () => boolean;
+  /**
    * How many memories one agent can hold. The main process owns the preference. Omitted, the
    * default cap, which was the only cap before the setting existed.
    */
@@ -405,6 +411,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #routineFlowTools: (() => RoutineFlowTools) | undefined;
   readonly #developmentDefaults: boolean;
   readonly #busyMessageMode: () => BusyMessageMode;
+  readonly #localScriptsForNewAgents: () => boolean;
   /** The last turn of each agent's chat that the user stopped. One per agent, so it needs no clean-up. */
   readonly #stoppedTurns = new Map<string, string>();
   /** The agents that asked for a new chat with `start_new_chat`. A restart forgets the request. */
@@ -434,9 +441,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       githubConnector = null,
       hostMemory = null,
       busyMessageMode = () => DEFAULT_BUSY_MESSAGE_MODE,
+      localScriptsForNewAgents = () => false,
     } = options;
     this.#developmentDefaults = developmentDefaults;
     this.#busyMessageMode = busyMessageMode;
+    this.#localScriptsForNewAgents = localScriptsForNewAgents;
     this.#localSkillTools = localSkillTools;
     this.#routineFlowTools = routineFlowTools;
     this.#store = store;
@@ -2025,6 +2034,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       );
     const result = yield* Effect.result(
       Effect.gen({ self: this }, function* () {
+        agent = yield* this.#applyLocalScriptsDefault(agent);
         yield* this.#prepareAgentWorkspace(agent);
         agent = yield* this.#assignNewAgentModel(agent, input, true);
         if (configure) agent = yield* configure(agent);
@@ -2047,6 +2057,25 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         : result.failure.cause,
     });
   }, Effect.uninterruptible).bind(this);
+
+  /**
+   * Gives a new agent Local scripts when the app setting asks for it. It runs before the caller's
+   * configure step, so a template, marketplace or import value set there still decides for its own
+   * agent. An agent the setting leaves off keeps no `allowAutomation` field, as before.
+   */
+  readonly #applyLocalScriptsDefault = Effect.fn("AgentService.applyLocalScriptsDefault")(function* (
+    this: AgentService,
+    agent: AgentSummary,
+  ) {
+    if (!this.#localScriptsForNewAgents()) return agent;
+    return yield* this.#store
+      .updateAgent({ agentId: agent.id, allowAutomation: true })
+      .pipe(
+        Effect.mapError(
+          (failure) => new AgentLifecycleFailed({ operation: "apply local scripts default", cause: failure.cause }),
+        ),
+      );
+  });
 
   #assignNewAgentModel(agent: AgentSummary, input: Omit<CreateAgentInput, "initialMessage">, needsModel: boolean) {
     return this.#endpoints
@@ -2136,6 +2165,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       );
     const result = yield* Effect.result(
       Effect.gen({ self: this }, function* () {
+        agent = yield* this.#applyLocalScriptsDefault(agent);
         yield* this.#prepareAgentWorkspace(agent).pipe(
           Effect.mapError(
             (failure) => new AgentLifecycleFailed({ operation: "prepare agent workspace", cause: failure.cause }),
