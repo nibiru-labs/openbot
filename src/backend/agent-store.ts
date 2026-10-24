@@ -400,6 +400,7 @@ export class AgentStore {
         record.sessionSettingOverrides = structuredClone(source.sessionSettingOverrides);
       record.access = source.access;
       record.computerUse = source.computerUse;
+      if (source.learnFromCompletedTasks !== undefined) record.learnFromCompletedTasks = source.learnFromCompletedTasks;
       if (source.busyMessageMode) record.busyMessageMode = source.busyMessageMode;
       if (source.taskLimit !== undefined) record.taskLimit = source.taskLimit;
       if (source.backupModels) record.backupModels = structuredClone(source.backupModels);
@@ -706,6 +707,10 @@ export class AgentStore {
       if (input.computerUse !== undefined) {
         if (!isBoolean(input.computerUse)) throw new Error("Invalid Computer Use value.");
         next.computerUse = input.computerUse;
+      }
+      if (input.learnFromCompletedTasks !== undefined) {
+        if (!isBoolean(input.learnFromCompletedTasks)) throw new Error("Invalid learning value.");
+        next.learnFromCompletedTasks = input.learnFromCompletedTasks;
       }
       if (input.allowAutomation === null) delete next.allowAutomation;
       else if (input.allowAutomation !== undefined) {
@@ -1827,6 +1832,7 @@ function isStoredAgent(value: unknown): value is PersistedStoredAgent {
     (record.sessionSettingResets === undefined || isAgentSessionSettingResets(record.sessionSettingResets)) &&
     (record.access === undefined || isAgentAccess(record.access)) &&
     (record.computerUse === undefined || isBoolean(record.computerUse)) &&
+    (record.learnFromCompletedTasks === undefined || isBoolean(record.learnFromCompletedTasks)) &&
     (record.allowAutomation === undefined || isBoolean(record.allowAutomation)) &&
     (record.allowNewChat === undefined || isBoolean(record.allowNewChat)) &&
     (record.quickAcknowledgement === undefined || isBoolean(record.quickAcknowledgement)) &&
@@ -1893,6 +1899,10 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
     value.access === undefined || isAgentAccess(value.access) ? value.access : reset("access", DEFAULT_AGENT_ACCESS);
   const computerUse =
     value.computerUse === undefined || isBoolean(value.computerUse) ? value.computerUse : reset("computerUse", true);
+  const learnFromCompletedTasks =
+    value.learnFromCompletedTasks === undefined || isBoolean(value.learnFromCompletedTasks)
+      ? value.learnFromCompletedTasks
+      : reset("learnFromCompletedTasks", undefined);
   const allowAutomation =
     value.allowAutomation === undefined || isBoolean(value.allowAutomation)
       ? value.allowAutomation
@@ -1982,6 +1992,7 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
     ...(provider === undefined ? {} : { provider }),
     ...(access === undefined ? {} : { access }),
     ...(computerUse === undefined ? {} : { computerUse }),
+    ...(learnFromCompletedTasks === undefined ? {} : { learnFromCompletedTasks }),
     ...(allowAutomation === undefined ? {} : { allowAutomation }),
     ...(allowNewChat === undefined ? {} : { allowNewChat }),
     ...(quickAcknowledgement === undefined ? {} : { quickAcknowledgement }),

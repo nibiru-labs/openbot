@@ -17,6 +17,7 @@ import {
   agentAutomationAllowed,
   agentBrowserProfile,
   agentComputerUseEnabled,
+  agentLearnFromCompletedTasksEnabled,
   agentNewChatAllowed,
   agentPermissionLevel,
   agentPermissionLevels,
@@ -117,6 +118,8 @@ export interface AgentSettingsPanelProps {
   onUpdatePermissions?: ((input: UpdateAgentAdminSettingsInput) => Promise<void>) | undefined;
   /** Computer Use is local-only too, and no remote host administers it yet. */
   computerUseEditable?: boolean;
+  /** Learning from completed tasks is local-only too, and no remote host administers it yet. */
+  learnFromCompletedTasksEditable?: boolean;
   /** Local scripts can be changed locally or through the host's administrator route. */
   automationEditable?: boolean;
   /** Whether the agent can start a new chat. Local-only: the Team API does not carry it. */
@@ -237,6 +240,7 @@ interface AgentSettingsDraft {
   notifications: boolean;
   permission: AgentPermissionLevel;
   computerUse: boolean;
+  learnFromCompletedTasks: boolean;
   allowAutomation: boolean;
   allowNewChat: boolean;
   quickAcknowledgement: boolean;
@@ -280,6 +284,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
     notifications: true,
     permission: untrack(() => currentPermission()),
     computerUse: true,
+    learnFromCompletedTasks: false,
     allowAutomation: false,
     allowNewChat: false,
     quickAcknowledgement: false,
@@ -402,6 +407,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
           String(agent.notifications),
           currentPermission(),
           String(agentComputerUseEnabled(agent)),
+          String(agentLearnFromCompletedTasksEnabled(agent)),
           String(agentAutomationAllowed(agent, agentDefaults())),
           String(agentNewChatAllowed(agent, agentDefaults())),
           String(agentQuickAcknowledgementEnabled(agent, agentDefaults())),
@@ -447,6 +453,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
           state.notifications = agent.notifications;
           state.permission = currentPermission();
           state.computerUse = agentComputerUseEnabled(agent);
+          state.learnFromCompletedTasks = agentLearnFromCompletedTasksEnabled(agent);
           state.allowAutomation = agentAutomationAllowed(agent, agentDefaults());
           state.allowNewChat = agentNewChatAllowed(agent, agentDefaults());
           state.quickAcknowledgement = agentQuickAcknowledgementEnabled(agent, agentDefaults());
@@ -859,6 +866,19 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
     if (!disposed && props.agent.id === agentId && draft.computerUse === next) {
       setDraft((state) => {
         state.computerUse = !next;
+      });
+    }
+  }
+
+  async function saveLearnFromCompletedTasks(next: boolean): Promise<void> {
+    const agentId = props.agent.id;
+    setDraft((state) => {
+      state.learnFromCompletedTasks = next;
+    });
+    if (await saveAgentPatch({ learnFromCompletedTasks: next }, agentId)) return;
+    if (!disposed && props.agent.id === agentId && draft.learnFromCompletedTasks === next) {
+      setDraft((state) => {
+        state.learnFromCompletedTasks = !next;
       });
     }
   }
@@ -1524,6 +1544,20 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
                     aria-label={t("agentSettings.quickAcknowledgement.title")}
                     checked={draft.quickAcknowledgement}
                     onChange={(next) => void saveQuickAcknowledgement(next)}
+                  />
+                </div>
+              </Show>
+              <Show when={props.learnFromCompletedTasksEditable}>
+                <div class="agent-settings-notifications">
+                  <div>
+                    <strong>{t("agentSettings.learnFromCompletedTasks.title")}</strong>
+                    <span>{t("agentSettings.learnFromCompletedTasks.description")}</span>
+                  </div>
+                  <Switch
+                    size="sm"
+                    aria-label={t("agentSettings.learnFromCompletedTasks.title")}
+                    checked={draft.learnFromCompletedTasks}
+                    onChange={(next) => void saveLearnFromCompletedTasks(next)}
                   />
                 </div>
               </Show>

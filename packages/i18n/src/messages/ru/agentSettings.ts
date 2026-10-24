@@ -182,6 +182,9 @@ export const messages = {
   "agentSettings.quickAcknowledgement.title": "Показывать план перед долгими задачами",
   "agentSettings.quickAcknowledgement.description":
     "Перед долгой задачей агент показывает свой план. Он начинает через 10 с или когда вы нажимаете «Начать».",
+  "agentSettings.learnFromCompletedTasks.title": "Учиться на выполненных задачах",
+  "agentSettings.learnFromCompletedTasks.description":
+    "Когда задача завершается успешно, агент сохраняет важные уроки в своей памяти",
   "agentSettings.browserProfile.label": "Профиль браузера",
   "agentSettings.browserProfile.shared": "Общий",
   "agentSettings.browserProfile.agent": "Только этот агент",

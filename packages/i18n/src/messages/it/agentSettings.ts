@@ -155,6 +155,9 @@ export const messages = {
   "agentSettings.quickAcknowledgement.title": "Mostra il piano prima delle attività lunghe",
   "agentSettings.quickAcknowledgement.description":
     "Prima di un'attività lunga, l'agente mostra il suo piano. Inizia dopo 10 s o quando premi Avvia.",
+  "agentSettings.learnFromCompletedTasks.title": "Impara dalle attività completate",
+  "agentSettings.learnFromCompletedTasks.description":
+    "Quando un'attività finisce bene, l'agente salva le lezioni durature nelle sue memorie",
   "agentSettings.browserProfile.label": "Profilo del browser",
   "agentSettings.browserProfile.shared": "Condiviso",
   "agentSettings.browserProfile.agent": "Solo questo agente",

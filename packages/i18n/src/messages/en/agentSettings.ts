@@ -154,6 +154,9 @@ export const messages = defineMessages("agentSettings", {
   "agentSettings.quickAcknowledgement.title": "Show the plan before long tasks",
   "agentSettings.quickAcknowledgement.description":
     "Before a long task, the agent shows its plan. It starts after 10 s, or when you press Start.",
+  "agentSettings.learnFromCompletedTasks.title": "Learn from completed tasks",
+  "agentSettings.learnFromCompletedTasks.description":
+    "When a task ends well, the agent saves the durable lessons to its memories",
   "agentSettings.browserProfile.label": "Browser profile",
   "agentSettings.browserProfile.shared": "Shared",
   "agentSettings.browserProfile.agent": "Only this agent",

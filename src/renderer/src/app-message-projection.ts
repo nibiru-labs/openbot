@@ -41,6 +41,9 @@ export function toAgentProfile(stored: ClientAgentSummary): AgentProfile {
     ...(stored.providerAccountId === undefined ? {} : { providerAccountId: stored.providerAccountId }),
     ...(stored.access === undefined ? {} : { access: stored.access }),
     ...(stored.computerUse === undefined ? {} : { computerUse: stored.computerUse }),
+    ...(stored.learnFromCompletedTasks === undefined
+      ? {}
+      : { learnFromCompletedTasks: stored.learnFromCompletedTasks }),
     ...(stored.allowAutomation === undefined ? {} : { allowAutomation: stored.allowAutomation }),
     ...(stored.allowNewChat === undefined ? {} : { allowNewChat: stored.allowNewChat }),
     ...(stored.quickAcknowledgement === undefined ? {} : { quickAcknowledgement: stored.quickAcknowledgement }),
@@ -227,6 +230,7 @@ export function agentProfilesEqual(left: AgentProfile, right: AgentProfile): boo
     JSON.stringify(left.usageLimitReturn) === JSON.stringify(right.usageLimitReturn) &&
     left.access === right.access &&
     left.computerUse === right.computerUse &&
+    left.learnFromCompletedTasks === right.learnFromCompletedTasks &&
     left.allowAutomation === right.allowAutomation &&
     left.allowNewChat === right.allowNewChat &&
     left.quickAcknowledgement === right.quickAcknowledgement &&

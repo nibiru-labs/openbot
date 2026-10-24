@@ -161,6 +161,9 @@ export const messages = {
   "agentSettings.quickAcknowledgement.title": "Mostrar el plan antes de tareas largas",
   "agentSettings.quickAcknowledgement.description":
     "Antes de una tarea larga, el agente muestra su plan. Empieza tras 10 s o cuando pulsas Iniciar.",
+  "agentSettings.learnFromCompletedTasks.title": "Aprender de las tareas completadas",
+  "agentSettings.learnFromCompletedTasks.description":
+    "Cuando una tarea termina bien, el agente guarda las lecciones duraderas en sus recuerdos",
   "agentSettings.browserProfile.label": "Perfil del navegador",
   "agentSettings.browserProfile.shared": "Compartido",
   "agentSettings.browserProfile.agent": "Solo este agente",

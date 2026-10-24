@@ -637,6 +637,10 @@ export function parseUpdateAgent(value: unknown): UpdateAgentInput {
     if (!isBoolean(value.computerUse)) throw new Error("Invalid Computer Use value.");
     result.computerUse = value.computerUse;
   }
+  if (value.learnFromCompletedTasks !== undefined) {
+    if (!isBoolean(value.learnFromCompletedTasks)) throw new Error("Invalid learning value.");
+    result.learnFromCompletedTasks = value.learnFromCompletedTasks;
+  }
   // `null` returns the agent to the account default.
   if (value.allowAutomation !== undefined) {
     if (value.allowAutomation !== null && !isBoolean(value.allowAutomation))

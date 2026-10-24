@@ -149,6 +149,9 @@ export const messages = {
   "agentSettings.quickAcknowledgement.title": "Uzun görevlerden önce planı göster",
   "agentSettings.quickAcknowledgement.description":
     "Uzun bir görevden önce ajan planını gösterir. 10 sn sonra veya Başlat'a bastığınızda başlar.",
+  "agentSettings.learnFromCompletedTasks.title": "Tamamlanan görevlerden öğren",
+  "agentSettings.learnFromCompletedTasks.description":
+    "Bir görev iyi bittiğinde ajan kalıcı dersleri belleklerine kaydeder",
   "agentSettings.browserProfile.label": "Tarayıcı profili",
   "agentSettings.browserProfile.shared": "Paylaşılan",
   "agentSettings.browserProfile.agent": "Yalnızca bu ajan",

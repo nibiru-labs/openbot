@@ -237,6 +237,8 @@ export interface AgentProfile {
   /** Absent means on. Absent for an agent on a remote host too, which does not share it. */
   computerUse?: boolean | undefined;
   /** Absent means off. Absent for an agent on a remote host too, which does not share it. */
+  learnFromCompletedTasks?: boolean | undefined;
+  /** Absent means off. Absent for an agent on a remote host too, which does not share it. */
   allowAutomation?: boolean | undefined;
   /** Absent means off. Absent for an agent on a remote host too, which does not share it. */
   allowNewChat?: boolean | undefined;

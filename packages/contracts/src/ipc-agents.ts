@@ -45,6 +45,15 @@ export function agentComputerUseEnabled(agent: { computerUse?: boolean | undefin
   return agent.computerUse !== false;
 }
 
+/**
+ * Whether the agent runs the bounded learning pass at the end of a completed task, saving durable
+ * lessons to its own memories. Absent means off: learning is opt-in, so every agent before the
+ * setting existed, and every agent whose user never turned it on, learns nothing.
+ */
+export function agentLearnFromCompletedTasksEnabled(agent: { learnFromCompletedTasks?: boolean | undefined }): boolean {
+  return agent.learnFromCompletedTasks === true;
+}
+
 /** The agent settings that have an account default. An agent with no value of its own follows it. */
 export const AGENT_DEFAULT_KEYS = ["allowAutomation", "allowNewChat", "quickAcknowledgement"] as const;
 export type AgentDefaultKey = (typeof AGENT_DEFAULT_KEYS)[number];
@@ -200,6 +209,12 @@ export interface AgentSummary {
    */
   computerUse?: boolean;
   /**
+   * Whether the agent saves durable lessons from its completed tasks to its own memories.
+   * Local-only, like `access`. Absent means off: learning is opt-in; see
+   * `agentLearnFromCompletedTasksEnabled`.
+   */
+  learnFromCompletedTasks?: boolean;
+  /**
    * Whether a local script can run this agent's routines through the automation server. Local-only,
    * like `access`. Absent means the account default; see `agentAutomationAllowed`.
    */
@@ -302,6 +317,7 @@ function hasAgentSummaryFields(value: DynamicRecord): boolean {
     (value.sessionSettingResets === undefined || isAgentSessionSettingResets(value.sessionSettingResets)) &&
     (value.access === undefined || isAgentAccess(value.access)) &&
     (value.computerUse === undefined || isBoolean(value.computerUse)) &&
+    (value.learnFromCompletedTasks === undefined || isBoolean(value.learnFromCompletedTasks)) &&
     (value.allowAutomation === undefined || isBoolean(value.allowAutomation)) &&
     (value.allowNewChat === undefined || isBoolean(value.allowNewChat)) &&
     (value.quickAcknowledgement === undefined || isBoolean(value.quickAcknowledgement)) &&
@@ -353,6 +369,7 @@ export interface UpdateAgentInput {
   reasoningEffort?: AgentReasoningEffort;
   access?: AgentAccess;
   computerUse?: boolean;
+  learnFromCompletedTasks?: boolean;
   /** `null` returns the agent to the account default, as for `allowNewChat` and `quickAcknowledgement`. */
   allowAutomation?: boolean | null;
   allowNewChat?: boolean | null;

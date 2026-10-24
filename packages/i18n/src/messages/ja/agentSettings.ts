@@ -157,6 +157,9 @@ export const messages = {
   "agentSettings.quickAcknowledgement.title": "長いタスクの前に計画を表示",
   "agentSettings.quickAcknowledgement.description":
     "長いタスクの前に、エージェントが計画を表示します。10 秒後、または開始を押すと始まります。",
+  "agentSettings.learnFromCompletedTasks.title": "完了したタスクから学習",
+  "agentSettings.learnFromCompletedTasks.description":
+    "タスクが正常に終わると、エージェントが持続する教訓をメモリーに保存します",
   "agentSettings.browserProfile.label": "ブラウザープロファイル",
   "agentSettings.browserProfile.shared": "共有",
   "agentSettings.browserProfile.agent": "このエージェントのみ",

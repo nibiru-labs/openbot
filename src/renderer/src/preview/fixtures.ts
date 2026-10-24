@@ -116,6 +116,7 @@ export const STORY_AGENTS: AgentProfile[] = STORY_AGENT_SUMMARIES.map((agent, in
   reasoningEffort: agent.reasoningEffort,
   ...(agent.access === undefined ? {} : { access: agent.access }),
   ...(agent.computerUse === undefined ? {} : { computerUse: agent.computerUse }),
+  ...(agent.learnFromCompletedTasks === undefined ? {} : { learnFromCompletedTasks: agent.learnFromCompletedTasks }),
   threadId: agent.threadId,
   workspacePath: agent.workspacePath,
   avatarSeed: agent.avatarSeed,

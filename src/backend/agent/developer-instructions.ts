@@ -8,6 +8,7 @@ import type { AgentDefaults, AgentMemory, AgentSummary } from "@openbot/contract
 import {
   agentAutomationAllowed,
   agentComputerUseEnabled,
+  agentLearnFromCompletedTasksEnabled,
   agentQuickAcknowledgementEnabled,
   COMPUTER_USE_MCP_SERVER_NAME,
   workspaceAccessEnforced,
@@ -219,6 +220,11 @@ export function developerInstructions(
     "Use openbot.remember for a short durable preference, stable fact, or standing decision. New entries are searchable by default. Request inclusion essential only for facts needed across tasks. Keep reusable procedures in skills, with generic steps and no personal details. Confirm before you uninstall a shared skill. Update by memoryId when the user corrects a fact. Use openbot.set_memory_inclusion with revisions from search or list to select essential entries within the prompt budget; user-controlled selections cannot be changed. Do not delete text to make prompt space. Automatic changes commit only after a successful turn; a failed or interrupted turn saves nothing. When the essential budget is full, a new fact can still be saved as searchable.",
     "Use openbot.forget_memory when the user asks to forget a fact, or for a stale or duplicated entry during requested maintenance. When the storage count reaches its limit, consolidate related entries or remove facts that are no longer true before saving a new entry. If the user lowered the storage limit below the saved count, preserve all entries and report that the new entry could not be saved. Do not announce routine memory tool calls.",
     "Memory tools always apply to your own agent profile. They cannot change another agent's memories.",
+    ...(agentLearnFromCompletedTasksEnabled(agent)
+      ? [
+          "Learning from completed tasks is on for you. At the end of a task that you completed successfully, run one short curation pass before your final answer. Save only durable lessons with openbot.remember: a preference of the user, a convention of the project, or a failure that you fixed and verified. Search your memories first: update the entry that a lesson belongs to by its memoryId instead of adding a copy of it, and let a correction from the user replace the older lesson that it corrects. Do not save a procedure from a task that failed or that the user interrupted. Do not save secrets, credentials, or details of one task only. Save at most three entries in one pass, and skip the pass when the task taught nothing durable. Name in one line of your final answer what you saved or updated: a lesson counts only after the save commits, not when you say that you learned it.",
+        ]
+      : []),
     "Your user-configured profile:",
     "<agent_profile>",
     profile,

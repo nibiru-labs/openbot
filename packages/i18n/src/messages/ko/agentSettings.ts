@@ -147,6 +147,8 @@ export const messages = {
   "agentSettings.quickAcknowledgement.title": "긴 작업 전에 계획 표시",
   "agentSettings.quickAcknowledgement.description":
     "긴 작업 전에 에이전트가 계획을 보여줘요. 10초 후 또는 시작을 누르면 작업이 시작돼요.",
+  "agentSettings.learnFromCompletedTasks.title": "완료한 작업에서 학습",
+  "agentSettings.learnFromCompletedTasks.description": "작업이 잘 끝나면 에이전트가 오래 남는 교훈을 메모리에 저장해요",
   "agentSettings.browserProfile.label": "브라우저 프로필",
   "agentSettings.browserProfile.shared": "공유",
   "agentSettings.browserProfile.agent": "이 에이전트만",
