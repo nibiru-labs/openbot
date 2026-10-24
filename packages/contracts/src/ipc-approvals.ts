@@ -1,3 +1,4 @@
+import { AGENT_ROSTER_MAX_LIMIT } from "./agent-roster-limits";
 import { INPUT_LIMITS } from "./input-limits";
 import { isBoundedString, isIdentifier, isNullableBoundedString, isRequestId } from "./ipc-bounded-values";
 import { type BrowserSecretRequest, isBrowserSecretRequest } from "./ipc-browser-secret";
@@ -88,7 +89,7 @@ export function isApprovalAutomationPreference(value: unknown): value is Approva
   if (!isDynamicRecord(value.autoApproveOverrides)) return false;
   const entries = Object.entries(value.autoApproveOverrides);
   return (
-    entries.length <= INPUT_LIMITS.agents && entries.every(([id, enabled]) => isIdentifier(id) && isBoolean(enabled))
+    entries.length <= AGENT_ROSTER_MAX_LIMIT && entries.every(([id, enabled]) => isIdentifier(id) && isBoolean(enabled))
   );
 }
 

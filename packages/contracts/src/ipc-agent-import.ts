@@ -7,6 +7,7 @@
  * and its result names the new agents only, so the client reads them with the agent list.
  */
 
+import { AGENT_ROSTER_MAX_LIMIT } from "./agent-roster-limits";
 import { INPUT_LIMITS } from "./input-limits";
 import { type ClientAgentSummary, isClientAgentSummary } from "./ipc-agents";
 import { isBoundedString, isIdentifier, isNullableBoundedString } from "./ipc-bounded-values";
@@ -227,7 +228,7 @@ export function decodeAgentImportPreview(value: unknown): AgentImportPreview | n
     !isBoundedString(preview.sourceApp, AGENT_IMPORT_LIMITS.sourceApp) ||
     !isNullableBoundedString(preview.exportedAt, 64) ||
     !Array.isArray(preview.agents) ||
-    preview.agents.length > INPUT_LIMITS.agents ||
+    preview.agents.length > AGENT_ROSTER_MAX_LIMIT ||
     !Array.isArray(preview.channels) ||
     preview.channels.length > AGENT_IMPORT_LIMITS.channels
   )

@@ -1,4 +1,4 @@
-import { INPUT_LIMITS } from "./input-limits";
+import { AGENT_ROSTER_MAX_LIMIT } from "./agent-roster-limits";
 import { isBoundedString, isIdentifier } from "./ipc-bounded-values";
 import { isBoolean, isDynamicRecord } from "./runtime-values";
 
@@ -39,7 +39,7 @@ export function isHiddenAgentsSnapshot(value: unknown): value is HiddenAgentsSna
   return (
     isDynamicRecord(value) &&
     Array.isArray(value.agents) &&
-    value.agents.length <= INPUT_LIMITS.agents &&
+    value.agents.length <= AGENT_ROSTER_MAX_LIMIT &&
     value.agents.every(isHiddenAgent) &&
     new Set(value.agents.map((agent) => agent.agentId)).size === value.agents.length
   );

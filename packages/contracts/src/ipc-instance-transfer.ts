@@ -8,6 +8,7 @@
  */
 
 import { type AgentProviderId, isAgentProvider, isAgentProviderRef } from "./agent-providers";
+import { AGENT_ROSTER_MAX_LIMIT } from "./agent-roster-limits";
 import { INPUT_LIMITS } from "./input-limits";
 import { type AvatarHue, isAvatarHue } from "./ipc-agent-identity";
 import {
@@ -166,7 +167,7 @@ function decodeTransferAgent(value: unknown): InstanceTransferAgent {
 
 export function decodeInstanceTransferSummary(value: unknown): InstanceTransferSummary {
   const summary = record(value, "transfer summary");
-  if (!Array.isArray(summary.agents) || summary.agents.length > INPUT_LIMITS.agents) invalid("transfer summary");
+  if (!Array.isArray(summary.agents) || summary.agents.length > AGENT_ROSTER_MAX_LIMIT) invalid("transfer summary");
   return { agents: summary.agents.map(decodeTransferAgent) };
 }
 
@@ -184,7 +185,7 @@ export function decodeInstanceTransferPreview(value: unknown): InstanceTransferP
     !isBoundedString(preview.appVersion, INSTANCE_TRANSFER_LIMITS.appVersion) ||
     !isNullableBoundedString(preview.exportedAt, 64) ||
     !Array.isArray(preview.agents) ||
-    preview.agents.length > INPUT_LIMITS.agents ||
+    preview.agents.length > AGENT_ROSTER_MAX_LIMIT ||
     !isBoolean(preview.hasSettings)
   )
     invalid("transfer preview");

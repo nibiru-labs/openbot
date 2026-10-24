@@ -12,6 +12,7 @@ import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import { AGENT_IMPORT_LIMITS, isAgentImportKey, isRoutineSchedule, type RoutineSchedule } from "@openbot/contracts/ipc";
 import { isBoolean, isDynamicRecord, isString } from "@openbot/contracts/runtime-values";
 import { sourceText } from "@openbot/i18n/source";
+import { agentLimitForHost } from "./agent-limit-environment";
 import { isUnsafeArchivePath } from "./skill-package";
 
 export const AGENT_IMPORT_MANIFEST = "openbot-import.json";
@@ -77,8 +78,8 @@ export function decodeImportManifest(
   const exportedAt =
     isBoundedString(source.exportedAt, 64) && !Number.isNaN(Date.parse(source.exportedAt)) ? source.exportedAt : null;
   if (!Array.isArray(value.agents) || value.agents.length === 0) throw new Error(sourceText("error.import.noAgents"));
-  if (value.agents.length > INPUT_LIMITS.agents)
-    throw new Error(sourceText("error.import.tooManyAgents", { limit: INPUT_LIMITS.agents }));
+  if (value.agents.length > agentLimitForHost())
+    throw new Error(sourceText("error.import.tooManyAgents", { limit: agentLimitForHost() }));
 
   const warnings: string[] = [];
   const keys = new Set<string>();

@@ -1,3 +1,4 @@
+import { AGENT_ROSTER_MAX_LIMIT } from "./agent-roster-limits";
 import { INPUT_LIMITS } from "./input-limits";
 import { type AvatarHue, isAvatarHue, isAvatarSeed } from "./ipc-agent-identity";
 import { type AgentModelChoice, isAgentModelChoice } from "./ipc-agents";
@@ -252,13 +253,13 @@ export function isAgentRuntimeSnapshot(value: unknown): value is AgentRuntimeSna
   return (
     (value.contextStates === undefined ||
       (Array.isArray(value.contextStates) &&
-        value.contextStates.length <= INPUT_LIMITS.agents &&
+        value.contextStates.length <= AGENT_ROSTER_MAX_LIMIT &&
         value.contextStates.every(isAgentContextState))) &&
     Array.isArray(value.agents) &&
-    value.agents.length <= INPUT_LIMITS.agents &&
+    value.agents.length <= AGENT_ROSTER_MAX_LIMIT &&
     value.agents.every(isAgentRuntimeRosterEntry) &&
     Array.isArray(value.activeTurns) &&
-    value.activeTurns.length <= INPUT_LIMITS.agents &&
+    value.activeTurns.length <= AGENT_ROSTER_MAX_LIMIT &&
     value.activeTurns.every(
       (turn) =>
         isDynamicRecord(turn) && isIdentifier(turn.agentId) && isIdentifier(turn.threadId) && isIdentifier(turn.turnId),
@@ -267,7 +268,7 @@ export function isAgentRuntimeSnapshot(value: unknown): value is AgentRuntimeSna
     value.work.length <= AGENT_RUNTIME_WORKING_ITEMS_LIMIT + AGENT_RUNTIME_ATTENTION_LIMIT &&
     value.work.every(isRuntimeWorkItem) &&
     Array.isArray(value.latestMessages) &&
-    value.latestMessages.length <= INPUT_LIMITS.agents &&
+    value.latestMessages.length <= AGENT_ROSTER_MAX_LIMIT &&
     value.latestMessages.every(
       (message) =>
         isDynamicRecord(message) &&
@@ -289,13 +290,13 @@ export function isAgentRuntimeSnapshot(value: unknown): value is AgentRuntimeSna
     value.pendingPrompts.length + value.pendingApprovals.length + value.pendingBrowserTakeovers.length <=
       AGENT_RUNTIME_ATTENTION_LIMIT &&
     Array.isArray(value.failedTurns) &&
-    value.failedTurns.length <= INPUT_LIMITS.agents &&
+    value.failedTurns.length <= AGENT_ROSTER_MAX_LIMIT &&
     value.failedTurns.every(
       (turn) => isDynamicRecord(turn) && isIdentifier(turn.agentId) && isIdentifier(turn.turnId),
     ) &&
     (value.usageLimits === undefined ||
       (Array.isArray(value.usageLimits) &&
-        value.usageLimits.length <= INPUT_LIMITS.agents &&
+        value.usageLimits.length <= AGENT_ROSTER_MAX_LIMIT &&
         value.usageLimits.every(
           (limit) =>
             isDynamicRecord(limit) &&
@@ -304,7 +305,7 @@ export function isAgentRuntimeSnapshot(value: unknown): value is AgentRuntimeSna
         ))) &&
     (value.usageLimitedModels === undefined ||
       (Array.isArray(value.usageLimitedModels) &&
-        value.usageLimitedModels.length <= INPUT_LIMITS.agents &&
+        value.usageLimitedModels.length <= AGENT_ROSTER_MAX_LIMIT &&
         value.usageLimitedModels.every(isAgentModelChoice)))
   );
 }

@@ -31,6 +31,7 @@ import { Effect, Result } from "effect";
 import { parseStoredJson, writeJsonFileAtomically } from "../backend/atomic-json-file";
 import { writeTreeEffect } from "./agent-archive";
 import type { AgentImportAgents, AgentImportSkills } from "./agent-import-service";
+import { agentLimitForHost } from "./agent-limit-environment";
 import { type ArchiveOperationError, archiveCall, archiveFailure } from "./archive-effects";
 import {
   displayPath,
@@ -140,9 +141,9 @@ export class HermesImportService {
     const links = yield* this.#readLinks();
     const existing = new Map(this.agents.listAgents().map((agent) => [agent.id, agent]));
     const creates = selected.filter(({ profile }) => !existing.has(links[profile.directory] ?? "")).length;
-    if (existing.size + creates > INPUT_LIMITS.agents)
+    if (existing.size + creates > agentLimitForHost())
       return yield* archiveFailure(
-        new Error(sourceText("error.import.serverAgentLimit", { limit: INPUT_LIMITS.agents })),
+        new Error(sourceText("error.import.serverAgentLimit", { limit: agentLimitForHost() })),
       );
     this.#staged = null;
 

@@ -1,4 +1,5 @@
 import { Deferred, Effect, Exit, Result } from "effect";
+import { agentLimitForHost } from "./agent-limit-environment";
 import { type ArchiveOperationError, archiveCall, archiveFailure, archiveSync } from "./archive-effects";
 // Agent import into this host from one `.zip` export: chosen by the local user, or sent by a member
 // of a joined client with `agent-import-v1`.
@@ -13,7 +14,6 @@ import { type ArchiveOperationError, archiveCall, archiveFailure, archiveSync } 
 import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import {
   AGENT_IMPORT_LIMITS,
   type AgentImportChannel,
@@ -385,9 +385,9 @@ export class AgentImportService {
     const selectedChannels = staged.channels.filter((channel) => input.channelKeys.includes(channel.key));
     if (selectedChannels.length !== input.channelKeys.length)
       return yield* archiveFailure(new Error(sourceText("error.import.channelNotInExport")));
-    if (this.agents.listAgents().length + selected.length > INPUT_LIMITS.agents)
+    if (this.agents.listAgents().length + selected.length > agentLimitForHost())
       return yield* archiveFailure(
-        new Error(sourceText("error.import.serverAgentLimit", { limit: INPUT_LIMITS.agents })),
+        new Error(sourceText("error.import.serverAgentLimit", { limit: agentLimitForHost() })),
       );
 
     // The archive is read again rather than held since `stage`: an export can be hundreds of MB.

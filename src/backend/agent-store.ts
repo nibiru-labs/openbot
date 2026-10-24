@@ -66,6 +66,7 @@ import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
 import { Effect, Result, Semaphore, Stream } from "effect";
 import { ProfileCreationRecovery } from "./agent/profile-creation-recovery";
+import { agentRosterLimit } from "./agent-limit";
 import { isEmptyStoredFile, parseStoredJson, writeFileAtomically } from "./atomic-json-file";
 import { automationRoot } from "./automation-command";
 import type { AgentModelChange } from "./database/agent-roster";
@@ -337,8 +338,8 @@ export class AgentStore {
     profileOperationId?: string,
   ): Effect.fn.Return<AgentSummary, StoredStateFailure> {
     try {
-      if (this.#state.agents.length >= INPUT_LIMITS.agents) {
-        throw new Error(sourceText("error.agent.hostLimit", { limit: INPUT_LIMITS.agents }));
+      if (this.#state.agents.length >= agentRosterLimit()) {
+        throw new Error(sourceText("error.agent.hostLimit", { limit: agentRosterLimit() }));
       }
       const name = requiredText(input.name, "Agent name", INPUT_LIMITS.agentName);
       const description = limitedText(input.description, "Agent description", INPUT_LIMITS.agentDescription);
@@ -377,8 +378,8 @@ export class AgentStore {
       if (this.#database.commandResult(duplicationCommandId(operationId)) !== undefined) {
         throw new Error("This agent duplication operation is already committed.");
       }
-      if (this.#state.agents.length >= INPUT_LIMITS.agents) {
-        throw new Error(sourceText("error.agent.hostLimit", { limit: INPUT_LIMITS.agents }));
+      if (this.#state.agents.length >= agentRosterLimit()) {
+        throw new Error(sourceText("error.agent.hostLimit", { limit: agentRosterLimit() }));
       }
       const source = this.#requireAgent(sourceId);
       const sourceProfileSignature = duplicationProfileSignature(source);
@@ -452,8 +453,8 @@ export class AgentStore {
                 stagedWorkspace,
                 record.workspacePath,
               );
-              if (this.#state.agents.length >= INPUT_LIMITS.agents) {
-                throw new Error(sourceText("error.agent.hostLimit", { limit: INPUT_LIMITS.agents }));
+              if (this.#state.agents.length >= agentRosterLimit()) {
+                throw new Error(sourceText("error.agent.hostLimit", { limit: agentRosterLimit() }));
               }
               record.name = duplicateAgentName(source.name, this.#state.agents);
               yield* storedIO(() => rename(stagedWorkspace, record.workspacePath));
@@ -1020,8 +1021,8 @@ export class AgentStore {
         yield* storedIO(() => mkdir(existing.workspacePath, { recursive: true, mode: 0o700 }));
         return { ...existing };
       }
-      if (this.#state.agents.length >= INPUT_LIMITS.agents) {
-        throw new Error(sourceText("error.agent.hostLimit", { limit: INPUT_LIMITS.agents }));
+      if (this.#state.agents.length >= agentRosterLimit()) {
+        throw new Error(sourceText("error.agent.hostLimit", { limit: agentRosterLimit() }));
       }
 
       const record = this.#createRecord(id, name ?? titleFromId(id), title ?? "Local teammate");
@@ -1645,7 +1646,7 @@ function duplicateAgentName(sourceName: string, agents: readonly StoredAgent[]):
   const match = /^(.*?)(?: copy(?: (\d+))?)$/iu.exec(sourceName);
   const base = match?.[1]?.trim() || sourceName.trim();
   const existing = new Set(agents.map((agent) => agent.name.toLocaleLowerCase()));
-  for (let index = 1; index <= INPUT_LIMITS.agents + 1; index += 1) {
+  for (let index = 1; index <= agentRosterLimit() + 1; index += 1) {
     const suffix = index === 1 ? " copy" : ` copy ${index}`;
     const candidate = `${base.slice(0, Math.max(1, INPUT_LIMITS.agentName - suffix.length)).trimEnd()}${suffix}`;
     if (!existing.has(candidate.toLocaleLowerCase())) return candidate;

@@ -67,6 +67,7 @@ import {
   writeTreeEffect,
 } from "./agent-archive";
 import type { AgentImportSkills } from "./agent-import-service";
+import { agentLimitForHost } from "./agent-limit-environment";
 import { validTimezone } from "./agent-marketplace-service";
 import { type ArchiveOperationError, archiveCall, archiveFailure, archiveSync } from "./archive-effects";
 import {
@@ -617,9 +618,9 @@ export class InstanceTransferService {
     const selected = staged.manifest.agents.filter((agent) => input.keys.includes(agent.key));
     if (selected.length !== input.keys.length)
       return yield* archiveFailure(new Error(sourceText("error.import.agentNotInExport")));
-    if (this.options.agents.listAgents().length + selected.length > INPUT_LIMITS.agents)
+    if (this.options.agents.listAgents().length + selected.length > agentLimitForHost())
       return yield* archiveFailure(
-        new Error(sourceText("error.import.serverAgentLimit", { limit: INPUT_LIMITS.agents })),
+        new Error(sourceText("error.import.serverAgentLimit", { limit: agentLimitForHost() })),
       );
     // The file is read again rather than held since `stage`, and only the same bytes are accepted.
     const bytes = yield* readArchiveEffect(staged.path, staged.temporary ? REMOTE_ARCHIVE : ARCHIVE);

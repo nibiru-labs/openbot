@@ -3,6 +3,7 @@
 // their rules, which is what lets each guard live beside the type it validates.
 
 import { type AgentProviderId, isAgentProvider } from "./agent-providers";
+import { AGENT_ROSTER_MAX_LIMIT } from "./agent-roster-limits";
 import { INPUT_LIMITS } from "./input-limits";
 import { type AgentRuntimeSnapshot, isAgentRuntimeSnapshot } from "./ipc-agent-runtime";
 import type { AccountUsage, AgentStatus } from "./ipc-agent-status";
@@ -162,7 +163,7 @@ export function isAgentEvent(value: unknown): value is AgentEvent {
     case "agents-changed":
       return (
         Array.isArray(value.agents) &&
-        value.agents.length <= INPUT_LIMITS.agents &&
+        value.agents.length <= AGENT_ROSTER_MAX_LIMIT &&
         value.agents.every(isClientAgentSummary)
       );
     case "memories-changed":

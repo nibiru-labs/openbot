@@ -7,6 +7,7 @@
 // still offered, and invalid settings are left out with a warning.
 
 import { isAgentProvider } from "@openbot/contracts/agent-providers";
+import { AGENT_ROSTER_MAX_LIMIT } from "@openbot/contracts/agent-roster-limits";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import {
   isAgentImportKey,
@@ -120,7 +121,7 @@ const Manifest = Schema.Struct({
   format: Schema.Literal(INSTANCE_TRANSFER_FORMAT),
   version: Schema.Number,
   source: Schema.Struct({ appVersion: text(64), exportedAt: Schema.NullOr(text(64)) }),
-  agents: Schema.Array(Schema.Unknown).check(Schema.isMaxLength(INPUT_LIMITS.agents)),
+  agents: Schema.Array(Schema.Unknown).check(Schema.isMaxLength(AGENT_ROSTER_MAX_LIMIT)),
   settings: Schema.NullOr(Schema.Unknown),
   shared: Schema.NullOr(Schema.Literal(SHARED_FOLDER)),
   /** Providers that were signed in on the computer that made the file. Never a token. */

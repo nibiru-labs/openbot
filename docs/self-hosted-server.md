@@ -252,6 +252,14 @@ installs it in Server Settings > Updates. `sudo openbot update` stages, stops th
 and starts the service again. When a step fails or a signal stops it, the command completes an
 interrupted copy, starts the service, and exits with an error.
 
+## Agent limit
+
+A host holds at most 100 agents by default. A local or self-hosted instance with the resources for
+more can raise the limit with `OPENBOT_AGENT_LIMIT`, a positive integer up to 1000, in the
+environment of the OpenBot process. An unset or unreadable value keeps the default. The limit
+applies where agents enter the host: creation, duplication, and agent and instance imports.
+Hosted servers keep the default.
+
 ## Control socket
 
 The `openbot` command talks to main over HTTP on a Unix socket, with form bodies and `key=value`
