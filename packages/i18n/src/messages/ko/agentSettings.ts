@@ -82,6 +82,8 @@ export const messages = {
   "agentSettings.runtime.accessLabel": "에이전트 접근 권한",
   "agentSettings.runtime.busyMessage": "작업 중일 때",
   "agentSettings.runtime.busyMessageLabel": "에이전트가 작업 중일 때의 메시지",
+  "agentSettings.runtime.memorySource": "Memory",
+  "agentSettings.runtime.memorySourceLabel": "Agent memory source",
   "agentSettings.runtime.taskLimit": "동시 작업 수",
   "agentSettings.runtime.taskLimitLabel": "동시에 실행되는 작업",
   "agentSettings.runtime.workingDirectory": "작업 디렉터리",
@@ -147,6 +149,13 @@ export const messages = {
   "agentSettings.quickAcknowledgement.title": "긴 작업 전에 계획 표시",
   "agentSettings.quickAcknowledgement.description":
     "긴 작업 전에 에이전트가 계획을 보여줘요. 10초 후 또는 시작을 누르면 작업이 시작돼요.",
+  "agentSettings.memorySource.title": "Agent memory",
+  "agentSettings.memorySource.description":
+    "Where the agent's memory lives. OpenBot keeps it in the profile and puts essential entries in the prompt. Off keeps the entries stored, but none go into the prompt and the memory tools are off.",
+  "agentSettings.memorySource.openbot": "OpenBot",
+  "agentSettings.memorySource.off": "Off",
+  "agentSettings.memorySource.appDefaultOpenBot": "App default (OpenBot)",
+  "agentSettings.memorySource.appDefaultOff": "App default (Off)",
   "agentSettings.browserProfile.label": "브라우저 프로필",
   "agentSettings.browserProfile.shared": "공유",
   "agentSettings.browserProfile.agent": "이 에이전트만",

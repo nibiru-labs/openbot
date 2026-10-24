@@ -132,6 +132,11 @@ import {
   type AgentMemoryLimitSetting,
   reloadingAgentMemoryLimit,
 } from "./agent-memory-limit-preference-store";
+import {
+  AgentMemorySourcePreferenceStore,
+  type AgentMemorySourceSetting,
+  reloadingAgentMemorySource,
+} from "./agent-memory-source-preference-store";
 import { AgentTemplateService } from "./agent-template-service";
 import { HostAnalytics } from "./analytics";
 import { analyticsInventoryDayStore, collectAnalyticsInventory } from "./analytics-inventory";
@@ -329,6 +334,7 @@ const PUSH_NOTIFICATION_FILE = "openbot-push-notifications-v1.json";
 const BUSY_MESSAGE_MODE_PREFERENCE_FILE = "openbot-busy-message-mode-v1.json";
 const AGENT_DEFAULTS_PREFERENCE_FILE = "openbot-agent-defaults-v1.json";
 const AGENT_MEMORY_LIMIT_PREFERENCE_FILE = "openbot-agent-memory-limit-v1.json";
+const AGENT_MEMORY_SOURCE_PREFERENCE_FILE = "openbot-agent-memory-source-v1.json";
 const SERVER_TIMEZONE_PREFERENCE_FILE = "openbot-server-timezone-v1.json";
 const PROMPT_CACHE_TTL_PREFERENCE_FILE = "openbot-prompt-cache-ttl-v1.json";
 const REMOTE_SESSION_REUSE_PREFERENCE_FILE = "openbot-remote-session-reuse-preference-v1.json";
@@ -526,6 +532,7 @@ export interface ApplicationServices {
   busyMessageMode: BusyMessageModePreferenceStore;
   agentDefaults: AgentDefaultsPreferenceStore;
   agentMemoryLimit: AgentMemoryLimitSetting;
+  agentMemorySource: AgentMemorySourceSetting;
   agentAccess: AgentAccessStore;
   serverTimezone: ServerTimezonePreferenceStore;
   promptCacheTtl: PromptCacheTtlPreferenceStore;
@@ -1092,6 +1099,10 @@ export async function createApplicationServices({
     join(app.getPath("userData"), AGENT_MEMORY_LIMIT_PREFERENCE_FILE),
   );
   await runCauseEffect(agentMemoryLimit.load());
+  const agentMemorySource = new AgentMemorySourcePreferenceStore(
+    join(app.getPath("userData"), AGENT_MEMORY_SOURCE_PREFERENCE_FILE),
+  );
+  await runCauseEffect(agentMemorySource.load());
   const agentAccess = new AgentAccessStore(join(app.getPath("userData"), AGENT_ACCESS_FILE));
   if (!(await runCauseEffect(agentAccess.load())))
     logger.warn("The roles file did not load. Members get no access to agents until an admin saves the roles.");
@@ -1632,6 +1643,7 @@ export async function createApplicationServices({
     approvalAutomation,
     busyMessageMode: () => busyMessageMode.get().mode,
     agentMemoryLimit: () => agentMemoryLimit.get().limit,
+    agentMemorySource: () => agentMemorySource.get().source,
     timezone: () => serverTimezone.effective(),
     // `host` is built later, after the agent service; a channel tool reads it when it runs.
     channelPersonAgentLevel: (personId, agentId) => host.channelPersonAgentLevel(personId, agentId),
@@ -1642,6 +1654,7 @@ export async function createApplicationServices({
   });
   teardown.push(TEARDOWN_ORDER.service, "the agent service", () => runCauseEffect(service.stop()));
   const agentMemoryLimitSetting = reloadingAgentMemoryLimit(agentMemoryLimit, service);
+  const agentMemorySourceSetting = reloadingAgentMemorySource(agentMemorySource, service);
   /** The answer an agent gave in one turn, for routine flows, routine results and local scripts. */
   const turnAnswer = (agentId: string, turnId: string): string | null => {
     const threadId = store.list().find((agent) => agent.id === agentId)?.threadId;
@@ -2841,6 +2854,7 @@ export async function createApplicationServices({
     busyMessageMode,
     agentDefaults,
     agentMemoryLimit: agentMemoryLimitSetting,
+    agentMemorySource: agentMemorySourceSetting,
     agentAccess,
     serverTimezone,
     promptCacheTtl,

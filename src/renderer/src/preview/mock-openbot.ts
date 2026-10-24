@@ -17,6 +17,7 @@ import {
   type AgentMemoryLimitPreference,
   type AgentMemorySelection,
   type AgentMemorySelectionState,
+  type AgentMemorySourcePreference,
   type AgentProviderId,
   type AgentRuntimeSnapshot,
   type AgentStatus,
@@ -58,6 +59,7 @@ import {
   DEFAULT_AGENT_ACCESS,
   DEFAULT_AGENT_DEFAULTS,
   DEFAULT_AGENT_MEMORY_LIMIT,
+  DEFAULT_AGENT_MEMORY_SOURCE,
   DEFAULT_APP_APPEARANCE,
   DEFAULT_APP_INTERFACE_SIZE,
   DEFAULT_APP_LOGO_COLOR,
@@ -342,9 +344,11 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   let busyMessageMode: BusyMessageModePreference = { mode: DEFAULT_BUSY_MESSAGE_MODE };
   let agentDefaults: AgentDefaults = { ...DEFAULT_AGENT_DEFAULTS };
   let agentMemoryLimit: AgentMemoryLimitPreference = { limit: DEFAULT_AGENT_MEMORY_LIMIT };
+  let agentMemorySource: AgentMemorySourcePreference = { source: DEFAULT_AGENT_MEMORY_SOURCE };
   let promptCacheTtl: PromptCacheTtlSetting = { ...DEFAULT_PROMPT_CACHE_TTL };
   let agentAccess: AgentAccessChange = { revision: 0, everyone: {}, roles: [] };
   const agentMemoryLimitListeners = new Set<(preference: AgentMemoryLimitPreference) => void>();
+  const agentMemorySourceListeners = new Set<(preference: AgentMemorySourcePreference) => void>();
   let remoteSessionReuse: RemoteSessionReusePreference = { ...DEFAULT_REMOTE_SESSION_REUSE_PREFERENCE };
   // The preview computer has Tailscale, so the private route shows what it finds.
   let remoteNetworkRoute: RemoteNetworkRouteState = { route: DEFAULT_REMOTE_NETWORK_ROUTE, tailscaleConnected: true };
@@ -933,6 +937,16 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     onAgentMemoryLimitPreference: (listener) => {
       agentMemoryLimitListeners.add(listener);
       return () => agentMemoryLimitListeners.delete(listener);
+    },
+    getAgentMemorySourcePreference: async () => clone(agentMemorySource),
+    setAgentMemorySourcePreference: async (next) => {
+      agentMemorySource = { ...next };
+      for (const listener of agentMemorySourceListeners) listener(clone(agentMemorySource));
+      return clone(agentMemorySource);
+    },
+    onAgentMemorySourcePreference: (listener) => {
+      agentMemorySourceListeners.add(listener);
+      return () => agentMemorySourceListeners.delete(listener);
     },
     getAppLanguagePreference: async () => clone(languagePreference),
     setAppLanguagePreference: async ({ language }) => {
@@ -1968,6 +1982,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         const {
           agentId: _agentId,
           busyMessageMode,
+          memorySource,
           taskLimit,
           providerAccountId,
           backupModels,
@@ -1992,6 +2007,8 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         // `null` returns the agent to the app default, which an agent records by having no value.
         if (busyMessageMode === null) delete updated.busyMessageMode;
         else if (busyMessageMode) updated.busyMessageMode = busyMessageMode;
+        if (memorySource === null) delete updated.memorySource;
+        else if (memorySource) updated.memorySource = memorySource;
         if (taskLimit === null) delete updated.taskLimit;
         else if (taskLimit) updated.taskLimit = taskLimit;
         agents = agents.map((agent) => (agent.id === updated.id ? updated : agent));

@@ -102,13 +102,16 @@ import type {
 } from "@openbot/contracts/ipc";
 import {
   type AgentDefaults,
+  type AgentMemorySource,
   type AgentModelChoice,
   agentAutomationAllowed,
   agentBrowserProfile,
+  agentMemorySource,
   agentNewChatAllowed,
   agentTaskLimit,
   type BusyMessageMode,
   CONTEXT_RESET_ITEM_TYPE,
+  DEFAULT_AGENT_MEMORY_SOURCE,
   DEFAULT_BUSY_MESSAGE_MODE,
   DEFAULT_PROVIDER_ACCOUNT_ID,
   isContextResetMarker,
@@ -307,6 +310,11 @@ export interface AgentServiceOptions {
    */
   agentMemoryLimit?: () => number;
   /**
+   * Where an agent's memory lives, for agents with no source of their own. The main process owns
+   * the preference. Omitted, the built-in store, which was the only source before the setting existed.
+   */
+  agentMemorySource?: () => AgentMemorySource;
+  /**
    * The server timezone, for a routine an agent creates without a zone from the tool call or the
    * sender. The main process owns the preference. Omitted, the host system zone.
    */
@@ -415,6 +423,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #routineFlowTools: (() => RoutineFlowTools) | undefined;
   readonly #developmentDefaults: boolean;
   readonly #busyMessageMode: () => BusyMessageMode;
+  readonly #appMemorySource: () => AgentMemorySource;
   /** The last turn of each agent's chat that the user stopped. One per agent, so it needs no clean-up. */
   readonly #stoppedTurns = new Map<string, string>();
   /** The agents that asked for a new chat with `start_new_chat`. A restart forgets the request. */
@@ -444,9 +453,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       githubConnector = null,
       hostMemory = null,
       busyMessageMode = () => DEFAULT_BUSY_MESSAGE_MODE,
+      agentMemorySource: appMemorySource = () => DEFAULT_AGENT_MEMORY_SOURCE,
     } = options;
     this.#developmentDefaults = developmentDefaults;
     this.#busyMessageMode = busyMessageMode;
+    this.#appMemorySource = appMemorySource;
     this.#localSkillTools = localSkillTools;
     this.#routineFlowTools = routineFlowTools;
     this.#store = store;
@@ -520,6 +531,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       emit: (event) => this.#emit(event),
       emitError: (code, error, agentId) => this.#emitError(code, error, agentId),
       ...(options.agentMemoryLimit ? { limit: options.agentMemoryLimit } : {}),
+      source: (agentId) => this.#memorySourceForId(agentId),
     });
     // One timer for both routine owners. The sources are read lazily because `channels` and its
     // scheduler are built further down, and because an owner's earliest routine changes constantly.
@@ -877,6 +889,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       // Only a server has a memory reading.
       serverHost: hostMemory !== null,
       sectionTeammates: (agentId) => this.sectionTeammates(agentId),
+      memorySource: (agent) => this.#memorySource(agent),
       hooks: {
         logRecovery: (agentId, provider, outcome) =>
           logger.warn("Recovered an unavailable provider session.", { agentId, provider, outcome }),
@@ -1293,6 +1306,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       ...(this.#localSkillTools === undefined ? {} : { localSkillTools: this.#localSkillTools }),
       ...(this.#routineFlowTools === undefined ? {} : { routineFlowTools: this.#routineFlowTools }),
       ...(options.approvalAutomation === undefined ? {} : { approvalAutomation: options.approvalAutomation }),
+      memorySource: (agent) => this.#memorySource(agent),
       ...(options.visualPreview === undefined ? {} : { visualPreview: options.visualPreview }),
       ...(options.screenCapture === undefined ? {} : { screenCapture: options.screenCapture }),
       mcpServers: mcpServersFromGateway(this.#mcp, options.prepareMcpTest),
@@ -1534,6 +1548,21 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   /** The developer instructions state the limit, so a new limit reloads every agent's threads. */
   memoryLimitChanged(): void {
+    for (const agent of this.listAgents()) this.#conversation.unloadAgentThreads(agent.id);
+  }
+
+  /** The memory source that applies to an agent: its own value, the app setting otherwise. */
+  #memorySource(agent: AgentSummary): AgentMemorySource {
+    return agentMemorySource(agent, this.#appMemorySource());
+  }
+
+  #memorySourceForId(agentId: string): AgentMemorySource {
+    const agent = this.#store.list().find((entry) => entry.id === agentId);
+    return agent ? this.#memorySource(agent) : this.#appMemorySource();
+  }
+
+  /** The instructions and the tool lists state the source, so a new source reloads every agent's threads. */
+  memorySourceChanged(): void {
     for (const agent of this.listAgents()) this.#conversation.unloadAgentThreads(agent.id);
   }
 

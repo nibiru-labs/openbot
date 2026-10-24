@@ -42,6 +42,7 @@ import {
   defaultProviderModel,
   isAgentAccess,
   isAgentBackupModels,
+  isAgentMemorySource,
   isAgentModel,
   isAgentSessionSettingOverrides,
   isAgentSessionSettingResets,
@@ -722,6 +723,11 @@ export class AgentStore {
         if (!isBoolean(input.quickAcknowledgement)) throw new Error("Invalid quick acknowledgement value.");
         next.quickAcknowledgement = input.quickAcknowledgement;
       }
+      if (input.memorySource === null) delete next.memorySource;
+      else if (input.memorySource !== undefined) {
+        if (!isAgentMemorySource(input.memorySource)) throw new Error("Invalid memory source.");
+        next.memorySource = input.memorySource;
+      }
       if (input.ownBrowserSession !== undefined) {
         if (!isBoolean(input.ownBrowserSession)) throw new Error("Invalid browser session value.");
         next.ownBrowserSession = input.ownBrowserSession;
@@ -812,6 +818,7 @@ export class AgentStore {
       if (next.allowAutomation === undefined) delete agent.allowAutomation;
       if (next.allowNewChat === undefined) delete agent.allowNewChat;
       if (next.quickAcknowledgement === undefined) delete agent.quickAcknowledgement;
+      if (next.memorySource === undefined) delete agent.memorySource;
       try {
         this.#persist(modelChange ? "agent.model-changed" : "agent.updated", modelChange);
       } catch (error) {
@@ -825,6 +832,7 @@ export class AgentStore {
         if (previous.allowAutomation === undefined) delete agent.allowAutomation;
         if (previous.allowNewChat === undefined) delete agent.allowNewChat;
         if (previous.quickAcknowledgement === undefined) delete agent.quickAcknowledgement;
+        if (previous.memorySource === undefined) delete agent.memorySource;
         throw error;
       }
       return { ...agent };
@@ -1830,6 +1838,7 @@ function isStoredAgent(value: unknown): value is PersistedStoredAgent {
     (record.allowAutomation === undefined || isBoolean(record.allowAutomation)) &&
     (record.allowNewChat === undefined || isBoolean(record.allowNewChat)) &&
     (record.quickAcknowledgement === undefined || isBoolean(record.quickAcknowledgement)) &&
+    (record.memorySource === undefined || isAgentMemorySource(record.memorySource)) &&
     (record.ownBrowserSession === undefined || isBoolean(record.ownBrowserSession)) &&
     (record.browserProfileId === undefined || isBrowserProfileId(record.browserProfileId)) &&
     (record.fastMode === undefined || isBoolean(record.fastMode)) &&
@@ -1905,6 +1914,10 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
     value.quickAcknowledgement === undefined || isBoolean(value.quickAcknowledgement)
       ? value.quickAcknowledgement
       : reset("quickAcknowledgement", undefined);
+  const memorySource =
+    value.memorySource === undefined || isAgentMemorySource(value.memorySource)
+      ? value.memorySource
+      : reset("memorySource", undefined);
   const ownBrowserSession =
     value.ownBrowserSession === undefined || isBoolean(value.ownBrowserSession)
       ? value.ownBrowserSession
@@ -1985,6 +1998,7 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
     ...(allowAutomation === undefined ? {} : { allowAutomation }),
     ...(allowNewChat === undefined ? {} : { allowNewChat }),
     ...(quickAcknowledgement === undefined ? {} : { quickAcknowledgement }),
+    ...(memorySource === undefined ? {} : { memorySource }),
     ...(ownBrowserSession === undefined ? {} : { ownBrowserSession }),
     ...(browserProfileId === undefined ? {} : { browserProfileId }),
     ...(fastMode === undefined ? {} : { fastMode }),

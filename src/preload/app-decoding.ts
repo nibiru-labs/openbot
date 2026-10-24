@@ -20,6 +20,7 @@ import {
   AGENT_DEFAULT_KEYS,
   type AgentDefaults,
   type AgentMemoryLimitPreference,
+  type AgentMemorySourcePreference,
   type AnalyticsPreference,
   type AppAppearancePreference,
   type AppBehaviorPreference,
@@ -55,6 +56,7 @@ import {
   IDLE_RESTART_TARGETS,
   type IdleRestart,
   isAgentMemoryLimit,
+  isAgentMemorySource,
   isAgentModel,
   isAgentProvider,
   isAppAppearance,
@@ -172,6 +174,12 @@ export function decodeAgentMemoryLimitPreference(value: unknown): AgentMemoryLim
   const preference = decodeRecord(value, "agent memory limit preference");
   if (!isAgentMemoryLimit(preference.limit)) throw new Error("Invalid agent memory limit.");
   return { limit: preference.limit };
+}
+
+export function decodeAgentMemorySourcePreference(value: unknown): AgentMemorySourcePreference {
+  const preference = decodeRecord(value, "agent memory source preference");
+  if (!isAgentMemorySource(preference.source)) throw new Error("Invalid agent memory source.");
+  return { source: preference.source };
 }
 
 export function decodeAppLanguagePreference(value: unknown): AppLanguagePreference {

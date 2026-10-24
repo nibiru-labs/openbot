@@ -85,6 +85,8 @@ export const messages = defineMessages("error.backend", {
   "error.backend.memorySelectionUserControlled": "The user controls this memory selection. Keep the user's choice.",
   "error.backend.memorySearchQuery": "Enter one or more search words, up to 256 characters.",
   "error.backend.memoryOperationFailed": "The memory operation failed. Try again.",
+  "error.backend.memorySourceOff":
+    "Memory is off for this agent. Its saved memories stay stored, but no memory tool runs while it is off.",
   "error.backend.memoryGone": "This memory no longer exists.",
   "error.backend.routineGone": "This routine no longer exists.",
   "error.backend.turnNotStarted": "The provider did not start this turn.",

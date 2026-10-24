@@ -175,6 +175,9 @@ export function standingProfileChanged(
     workspaceAccessEnforced(previous) !== workspaceAccessEnforced(agent) ||
     agentComputerUseEnabled(previous) !== agentComputerUseEnabled(agent) ||
     agentAutomationAllowed(previous, previousDefaults) !== agentAutomationAllowed(agent, defaults) ||
-    agentQuickAcknowledgementEnabled(previous, previousDefaults) !== agentQuickAcknowledgementEnabled(agent, defaults)
+    agentQuickAcknowledgementEnabled(previous, previousDefaults) !==
+      agentQuickAcknowledgementEnabled(agent, defaults) ||
+    // The instructions and the tool lists state the source, so a new one reloads the threads.
+    previous.memorySource !== agent.memorySource
   );
 }

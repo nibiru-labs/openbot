@@ -93,6 +93,8 @@ export const messages = {
     "O usuário controla esta seleção de memória. Mantenha a escolha do usuário.",
   "error.backend.memorySearchQuery": "Digite uma ou mais palavras de busca, até 256 caracteres.",
   "error.backend.memoryOperationFailed": "A operação de memória falhou. Tente de novo.",
+  "error.backend.memorySourceOff":
+    "Memory is off for this agent. Its saved memories stay stored, but no memory tool runs while it is off.",
   "error.backend.memoryGone": "Esta memória não existe mais.",
   "error.backend.routineGone": "Esta rotina não existe mais.",
   "error.backend.turnNotStarted": "O provedor não iniciou este turno.",

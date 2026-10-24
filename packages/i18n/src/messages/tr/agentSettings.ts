@@ -83,6 +83,8 @@ export const messages = {
   "agentSettings.runtime.accessLabel": "Ajan erişimi",
   "agentSettings.runtime.busyMessage": "Çalışırken",
   "agentSettings.runtime.busyMessageLabel": "Ajan çalışırken gönderilen mesajlar",
+  "agentSettings.runtime.memorySource": "Memory",
+  "agentSettings.runtime.memorySourceLabel": "Agent memory source",
   "agentSettings.runtime.taskLimit": "Eş zamanlı görev",
   "agentSettings.runtime.taskLimitLabel": "Aynı anda çalışan görevler",
   "agentSettings.runtime.workingDirectory": "Çalışma dizini",
@@ -149,6 +151,13 @@ export const messages = {
   "agentSettings.quickAcknowledgement.title": "Uzun görevlerden önce planı göster",
   "agentSettings.quickAcknowledgement.description":
     "Uzun bir görevden önce ajan planını gösterir. 10 sn sonra veya Başlat'a bastığınızda başlar.",
+  "agentSettings.memorySource.title": "Agent memory",
+  "agentSettings.memorySource.description":
+    "Where the agent's memory lives. OpenBot keeps it in the profile and puts essential entries in the prompt. Off keeps the entries stored, but none go into the prompt and the memory tools are off.",
+  "agentSettings.memorySource.openbot": "OpenBot",
+  "agentSettings.memorySource.off": "Off",
+  "agentSettings.memorySource.appDefaultOpenBot": "App default (OpenBot)",
+  "agentSettings.memorySource.appDefaultOff": "App default (Off)",
   "agentSettings.browserProfile.label": "Tarayıcı profili",
   "agentSettings.browserProfile.shared": "Paylaşılan",
   "agentSettings.browserProfile.agent": "Yalnızca bu ajan",

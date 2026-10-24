@@ -84,6 +84,8 @@ export const messages = {
   "agentSettings.runtime.accessLabel": "Accesso dell'agente",
   "agentSettings.runtime.busyMessage": "Durante il lavoro",
   "agentSettings.runtime.busyMessageLabel": "Messaggi mentre l'agente lavora",
+  "agentSettings.runtime.memorySource": "Memory",
+  "agentSettings.runtime.memorySourceLabel": "Agent memory source",
   "agentSettings.runtime.taskLimit": "Attività parallele",
   "agentSettings.runtime.taskLimitLabel": "Attività eseguite contemporaneamente",
   "agentSettings.runtime.workingDirectory": "Cartella di lavoro",
@@ -155,6 +157,13 @@ export const messages = {
   "agentSettings.quickAcknowledgement.title": "Mostra il piano prima delle attività lunghe",
   "agentSettings.quickAcknowledgement.description":
     "Prima di un'attività lunga, l'agente mostra il suo piano. Inizia dopo 10 s o quando premi Avvia.",
+  "agentSettings.memorySource.title": "Agent memory",
+  "agentSettings.memorySource.description":
+    "Where the agent's memory lives. OpenBot keeps it in the profile and puts essential entries in the prompt. Off keeps the entries stored, but none go into the prompt and the memory tools are off.",
+  "agentSettings.memorySource.openbot": "OpenBot",
+  "agentSettings.memorySource.off": "Off",
+  "agentSettings.memorySource.appDefaultOpenBot": "App default (OpenBot)",
+  "agentSettings.memorySource.appDefaultOff": "App default (Off)",
   "agentSettings.browserProfile.label": "Profilo del browser",
   "agentSettings.browserProfile.shared": "Condiviso",
   "agentSettings.browserProfile.agent": "Solo questo agente",

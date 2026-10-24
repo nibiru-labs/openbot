@@ -4,6 +4,7 @@ import type {
   AgentEvent,
   AgentMemory,
   AgentMemorySelectionState,
+  AgentMemorySource,
   ConversationMemoryChange,
   CreateAgentMemoryInput,
   DeleteAgentMemoryInput,
@@ -25,6 +26,7 @@ import { type DynamicToolCallParams, isRecord } from "../protocol";
 import type { ConversationRuntime } from "./conversation-runtime";
 import { listMemoriesInput, searchMemoriesInput, setMemoryInclusionInput } from "./memory-tool-inputs";
 import { type OpenBotToolResponse, openBotToolFailure, openBotToolResult } from "./routine-tools";
+import { MEMORY_TOOL_NAMES } from "./tool-catalog";
 
 type PendingMemoryMutation =
   | {
@@ -65,6 +67,12 @@ export interface AgentMemoriesOptions {
   emitError(code: string, error: unknown, agentId?: string): void;
   /** How many memories one agent can hold: the app setting. Omitted, the default cap. */
   limit?: () => number;
+  /**
+   * The memory source that applies to an agent, resolved per agent. Omitted, the built-in store.
+   * With the source off, every memory tool call fails and nothing is read or written; the entries
+   * stay stored for when the source is on again.
+   */
+  source?: (agentId: string) => AgentMemorySource;
 }
 
 /**
@@ -82,6 +90,7 @@ export class AgentMemories {
   readonly #emit: (event: AgentEvent) => void;
   readonly #emitError: (code: string, error: unknown, agentId?: string) => void;
   readonly #memories: AgentMemoryStore;
+  readonly #source: (agentId: string) => AgentMemorySource;
   readonly #pending = new Map<string, PendingMemoryMutation[]>();
   readonly #epochs = new Map<string, number>();
 
@@ -90,6 +99,7 @@ export class AgentMemories {
     this.#emit = options.emit;
     this.#emitError = options.emitError;
     this.#memories = new AgentMemoryStore(options.store.database, options.limit);
+    this.#source = options.source ?? (() => "openbot");
   }
 
   limit(): number {
@@ -186,6 +196,10 @@ export class AgentMemories {
     senderAgentId: string,
     redact: (value: string) => string,
   ): OpenBotToolResponse | null {
+    // Every memory tool passes here, among the other tools of the router chain. With the source
+    // off the tool is not offered, and a call that arrives anyway fails without a read or a write.
+    if (MEMORY_TOOL_NAMES.has(params.tool) && this.#source(senderAgentId) === "off")
+      return openBotToolFailure(sourceText("error.backend.memorySourceOff"));
     if (params.tool === "search_memories") {
       const parsed = searchMemoriesInput.safeParse(params.arguments);
       if (!parsed.success) return openBotToolFailure(sourceText("error.backend.memorySearchQuery"));

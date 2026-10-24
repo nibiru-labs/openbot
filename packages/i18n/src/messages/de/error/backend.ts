@@ -92,6 +92,8 @@ export const messages = {
     "Der Nutzer steuert diese Auswahl der Erinnerung. Behalte die Wahl des Nutzers bei.",
   "error.backend.memorySearchQuery": "Gib ein oder mehrere Suchwörter mit bis zu 256 Zeichen ein.",
   "error.backend.memoryOperationFailed": "Der Vorgang für die Erinnerung ist fehlgeschlagen. Versuche es erneut.",
+  "error.backend.memorySourceOff":
+    "Memory is off for this agent. Its saved memories stay stored, but no memory tool runs while it is off.",
   "error.backend.memoryGone": "Diese Erinnerung existiert nicht mehr.",
   "error.backend.routineGone": "Diese Routine existiert nicht mehr.",
   "error.backend.turnNotStarted": "Der Anbieter hat diesen Durchlauf nicht gestartet.",

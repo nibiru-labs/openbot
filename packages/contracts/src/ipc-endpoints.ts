@@ -64,6 +64,7 @@ import type {
   AgentMemory,
   AgentMemoryLimitPreference,
   AgentMemorySelectionState,
+  AgentMemorySourcePreference,
   CreateAgentMemoryInput,
   DeleteAgentMemoryInput,
   HostAgentMemoryLimit,
@@ -588,6 +589,11 @@ export const IPC_ENDPOINTS = {
     // Server settings set the limit of this computer (`hostAdmin.setAgentMemoryLimit`), here or from a
     // joined admin, so main tells the window.
     agentMemoryLimitPreference: event<AgentMemoryLimitPreference>()("app:agent-memory-limit"),
+    getAgentMemorySourcePreference: request<undefined, AgentMemorySourcePreference>()("app:get-agent-memory-source"),
+    setAgentMemorySourcePreference: request<AgentMemorySourcePreference, AgentMemorySourcePreference>()(
+      "app:set-agent-memory-source",
+    ),
+    agentMemorySourcePreference: event<AgentMemorySourcePreference>()("app:agent-memory-source"),
     getRemoteSessionReusePreference: request<undefined, RemoteSessionReusePreference>()("app:get-remote-session-reuse"),
     setRemoteSessionReusePreference: request<RemoteSessionReusePreference, RemoteSessionReusePreference>()(
       "app:set-remote-session-reuse",

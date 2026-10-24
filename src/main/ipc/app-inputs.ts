@@ -2,6 +2,7 @@ import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type {
   AgentDefaults,
   AgentMemoryLimitPreference,
+  AgentMemorySourcePreference,
   AgentProviderId,
   AppBehaviorPreferenceChange,
   BrowserDockAction,
@@ -44,6 +45,7 @@ import {
   IDLE_RESTART_TARGETS,
   isAgentDefaults,
   isAgentMemoryLimit,
+  isAgentMemorySource,
   isAgentModel,
   isAgentProvider,
   isAppAppearance,
@@ -111,6 +113,12 @@ export function parseAgentDefaults(input: unknown): AgentDefaults {
 export function parseAgentMemoryLimitPreference(input: unknown): AgentMemoryLimitPreference {
   if (!isDynamicRecord(input) || !isAgentMemoryLimit(input.limit)) throw new Error("Agent memory limit is required.");
   return { limit: input.limit };
+}
+
+export function parseAgentMemorySourcePreference(input: unknown): AgentMemorySourcePreference {
+  if (!isDynamicRecord(input) || !isAgentMemorySource(input.source))
+    throw new Error("Agent memory source is required.");
+  return { source: input.source };
 }
 
 export function parseChatWindowTarget(input: unknown): ChatWindowTarget {

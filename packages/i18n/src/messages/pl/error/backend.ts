@@ -89,6 +89,8 @@ export const messages = {
     "Ten wybór wspomnienia kontroluje użytkownik. Zachowaj wybór użytkownika.",
   "error.backend.memorySearchQuery": "Wpisz jedno lub więcej słów wyszukiwania, do 256 znaków.",
   "error.backend.memoryOperationFailed": "Operacja na wspomnieniach nie powiodła się. Spróbuj ponownie.",
+  "error.backend.memorySourceOff":
+    "Memory is off for this agent. Its saved memories stay stored, but no memory tool runs while it is off.",
   "error.backend.memoryGone": "To wspomnienie już nie istnieje.",
   "error.backend.routineGone": "Ta rutyna już nie istnieje.",
   "error.backend.turnNotStarted": "Dostawca nie rozpoczął tej tury.",

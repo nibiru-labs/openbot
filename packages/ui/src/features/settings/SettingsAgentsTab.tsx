@@ -30,8 +30,8 @@ import { For, Show } from "solid-js";
 import { useText } from "../../text";
 import { AgentAvatar } from "../agents/AgentAvatar";
 
-/** A setting of the Agents tab: the three account defaults, and "Steer agents while they work". */
-export type AgentDefaultSetting = AgentDefaultKey | "busyMessageMode";
+/** A setting of the Agents tab: the three account defaults, "Steer agents while they work", and the memory source. */
+export type AgentDefaultSetting = AgentDefaultKey | "busyMessageMode" | "memorySource";
 
 /** What one agent does for a setting: follow the default, or its own value. */
 export type AgentDefaultChoice = "default" | "on" | "off";
@@ -41,7 +41,7 @@ const CHOICES: AgentDefaultChoice[] = ["default", "on", "off"];
 /** An agent as the Agents tab shows it. */
 export type AgentDefaultsAgent = Pick<
   ClientAgentSummary,
-  "id" | "name" | "avatarSeed" | "avatarHue" | "avatarUrl" | AgentDefaultKey | "busyMessageMode"
+  "id" | "name" | "avatarSeed" | "avatarHue" | "avatarUrl" | AgentDefaultKey | "busyMessageMode" | "memorySource"
 >;
 
 /** The settings in page order, with the title and description that agent settings show. */
@@ -62,6 +62,11 @@ export const AGENT_DEFAULT_SETTINGS = [
     description: "agentSettings.quickAcknowledgement.description",
   },
   { key: "busyMessageMode", title: "settings.busyMessage.title", description: "settings.busyMessage.description" },
+  {
+    key: "memorySource",
+    title: "agentSettings.memorySource.title",
+    description: "agentSettings.memorySource.description",
+  },
 ] as const satisfies ReadonlyArray<{ key: AgentDefaultSetting; title: AppTextKey; description: AppTextKey }>;
 
 export function agentDefaultSettingTitle(setting: AgentDefaultSetting): AppTextKey {
@@ -73,6 +78,10 @@ export function agentDefaultChoice(agent: AgentDefaultsAgent, setting: AgentDefa
   if (setting === "busyMessageMode") {
     if (agent.busyMessageMode === undefined) return "default";
     return agent.busyMessageMode === "steer" ? "on" : "off";
+  }
+  if (setting === "memorySource") {
+    if (agent.memorySource === undefined) return "default";
+    return agent.memorySource === "openbot" ? "on" : "off";
   }
   const own = agent[setting];
   if (own === undefined) return "default";
@@ -125,6 +134,8 @@ export interface SettingsAgentsTabProps {
   defaults: AgentDefaults;
   /** The app default of "Steer agents while they work". */
   steer: boolean;
+  /** The app memory source, as on or off: on is the built-in store. */
+  memoryOn: boolean;
   /** The open setting, or null for the list of settings. */
   setting: AgentDefaultSetting | null;
   /** The dialog element that the menus portal into. */
@@ -143,7 +154,7 @@ export interface SettingsAgentsTabProps {
 export function SettingsAgentsTab(props: SettingsAgentsTabProps) {
   const { t } = useText();
   const defaultOn = (setting: AgentDefaultSetting) =>
-    setting === "busyMessageMode" ? props.steer : props.defaults[setting];
+    setting === "busyMessageMode" ? props.steer : setting === "memorySource" ? props.memoryOn : props.defaults[setting];
   const isOn = (agent: AgentDefaultsAgent, setting: AgentDefaultSetting) => {
     const choice = agentDefaultChoice(agent, setting);
     return choice === "default" ? defaultOn(setting) : choice === "on";
@@ -151,12 +162,18 @@ export function SettingsAgentsTab(props: SettingsAgentsTabProps) {
   const valueLabel = (setting: AgentDefaultSetting, on: boolean) => {
     if (setting === "busyMessageMode")
       return t(on ? "agentSettings.busyMessage.steer" : "agentSettings.busyMessage.queue");
+    if (setting === "memorySource")
+      return t(on ? "agentSettings.memorySource.openbot" : "agentSettings.memorySource.off");
     return t(on ? "settings.agentDefaults.on" : "settings.agentDefaults.off");
   };
   const choiceLabel = (setting: AgentDefaultSetting, choice: AgentDefaultChoice) => {
     if (choice !== "default") return valueLabel(setting, choice === "on");
     if (setting === "busyMessageMode")
       return t(props.steer ? "agentSettings.busyMessage.appDefaultSteer" : "agentSettings.busyMessage.appDefaultQueue");
+    if (setting === "memorySource")
+      return t(
+        props.memoryOn ? "agentSettings.memorySource.appDefaultOpenBot" : "agentSettings.memorySource.appDefaultOff",
+      );
     return t("settings.agentDefaults.followDefault", { value: valueLabel(setting, defaultOn(setting)) });
   };
 

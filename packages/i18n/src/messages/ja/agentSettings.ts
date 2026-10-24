@@ -86,6 +86,8 @@ export const messages = {
   "agentSettings.runtime.accessLabel": "エージェントのアクセス",
   "agentSettings.runtime.busyMessage": "作業中",
   "agentSettings.runtime.busyMessageLabel": "エージェントの作業中に送るメッセージ",
+  "agentSettings.runtime.memorySource": "Memory",
+  "agentSettings.runtime.memorySourceLabel": "Agent memory source",
   "agentSettings.runtime.taskLimit": "同時実行タスク数",
   "agentSettings.runtime.taskLimitLabel": "同時に実行するタスクの数",
   "agentSettings.runtime.workingDirectory": "作業ディレクトリ",
@@ -157,6 +159,13 @@ export const messages = {
   "agentSettings.quickAcknowledgement.title": "長いタスクの前に計画を表示",
   "agentSettings.quickAcknowledgement.description":
     "長いタスクの前に、エージェントが計画を表示します。10 秒後、または開始を押すと始まります。",
+  "agentSettings.memorySource.title": "Agent memory",
+  "agentSettings.memorySource.description":
+    "Where the agent's memory lives. OpenBot keeps it in the profile and puts essential entries in the prompt. Off keeps the entries stored, but none go into the prompt and the memory tools are off.",
+  "agentSettings.memorySource.openbot": "OpenBot",
+  "agentSettings.memorySource.off": "Off",
+  "agentSettings.memorySource.appDefaultOpenBot": "App default (OpenBot)",
+  "agentSettings.memorySource.appDefaultOff": "App default (Off)",
   "agentSettings.browserProfile.label": "ブラウザープロファイル",
   "agentSettings.browserProfile.shared": "共有",
   "agentSettings.browserProfile.agent": "このエージェントのみ",

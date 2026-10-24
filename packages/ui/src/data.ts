@@ -250,6 +250,8 @@ export interface AgentProfile {
   fastMode?: boolean | undefined;
   /** Absent means the app default. Absent for an agent on a remote host too, which does not share it. */
   busyMessageMode?: ClientAgentSummary["busyMessageMode"];
+  /** Absent means the app memory source. Local-only, like `busyMessageMode`. */
+  memorySource?: ClientAgentSummary["memorySource"];
   /** Absent means the default task limit. Absent for an agent on a remote host too, which runs no tasks. */
   taskLimit?: ClientAgentSummary["taskLimit"];
   /** Absent means ask before a switch at a usage limit. Absent for an agent on a remote host too. */

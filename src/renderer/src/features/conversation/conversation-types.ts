@@ -4,6 +4,7 @@ import type {
   AgentContextState,
   AgentDefaults,
   AgentEvent,
+  AgentMemorySource,
   AgentModelChoice,
   AgentProviderId,
   AgentStatus,
@@ -313,6 +314,8 @@ export interface ConversationProps {
   agentDefaults?: AgentDefaults | undefined;
   /** The app memory cap. Local agents only. */
   agentMemoryLimit?: number | undefined;
+  /** The app memory source an agent without its own follows. Local agents only. */
+  defaultMemorySource?: AgentMemorySource | undefined;
   /** Writes the agent's Permissions level. Absent where the user may not change it. */
   onUpdateAgentPermissions?: ((input: UpdateAgentAdminSettingsInput) => Promise<void>) | undefined;
   /** Starts a new chat with the agent. Absent when its host does not serve `context-reset-v1`. */

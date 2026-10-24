@@ -85,6 +85,8 @@ export const messages = {
   "error.backend.memorySelectionUserControlled": "이 메모리 선택은 사용자가 관리해요. 사용자의 선택을 유지하세요.",
   "error.backend.memorySearchQuery": "검색어를 하나 이상 입력하세요. 최대 256자까지 가능해요.",
   "error.backend.memoryOperationFailed": "메모리 작업에 실패했어요. 다시 시도해 주세요.",
+  "error.backend.memorySourceOff":
+    "Memory is off for this agent. Its saved memories stay stored, but no memory tool runs while it is off.",
   "error.backend.memoryGone": "이 메모리는 더 이상 없어요.",
   "error.backend.routineGone": "이 루틴은 더 이상 없어요.",
   "error.backend.turnNotStarted": "제공자가 이 턴을 시작하지 않았어요.",

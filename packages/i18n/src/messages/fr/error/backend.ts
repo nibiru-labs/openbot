@@ -92,6 +92,8 @@ export const messages = {
     "L’utilisateur contrôle la sélection de ce souvenir. Conservez le choix de l’utilisateur.",
   "error.backend.memorySearchQuery": "Saisissez un ou plusieurs mots de recherche, jusqu’à 256 caractères.",
   "error.backend.memoryOperationFailed": "L’opération sur le souvenir a échoué. Réessayez.",
+  "error.backend.memorySourceOff":
+    "Memory is off for this agent. Its saved memories stay stored, but no memory tool runs while it is off.",
   "error.backend.memoryGone": "Ce souvenir n’existe plus.",
   "error.backend.routineGone": "Cette routine n’existe plus.",
   "error.backend.turnNotStarted": "Le fournisseur n’a pas démarré ce tour.",

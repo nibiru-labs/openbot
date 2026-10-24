@@ -91,6 +91,8 @@ export const messages = {
   "agentSettings.runtime.accessLabel": "Доступ агента",
   "agentSettings.runtime.busyMessage": "Во время работы",
   "agentSettings.runtime.busyMessageLabel": "Сообщения, пока агент работает",
+  "agentSettings.runtime.memorySource": "Memory",
+  "agentSettings.runtime.memorySourceLabel": "Agent memory source",
   "agentSettings.runtime.taskLimit": "Задач одновременно",
   "agentSettings.runtime.taskLimitLabel": "Сколько задач выполняется одновременно",
   "agentSettings.runtime.workingDirectory": "Рабочая папка",
@@ -182,6 +184,13 @@ export const messages = {
   "agentSettings.quickAcknowledgement.title": "Показывать план перед долгими задачами",
   "agentSettings.quickAcknowledgement.description":
     "Перед долгой задачей агент показывает свой план. Он начинает через 10 с или когда вы нажимаете «Начать».",
+  "agentSettings.memorySource.title": "Agent memory",
+  "agentSettings.memorySource.description":
+    "Where the agent's memory lives. OpenBot keeps it in the profile and puts essential entries in the prompt. Off keeps the entries stored, but none go into the prompt and the memory tools are off.",
+  "agentSettings.memorySource.openbot": "OpenBot",
+  "agentSettings.memorySource.off": "Off",
+  "agentSettings.memorySource.appDefaultOpenBot": "App default (OpenBot)",
+  "agentSettings.memorySource.appDefaultOff": "App default (Off)",
   "agentSettings.browserProfile.label": "Профиль браузера",
   "agentSettings.browserProfile.shared": "Общий",
   "agentSettings.browserProfile.agent": "Только этот агент",

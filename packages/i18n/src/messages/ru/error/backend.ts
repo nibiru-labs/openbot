@@ -86,6 +86,8 @@ export const messages = {
   "error.backend.memorySelectionUserControlled": "Этот выбор памяти задаёт пользователь. Сохраните выбор пользователя.",
   "error.backend.memorySearchQuery": "Введите одно или несколько слов для поиска, не более 256 символов.",
   "error.backend.memoryOperationFailed": "Операция с памятью не удалась. Повторите попытку.",
+  "error.backend.memorySourceOff":
+    "Memory is off for this agent. Its saved memories stay stored, but no memory tool runs while it is off.",
   "error.backend.memoryGone": "Этой записи памяти больше нет.",
   "error.backend.routineGone": "Этой регулярной задачи больше нет.",
   "error.backend.turnNotStarted": "Провайдер не начал этот ход.",

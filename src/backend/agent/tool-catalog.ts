@@ -1,4 +1,4 @@
-import type { AgentSummary } from "@openbot/contracts/ipc";
+import type { AgentMemorySource, AgentSummary } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
 import { z } from "zod";
 import { BROWSER_DYNAMIC_TOOLS, OPENBOT_BROWSER_NAMESPACE } from "../browser-tools";
@@ -86,6 +86,50 @@ export const VISIBLE_DYNAMIC_TOOLS = [
   },
 ];
 
+/** The tools of the built-in memory store, by their unqualified name. */
+export const MEMORY_TOOL_NAMES = new Set([
+  "search_memories",
+  "list_memories",
+  "set_memory_inclusion",
+  "remember",
+  "forget_memory",
+]);
+
+function isMemoryToolName(name: string): boolean {
+  return MEMORY_TOOL_NAMES.has(name);
+}
+
+/**
+ * The definitions a thread offers for a memory source. With the source off, no memory tool is
+ * offered, and the search catalog does not name one either. Execution is gated separately in
+ * `AgentMemories`, so a call that arrives anyway still fails.
+ */
+export function visibleToolDefinitions(source: AgentMemorySource) {
+  if (source !== "off") return VISIBLE_TOOL_DEFINITIONS;
+  const catalog = BUILTIN_TOOL_CATALOG.filter((entry) => !isMemoryToolName(entry.tool))
+    .map((tool) => tool.name)
+    .join(", ");
+  return VISIBLE_TOOL_DEFINITIONS.filter((definition) => !isMemoryToolName(definition.name)).map((definition) =>
+    definition.name === "tool_search"
+      ? { ...definition, description: definition.description.replace(INITIAL_TOOL_CATALOG, catalog) }
+      : definition,
+  );
+}
+
+/** `VISIBLE_DYNAMIC_TOOLS` for a memory source: the same namespace with the source's definitions. */
+export function visibleDynamicTools(source: AgentMemorySource) {
+  if (source !== "off") return VISIBLE_DYNAMIC_TOOLS;
+  return VISIBLE_DYNAMIC_TOOLS.map((namespace) => ({
+    ...namespace,
+    tools: visibleToolDefinitions(source).map((definition) => ({
+      type: "function" as const,
+      name: definition.name,
+      description: definition.description,
+      inputSchema: z.toJSONSchema(z.strictObject(definition.shape), { target: "draft-7" }),
+    })),
+  }));
+}
+
 /**
  * Claude names a bridge call `mcp__openbot__tool_call`. Readers of its items get the name of the tool it
  * calls, in the form Claude gives a direct tool. A name outside the catalog is model text and stays out.
@@ -114,12 +158,6 @@ function words(text: string): string[] {
 /** Each step to describe a tool sends the full context again, so search includes the schemas of its best matches. */
 const READY_SEARCH_RESULTS = 3;
 
-function requireTool(name: string) {
-  const tool = BUILTIN_TOOL_CATALOG.find((entry) => entry.name === name);
-  if (!tool) throw new Error(sourceText("error.agent.toolRequestInvalid"));
-  return tool;
-}
-
 /** Returns null for an invalid envelope. No supplied values are echoed into errors or logs. */
 export function resolveDeferredTool(params: DynamicToolCallParams): DynamicToolCallParams | null {
   const parsed = callSchema.safeParse(params.arguments);
@@ -133,7 +171,15 @@ function toolGuidanceFor(entries: readonly (typeof BUILTIN_TOOL_CATALOG)[number]
   return [...new Set(entries.map((entry) => toolGuidance(entry.namespace, entry.tool, agent)))].filter(Boolean);
 }
 
-export function discoverTools(params: DynamicToolCallParams, agent: AgentSummary) {
+export function discoverTools(
+  params: DynamicToolCallParams,
+  agent: AgentSummary,
+  memorySource: AgentMemorySource = "openbot",
+) {
+  const catalog =
+    memorySource === "off"
+      ? BUILTIN_TOOL_CATALOG.filter((entry) => !isMemoryToolName(entry.tool))
+      : BUILTIN_TOOL_CATALOG;
   if (params.tool === "tool_search") {
     const parsed = searchSchema.safeParse(params.arguments);
     if (!parsed.success) throw new Error(sourceText("error.agent.toolRequestInvalid"));
@@ -141,19 +187,20 @@ export function discoverTools(params: DynamicToolCallParams, agent: AgentSummary
       query.toLowerCase(),
     );
     const terms = new Set(queries.flatMap(words));
-    const matches = BUILTIN_TOOL_CATALOG.map((entry, index) => {
-      const nameWords = new Set(words(entry.name));
-      const descriptionWords = new Set(words(entry.description));
-      const exact = queries.some((query) => query === entry.name || query === entry.tool);
-      // A strong result matches each word of its tool name. Namespace words, such as "browser", match a whole
-      // namespace, and one shared verb, such as "read", matches many unrelated tools.
-      const strong = exact || words(entry.tool).every((word) => terms.has(word));
-      const score = [...terms].reduce(
-        (sum, term) => sum + (nameWords.has(term) ? 3 : descriptionWords.has(term) ? 1 : 0),
-        0,
-      );
-      return { entry, index, exact, strong, score };
-    })
+    const matches = catalog
+      .map((entry, index) => {
+        const nameWords = new Set(words(entry.name));
+        const descriptionWords = new Set(words(entry.description));
+        const exact = queries.some((query) => query === entry.name || query === entry.tool);
+        // A strong result matches each word of its tool name. Namespace words, such as "browser", match a whole
+        // namespace, and one shared verb, such as "read", matches many unrelated tools.
+        const strong = exact || words(entry.tool).every((word) => terms.has(word));
+        const score = [...terms].reduce(
+          (sum, term) => sum + (nameWords.has(term) ? 3 : descriptionWords.has(term) ? 1 : 0),
+          0,
+        );
+        return { entry, index, exact, strong, score };
+      })
       .filter((result) => result.exact || result.score > 0)
       .sort((a, b) => Number(b.exact) - Number(a.exact) || b.score - a.score || a.index - b.index);
     const found = matches.slice(0, parsed.data.limit ?? 5);
@@ -176,7 +223,11 @@ export function discoverTools(params: DynamicToolCallParams, agent: AgentSummary
   }
   const parsed = describeSchema.safeParse(params.arguments);
   if (!parsed.success) throw new Error(sourceText("error.agent.toolRequestInvalid"));
-  const entries = [...new Set(parsed.data.names)].map(requireTool);
+  const entries = [...new Set(parsed.data.names)].map((name) => {
+    const entry = catalog.find((tool) => tool.name === name);
+    if (!entry) throw new Error(sourceText("error.agent.toolRequestInvalid"));
+    return entry;
+  });
   return {
     tools: entries.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
     guidance: toolGuidanceFor(entries, agent),

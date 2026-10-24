@@ -87,6 +87,8 @@ export const messages = {
     "Bu bellek seçimini kullanıcı yönetiyor. Kullanıcının seçimini koruyun.",
   "error.backend.memorySearchQuery": "En fazla 256 karakterden oluşan bir veya daha fazla arama sözcüğü girin.",
   "error.backend.memoryOperationFailed": "Bellek işlemi başarısız oldu. Tekrar deneyin.",
+  "error.backend.memorySourceOff":
+    "Memory is off for this agent. Its saved memories stay stored, but no memory tool runs while it is off.",
   "error.backend.memoryGone": "Bu bellek artık mevcut değil.",
   "error.backend.routineGone": "Bu rutin artık mevcut değil.",
   "error.backend.turnNotStarted": "Sağlayıcı bu turu başlatmadı.",

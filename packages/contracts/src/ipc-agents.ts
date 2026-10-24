@@ -9,6 +9,7 @@ import {
   isAvatarSeed,
   isReasoningEffort,
 } from "./ipc-agent-identity";
+import { type AgentMemorySource, isAgentMemorySource } from "./ipc-agent-memories";
 import {
   type AgentSessionSettingOverrides,
   isAgentSessionSettingOverrides,
@@ -215,6 +216,11 @@ export interface AgentSummary {
    */
   quickAcknowledgement?: boolean;
   /**
+   * Where the agent's memory lives: the built-in store, or off. Local-only, like `access`.
+   * Absent means the app setting; see `agentMemorySource` in `ipc-agent-memories`.
+   */
+  memorySource?: AgentMemorySource;
+  /**
    * Whether the browser tabs of the agent use a session of their own, with their own cookies and
    * sign-ins. Local-only, like `access`. Absent means off: the tabs use the shared session. When
    * `browserProfileId` is also set, the named profile applies; see `agentBrowserProfile`.
@@ -305,6 +311,7 @@ function hasAgentSummaryFields(value: DynamicRecord): boolean {
     (value.allowAutomation === undefined || isBoolean(value.allowAutomation)) &&
     (value.allowNewChat === undefined || isBoolean(value.allowNewChat)) &&
     (value.quickAcknowledgement === undefined || isBoolean(value.quickAcknowledgement)) &&
+    (value.memorySource === undefined || isAgentMemorySource(value.memorySource)) &&
     (value.ownBrowserSession === undefined || isBoolean(value.ownBrowserSession)) &&
     (value.browserProfileId === undefined || isBrowserProfileId(value.browserProfileId)) &&
     (value.fastMode === undefined || isBoolean(value.fastMode)) &&
@@ -357,6 +364,8 @@ export interface UpdateAgentInput {
   allowAutomation?: boolean | null;
   allowNewChat?: boolean | null;
   quickAcknowledgement?: boolean | null;
+  /** `null` returns the agent to the app memory source setting. */
+  memorySource?: AgentMemorySource | null;
   fastMode?: boolean;
   /** `null` returns the agent to the app default. */
   busyMessageMode?: BusyMessageMode | null;

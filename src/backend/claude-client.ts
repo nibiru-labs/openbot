@@ -49,7 +49,7 @@ import {
   type SubagentChange,
   stopClaudeSubagents,
 } from "./agent/subagent-updates";
-import { claudeBridgedToolName, VISIBLE_TOOL_DEFINITIONS } from "./agent/tool-catalog";
+import { claudeBridgedToolName, visibleToolDefinitions } from "./agent/tool-catalog";
 import { USAGE_LIMIT_METHOD } from "./agent/usage-limit-gate";
 import {
   type AgentProvider,
@@ -155,6 +155,8 @@ interface ThreadConfig {
   profileGeneration: boolean;
   /** Part of the config so that a change restarts the query with the new servers. */
   computerUse: boolean;
+  /** The agent's memory source is off: the OpenBot server offers no memory tool. Part of the config for the same reason. */
+  memoryOff: boolean;
   /**
    * Workspace only: Bash runs in the Claude sandbox, a file write outside the roots asks the user, and
    * the project settings do not load. See `claude-workspace-sandbox.ts`.
@@ -802,7 +804,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     // `stop()` may have run during the await: a query created now would outlive the client.
     if (!this.#running) return yield* providerFailure(new Error("Claude Agent SDK is not running."));
     if (handoff) this.#reportMcpDrops?.(this.provider, handoff.dropped);
-    const mcpServers = handoff ? { ...handoff.servers, ...this.#createOpenBotServers(threadId) } : {};
+    const mcpServers = handoff ? { ...handoff.servers, ...this.#createOpenBotServers(threadId, config.memoryOff) } : {};
     const claudeQuery = yield* providerSync(() =>
       this.#createQuery({
         prompt: input,
@@ -1730,7 +1732,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     return { thread: { id: threadId, turns } };
   });
 
-  #createOpenBotServers(threadId: string) {
+  #createOpenBotServers(threadId: string, memoryOff: boolean) {
     const call = (namespace: string, name: string, args: unknown) =>
       runCauseEffect(this.#callDynamicTool(threadId, namespace, name, args));
     return {
@@ -1738,11 +1740,13 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         name: "openbot",
         version: "0.1.0",
         // Claude uses the SDK's AskUserQuestion permission flow.
-        tools: VISIBLE_TOOL_DEFINITIONS.filter((definition) => definition.name !== "ask_user").map((definition) =>
-          tool(definition.name, definition.description, definition.shape, (args) =>
-            call("openbot", definition.name, args),
+        tools: visibleToolDefinitions(memoryOff ? "off" : "openbot")
+          .filter((definition) => definition.name !== "ask_user")
+          .map((definition) =>
+            tool(definition.name, definition.description, definition.shape, (args) =>
+              call("openbot", definition.name, args),
+            ),
           ),
-        ),
       }),
     };
   }
@@ -1986,6 +1990,7 @@ function readThreadConfig(params: unknown): ThreadConfig {
     persistSession: !isRecord(params) || params.persistSession !== false,
     profileGeneration: isRecord(params) && params.profileGeneration === true,
     computerUse: computerUseParam(params),
+    memoryOff: isRecord(params) && params.memoryOff === true,
     workspaceOnly: isRecord(params) && params.workspaceOnly === true,
   };
 }

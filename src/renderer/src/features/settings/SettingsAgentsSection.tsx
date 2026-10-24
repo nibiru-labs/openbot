@@ -31,6 +31,9 @@ function updateFor(agentId: string, setting: AgentDefaultSetting, choice: AgentD
   if (setting === "busyMessageMode") {
     return { agentId, busyMessageMode: choice === "default" ? null : choice === "on" ? "steer" : "queue" };
   }
+  if (setting === "memorySource") {
+    return { agentId, memorySource: choice === "default" ? null : choice === "on" ? "openbot" : "off" };
+  }
   return { agentId, [setting]: choice === "default" ? null : choice === "on" };
 }
 
@@ -99,6 +102,10 @@ export function createSettingsAgentsSection(options: {
       options.onValueChange({ ...value, busyMessageMode: on ? "steer" : "queue" });
       return;
     }
+    if (setting === "memorySource") {
+      options.onValueChange({ ...value, agentMemorySource: on ? "openbot" : "off" });
+      return;
+    }
     options.onValueChange({ ...value, agentDefaults: { ...value.agentDefaults, [setting]: on } });
   }
 
@@ -121,6 +128,7 @@ export function createSettingsAgentsSection(options: {
         loadFailed={state.loadFailed}
         defaults={options.value().agentDefaults}
         steer={options.value().busyMessageMode === "steer"}
+        memoryOn={options.value().agentMemorySource === "openbot"}
         setting={state.setting}
         menuMount={props.menuMount}
         onOpen={(setting) =>

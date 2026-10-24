@@ -6,6 +6,7 @@ import {
   type AgentBackupModels,
   type AgentBrowserProfile,
   type AgentDefaults,
+  type AgentMemorySource,
   type AgentModelChoice,
   type AgentModelId,
   type AgentPermissionLevel,
@@ -29,6 +30,7 @@ import {
   type CustomProviderSummary,
   DEFAULT_AGENT_ACCESS,
   DEFAULT_AGENT_DEFAULTS,
+  DEFAULT_AGENT_MEMORY_SOURCE,
   DEFAULT_BUSY_MESSAGE_MODE,
   type ProviderRuntimeStatus,
   type UpdateAgentAdminSettingsInput,
@@ -127,6 +129,8 @@ export interface AgentSettingsPanelProps {
   browserProfiles?: AgentBrowserProfileOptions | undefined;
   /** The busy-message setting is local-only too: the Team API does not carry it. */
   busyMessageModeEditable?: boolean;
+  /** The memory source is local-only too: the Team API does not carry it. */
+  memorySourceEditable?: boolean;
   /** Tasks run only on this computer: the Team API has no task route. */
   taskLimitEditable?: boolean;
   /** Backup models are local-only too: the Team API does not carry them. */
@@ -135,6 +139,8 @@ export interface AgentSettingsPanelProps {
   usageLimited?: ((choice: AgentModelChoice) => boolean) | undefined;
   /** The app default an agent without its own busy-message setting follows. */
   defaultBusyMessageMode?: BusyMessageMode | undefined;
+  /** The app default an agent without its own memory source follows. */
+  defaultMemorySource?: AgentMemorySource | undefined;
   /** The account defaults an agent without its own value follows. Absent for a remote agent. */
   agentDefaults?: AgentDefaults | undefined;
   providerRuntimeStatuses?: Partial<Record<AgentProviderId, ProviderRuntimeStatus>> | undefined;
@@ -243,6 +249,8 @@ interface AgentSettingsDraft {
   browserProfile: BrowserProfileChoice;
   /** `default` follows the app setting. */
   busyMessage: BusyMessageChoice;
+  /** `default` follows the app setting. */
+  memorySource: MemorySourceChoice;
   /** `default` is `AGENT_TASK_LIMIT_DEFAULT`. */
   taskLimit: TaskLimitChoice;
   /** Null asks first, with no saved order. */
@@ -285,6 +293,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
     quickAcknowledgement: false,
     browserProfile: "shared",
     busyMessage: "default",
+    memorySource: "default",
     taskLimit: "default",
     backupModels: null,
     confirmingPermission: null,
@@ -407,6 +416,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
           String(agentQuickAcknowledgementEnabled(agent, agentDefaults())),
           browserProfileChoice(props.browserProfiles?.current ?? agentBrowserProfile(agent)),
           agent.busyMessageMode ?? "default",
+          agent.memorySource ?? "default",
           String(agent.taskLimit ?? "default"),
           JSON.stringify(agent.backupModels ?? null),
           runtimeSettings.provider,
@@ -452,6 +462,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
           state.quickAcknowledgement = agentQuickAcknowledgementEnabled(agent, agentDefaults());
           state.browserProfile = browserProfileChoice(props.browserProfiles?.current ?? agentBrowserProfile(agent));
           state.busyMessage = agent.busyMessageMode ?? "default";
+          state.memorySource = agent.memorySource ?? "default";
           state.taskLimit = taskLimitChoice(agent.taskLimit);
           state.backupModels = agent.backupModels ?? null;
           if (agentChanged) state.confirmingPermission = null;
@@ -773,6 +784,20 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
     }
   }
 
+  async function saveMemorySource(next: MemorySourceChoice): Promise<void> {
+    const agentId = props.agent.id;
+    const previous = draft.memorySource;
+    setDraft((state) => {
+      state.memorySource = next;
+    });
+    if (await saveAgentPatch({ memorySource: next === "default" ? null : next }, agentId)) return;
+    if (!disposed && props.agent.id === agentId && draft.memorySource === next) {
+      setDraft((state) => {
+        state.memorySource = previous;
+      });
+    }
+  }
+
   async function saveTaskLimit(next: TaskLimitChoice): Promise<void> {
     const agentId = props.agent.id;
     const previous = draft.taskLimit;
@@ -832,6 +857,9 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
   const appBusyMessageMode = () => props.defaultBusyMessageMode ?? DEFAULT_BUSY_MESSAGE_MODE;
   const busyMessageLabel = (choice: BusyMessageChoice) =>
     t(choice === "default" ? APP_DEFAULT_BUSY_MESSAGE_LABEL[appBusyMessageMode()] : BUSY_MESSAGE_LABEL[choice]);
+  const appMemorySource = () => props.defaultMemorySource ?? DEFAULT_AGENT_MEMORY_SOURCE;
+  const memorySourceLabel = (choice: MemorySourceChoice) =>
+    t(choice === "default" ? APP_DEFAULT_MEMORY_SOURCE_LABEL[appMemorySource()] : MEMORY_SOURCE_LABEL[choice]);
   const steerUnsupported = () => {
     const provider = knownProvider();
     return (
@@ -1424,6 +1452,31 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
                     <SelectContent />
                   </Select>
                 </Show>
+                <Show when={props.memorySourceEditable}>
+                  <Select<MemorySourceChoice>
+                    class="agent-settings-runtime-select"
+                    options={[...MEMORY_SOURCE_CHOICES]}
+                    value={draft.memorySource}
+                    onChange={(next) => {
+                      if (!next || next === draft.memorySource) return;
+                      void saveMemorySource(next);
+                    }}
+                    itemComponent={(item) => (
+                      <SelectItem item={item.item}>{memorySourceLabel(item.item.rawValue)}</SelectItem>
+                    )}
+                  >
+                    <SelectTrigger
+                      class="agent-settings-runtime-row"
+                      aria-label={t("agentSettings.runtime.memorySourceLabel")}
+                    >
+                      <span class="agent-settings-runtime-label">{t("agentSettings.runtime.memorySource")}</span>
+                      <SelectValue<MemorySourceChoice>>
+                        {(state) => memorySourceLabel(state.selectedOption() ?? "default")}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent />
+                  </Select>
+                </Show>
                 <Show when={props.taskLimitEditable}>
                   <Select<TaskLimitChoice>
                     class="agent-settings-runtime-select"
@@ -1646,6 +1699,19 @@ const APP_DEFAULT_BUSY_MESSAGE_LABEL = {
   queue: "agentSettings.busyMessage.appDefaultQueue",
   steer: "agentSettings.busyMessage.appDefaultSteer",
 } as const satisfies Record<BusyMessageMode, AppTextKey>;
+
+const MEMORY_SOURCE_CHOICES = ["default", "openbot", "off"] as const;
+type MemorySourceChoice = (typeof MEMORY_SOURCE_CHOICES)[number];
+
+const MEMORY_SOURCE_LABEL = {
+  openbot: "agentSettings.memorySource.openbot",
+  off: "agentSettings.memorySource.off",
+} as const satisfies Record<AgentMemorySource, AppTextKey>;
+
+const APP_DEFAULT_MEMORY_SOURCE_LABEL = {
+  openbot: "agentSettings.memorySource.appDefaultOpenBot",
+  off: "agentSettings.memorySource.appDefaultOff",
+} as const satisfies Record<AgentMemorySource, AppTextKey>;
 
 const ACCESS_LABEL = {
   workspace: "agentSettings.access.workspace",

@@ -134,6 +134,7 @@ const Settings = createSimpleContext({
     let busyMessageModeChanged = false;
     let agentDefaultsChanged = false;
     let agentMemoryLimitChanged = false;
+    let agentMemorySourceChanged = false;
     let keepRemoteSessionsChanged = false;
     let launchAtLoginChanged = false;
     let keepRunningInBackgroundChanged = false;
@@ -275,6 +276,14 @@ const Settings = createSimpleContext({
         agentDefaultsChanged = true;
         persistField("agentDefaults", settingsPort().setAgentDefaults({ ...value.agentDefaults }), (saved) => saved);
       }
+      if (previous.agentMemorySource !== value.agentMemorySource) {
+        agentMemorySourceChanged = true;
+        persistField(
+          "agentMemorySource",
+          settingsPort().setAgentMemorySourcePreference({ source: value.agentMemorySource }),
+          (preference) => preference.source,
+        );
+      }
       // A hidden switch is null and cannot change.
       if (value.launchAtLogin !== null && previous.launchAtLogin !== value.launchAtLogin) {
         launchAtLoginChanged = true;
@@ -412,6 +421,10 @@ const Settings = createSimpleContext({
         agentMemoryLimitChanged = true;
         setGeneralSettings((current) => ({ ...current, agentMemoryLimit: limit }));
       });
+      const unsubscribeMemorySource = settingsPort().onAgentMemorySourcePreference(({ source }) => {
+        agentMemorySourceChanged = true;
+        setGeneralSettings((current) => ({ ...current, agentMemorySource: source }));
+      });
       // An admin of a joined server can change the update switches of this computer.
       const unsubscribeUpdates = settingsPort().update.onPreference((preference) => {
         autoDownloadUpdatesChanged = true;
@@ -427,6 +440,7 @@ const Settings = createSimpleContext({
         unsubscribe();
         unsubscribeApprovals();
         unsubscribeMemoryLimit();
+        unsubscribeMemorySource();
         unsubscribeUpdates();
       };
     });
@@ -486,6 +500,12 @@ const Settings = createSimpleContext({
           .then((preference) => {
             if (agentMemoryLimitChanged) return;
             setGeneralSettings((current) => ({ ...current, agentMemoryLimit: preference.limit }));
+          }),
+        settingsPort()
+          .getAgentMemorySourcePreference()
+          .then((preference) => {
+            if (agentMemorySourceChanged) return;
+            setGeneralSettings((current) => ({ ...current, agentMemorySource: preference.source }));
           }),
         settingsPort()
           .getAppBehaviorPreference()

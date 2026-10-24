@@ -85,6 +85,36 @@ export interface AgentMemoryLimitPreference {
 }
 
 /**
+ * Where an agent's memory lives. `openbot` is the built-in store: essential memories go into the
+ * prompt and the memory tools are offered. `off` turns the built-in store off for the agent: no
+ * saved-memory block goes into the prompt and no memory tool is offered or runs. Entries already
+ * stored stay in the database untouched, so the source can be turned back on.
+ */
+export const AGENT_MEMORY_SOURCES = ["openbot", "off"] as const;
+export type AgentMemorySource = (typeof AGENT_MEMORY_SOURCES)[number];
+export const DEFAULT_AGENT_MEMORY_SOURCE: AgentMemorySource = "openbot";
+
+export function isAgentMemorySource(value: unknown): value is AgentMemorySource {
+  return isOneOf(AGENT_MEMORY_SOURCES, value);
+}
+
+/** The app setting for the memory source, as it is stored and as it crosses IPC. */
+export interface AgentMemorySourcePreference {
+  source: AgentMemorySource;
+}
+
+/**
+ * The memory source that applies to an agent: its own value when it has one, the app setting
+ * otherwise. Local-only, like the other agent fields that follow an account default.
+ */
+export function agentMemorySource(
+  agent: { memorySource?: AgentMemorySource | undefined },
+  appSource: AgentMemorySource,
+): AgentMemorySource {
+  return agent.memorySource ?? appSource;
+}
+
+/**
  * The limit of one server's agents (`agent-memory-limit-v1`) and the values that host permits. A
  * newer host can permit other values, so they are numbers here, not `AgentMemoryLimit`.
  */

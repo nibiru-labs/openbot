@@ -3,6 +3,7 @@ import { chatVisualItemType } from "@openbot/contracts/chat-visual";
 import { sortConversationMessages } from "@openbot/contracts/conversation-order";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type {
+  AgentMemorySource,
   AgentModelChoice,
   AgentModelOption,
   AgentSummary,
@@ -189,6 +190,11 @@ export interface OpenBotToolRouterOptions {
   localSkillTools?: (() => LocalSkillTools) | undefined;
   routineFlowTools?: (() => RoutineFlowTools) | undefined;
   approvalAutomation?: ApprovalAutomationPolicy | undefined;
+  /**
+   * The memory source that applies to an agent, for tool discovery. Omitted, the built-in store.
+   * With the source off, discovery does not name a memory tool; execution is gated in `AgentMemories`.
+   */
+  memorySource?: ((agent: AgentSummary) => AgentMemorySource) | undefined;
   /** Draws pages for `html_preview`; null where no window can draw one. */
   visualPreview?: ChatVisualPreviewHost | null | undefined;
   /** Captures the desktop for `capture_screen`; null where this process has no desktop. */
@@ -230,6 +236,7 @@ export class OpenBotToolRouter {
   readonly #localSkillTools: (() => LocalSkillTools) | undefined;
   readonly #routineFlowTools: (() => RoutineFlowTools) | undefined;
   readonly #approvalAutomation: ApprovalAutomationPolicy;
+  readonly #memorySource: (agent: AgentSummary) => AgentMemorySource;
   readonly #visualPreview: ChatVisualPreviewHost | null;
   readonly #screenCapture: ScreenCaptureHost | null;
   readonly #mcpServers: AgentMcpServers | null;
@@ -264,6 +271,7 @@ export class OpenBotToolRouter {
     this.#localSkillTools = options.localSkillTools;
     this.#routineFlowTools = options.routineFlowTools;
     this.#approvalAutomation = options.approvalAutomation ?? NO_APPROVAL_AUTOMATION;
+    this.#memorySource = options.memorySource ?? (() => "openbot");
     this.#visualPreview = options.visualPreview ?? null;
     this.#screenCapture = options.screenCapture ?? null;
     this.#mcpServers = options.mcpServers ?? null;
@@ -326,7 +334,8 @@ export class OpenBotToolRouter {
               const agentId = this.#conversation.agentForThread(params.threadId);
               if (!agentId) throw new Error("The calling OpenBot agent is unknown.");
               try {
-                const result = discoverTools(params, this.#requireAgent(agentId));
+                const agent = this.#requireAgent(agentId);
+                const result = discoverTools(params, agent, this.#memorySource(agent));
                 client.respond(request.id, openBotToolResult(result));
               } catch {
                 client.respond(request.id, openBotToolFailure(sourceText("error.agent.toolRequestInvalid")));

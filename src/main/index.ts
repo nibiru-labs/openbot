@@ -532,6 +532,7 @@ function registerIpcHandlers({
   busyMessageMode,
   agentDefaults,
   agentMemoryLimit,
+  agentMemorySource,
   agentAccess,
   teamStore,
   serverTimezone,
@@ -599,6 +600,7 @@ function registerIpcHandlers({
       busyMessageMode,
       agentDefaults,
       agentMemoryLimit,
+      agentMemorySource,
       remoteSessionReuse,
       remoteNetworkRoute,
       applyRemoteNetworkRoute: () => runCauseEffect(host.applyNetworkRoute()),
@@ -1181,6 +1183,11 @@ if (!hasSingleInstanceLock) {
       built.agentMemoryLimit.subscribe((preference) => {
         for (const window of BrowserWindow.getAllWindows()) {
           sendToRenderer(window, IPC_ENDPOINTS.app.agentMemoryLimitPreference, preference);
+        }
+      });
+      built.agentMemorySource.subscribe((preference) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          sendToRenderer(window, IPC_ENDPOINTS.app.agentMemorySourcePreference, preference);
         }
       });
       host.on("changed", onHostChanged);

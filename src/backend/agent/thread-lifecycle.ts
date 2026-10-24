@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  type AgentMemorySource,
   type AgentSummary,
   agentAutomationAllowed,
   agentComputerUseEnabled,
@@ -59,7 +60,7 @@ import {
 import { decodeCapturedSteps, readCapturedSteps } from "./handoff-tool-steps";
 import { sessionSettingsIdentity } from "./session-settings";
 import { isArchivedThreadError, isMissingProviderSessionError } from "./thread-items";
-import { VISIBLE_DYNAMIC_TOOLS } from "./tool-catalog";
+import { VISIBLE_DYNAMIC_TOOLS, visibleDynamicTools } from "./tool-catalog";
 import { codexSandboxConfig, codexSandboxMode, workspaceWritableRoots } from "./workspace-sandbox";
 
 const logger = createOpenBotLogger("thread-lifecycle");
@@ -135,6 +136,12 @@ export interface ThreadLifecycleOptions {
   serverHost?: boolean;
   /** The other agents in an agent's sidebar section, read at each start and resume of a session. */
   sectionTeammates?: (agentId: string) => SectionTeammates | null;
+  /**
+   * The memory source that applies to an agent, read at each start and resume of a session.
+   * Omitted, the built-in store. With the source off, the session gets no memory context and no
+   * memory tool.
+   */
+  memorySource?: (agent: AgentSummary) => AgentMemorySource;
 }
 
 /**
@@ -165,6 +172,7 @@ export class ThreadLifecycle {
   readonly #passwordVaultConnected: () => boolean;
   readonly #serverHost: boolean;
   readonly #sectionTeammates: (agentId: string) => SectionTeammates | null;
+  readonly #memorySource: (agent: AgentSummary) => AgentMemorySource;
   readonly #pendingHandoffs = new Map<string, string>();
   readonly #pendingRuntimeRefreshes = new Set<string>();
   /**
@@ -192,6 +200,7 @@ export class ThreadLifecycle {
     this.#passwordVaultConnected = options.passwordVaultConnected ?? (() => false);
     this.#serverHost = options.serverHost ?? false;
     this.#sectionTeammates = options.sectionTeammates ?? (() => null);
+    this.#memorySource = options.memorySource ?? (() => "openbot");
   }
 
   /**
@@ -531,7 +540,7 @@ export class ThreadLifecycle {
       ...this.#computerUseParam(agent, client),
       ...this.#instructions(agent, client, section, this.#computerUseInOwnChat(owner, publicThreadId)),
       serviceName: "openbot",
-      dynamicTools: VISIBLE_DYNAMIC_TOOLS,
+      dynamicTools: visibleDynamicTools(this.#memorySource(agent)),
     };
     return { agent, mcpServers, toolRuntimes, own, environment, section, proxy, params };
   });
@@ -822,7 +831,7 @@ export class ThreadLifecycle {
     return createHash("sha256")
       .update(
         JSON.stringify([
-          VISIBLE_DYNAMIC_TOOLS,
+          visibleDynamicTools(this.#memorySource(agent)),
           mcpFingerprintValues(configs),
           Object.keys(disabled).sort(),
           // A revoked approval must also replace a loaded session with the old tool policy.
@@ -929,13 +938,15 @@ export class ThreadLifecycle {
     section = this.#sectionTeammates(agent.id),
     computerUseInOwnChat = false,
   ): DynamicRecord {
-    const memories = this.#memories.essentialFor(agent.id);
+    const source = this.#memorySource(agent);
+    const memories = source === "off" ? [] : this.#memories.essentialFor(agent.id);
     const options = {
       computerUseInOwnChat,
       passwordVault: this.#passwordVaultConnected(),
       serverHost: this.#serverHost,
       memoryLimit: this.#memories.limit(),
       storedMemoryCount: this.#memories.listFor(agent.id).length,
+      memorySource: source,
       memoriesInTurns: client.provider === "claude",
       teammatesInTurns: client.provider === "claude",
       sectionTeammates: section,
@@ -951,7 +962,9 @@ export class ThreadLifecycle {
     return options.memoriesInTurns
       ? {
           developerInstructions: instructions,
-          memoryContext: memoryContext(memories, options),
+          // With the source off there is no memory block to send with the turns, and the client
+          // offers no memory tool: `memoryOff` is how it knows.
+          ...(source === "off" ? { memoryOff: true } : { memoryContext: memoryContext(memories, options) }),
           sectionTeammates: section,
         }
       : { developerInstructions: instructions };
@@ -985,7 +998,7 @@ export class ThreadLifecycle {
       ...this.#workspaceOnlyParam(agent, client),
       ...this.#computerUseParam(agent, client),
       ...this.#instructions(agent, client, this.#sectionTeammates(agent.id), computerUseInOwnChat),
-      ...(client.provider === "codex" ? {} : { dynamicTools: VISIBLE_DYNAMIC_TOOLS }),
+      ...(client.provider === "codex" ? {} : { dynamicTools: visibleDynamicTools(this.#memorySource(agent)) }),
       ...(yield* this.codexConfigEffect(
         agent,
         client,

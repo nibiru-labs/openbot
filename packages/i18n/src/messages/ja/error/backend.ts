@@ -91,6 +91,8 @@ export const messages = {
     "このメモリーの選択はユーザーが管理しています。ユーザーの選択を維持してください。",
   "error.backend.memorySearchQuery": "検索語を 1 つ以上、256 文字以内で入力してください。",
   "error.backend.memoryOperationFailed": "メモリーの操作に失敗しました。もう一度お試しください。",
+  "error.backend.memorySourceOff":
+    "Memory is off for this agent. Its saved memories stay stored, but no memory tool runs while it is off.",
   "error.backend.memoryGone": "このメモリーはもう存在しません。",
   "error.backend.routineGone": "このルーティンはもう存在しません。",
   "error.backend.turnNotStarted": "プロバイダーはこのターンを開始しませんでした。",
