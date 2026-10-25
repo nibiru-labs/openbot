@@ -18,6 +18,7 @@ import { useText } from "../../text";
 import { AgentAvatar } from "../agents/AgentAvatar";
 import type { AttachmentMediaSource } from "./AttachmentCards";
 import { conversationBubbleVariant, MessageBody } from "./MessageRendering";
+import { ResponseProcess } from "./ResponseProcess";
 
 /**
  * Who wrote a message, as much as a row needs to draw it.
@@ -49,6 +50,8 @@ export interface ChatMessageRowProps {
   /** Whether the time stands beside the author name. Without a name, the time is in the action row. */
   showTime?: boolean | undefined;
   animate?: boolean;
+  /** Whether the turn that owns a process row is still running. */
+  processRunning?: boolean | undefined;
   agents: AgentProfile[];
   skills?: InstalledSkill[] | undefined;
   referencedMessage?: AgentMessage | undefined;
@@ -89,6 +92,14 @@ export interface ChatMessageRowProps {
  * conversation arrives as a prop.
  */
 export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
+  return (
+    <Show when={props.message.kind === "thinking"} fallback={<ChatMessageContentRow {...props} />}>
+      <ResponseProcess message={props.message} running={props.processRunning ?? props.message.streaming === true} />
+    </Show>
+  );
+}
+
+function ChatMessageContentRow(props: ChatMessageRowProps): JSX.Element {
   const { t } = useText();
   const own = () => props.author.kind === "you";
   const member = () => props.author.kind === "member";

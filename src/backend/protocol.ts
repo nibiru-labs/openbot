@@ -320,16 +320,25 @@ export function decodeThreadItem(value: unknown): ThreadItem {
   if (phase !== undefined && phase !== null) item.phase = phase;
   if (record.content !== undefined && item.type !== "reasoning") item.content = decodeThreadContent(record.content);
   if (item.type === "reasoning") {
-    return { ...item, type: "agentMessage", phase: "commentary", text: reasoningText(record) };
+    const text = reasoningText(record);
+    return { ...item, type: "agentMessage", phase: "commentary", ...(text ? { text } : {}) };
   }
   return item;
 }
 
 /** Prefer the readable summary when a provider also includes raw reasoning content. */
 export function reasoningText(item: unknown): string {
-  const summary = getArray(item, "summary").filter(isString);
-  const content = getArray(item, "content").filter(isString);
-  return (summary.length > 0 ? summary : content).join("\n\n");
+  const readableParts = (key: string) =>
+    getArray(item, key).flatMap((part) => {
+      if (isString(part)) return part.trim() ? [part] : [];
+      const type = getString(part, "type");
+      if (type !== "summary_text" && type !== "reasoning_text" && type !== "text") return [];
+      const text = getString(part, "text");
+      return text?.trim() ? [text] : [];
+    });
+  const summary = readableParts("summary");
+  const content = summary.length > 0 ? summary : readableParts("content");
+  return content.length > 0 ? content.join("\n\n") : (getString(item, "text") ?? "");
 }
 
 function decodeThreadContent(value: unknown): Array<{ type: string; text?: string }> {

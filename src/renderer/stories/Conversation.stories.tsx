@@ -1,12 +1,20 @@
 import { serializeAttachmentReference } from "@openbot/contracts/attachment-references";
-import type { AgentEvent, AttachmentSummary, DraftAttachment, QueueSnapshot } from "@openbot/contracts/ipc";
+import type {
+  AgentEvent,
+  AttachmentSummary,
+  ConversationMessage,
+  DraftAttachment,
+  QueueSnapshot,
+} from "@openbot/contracts/ipc";
 import {
   type ConversationUiBlock,
   type UiChoiceBlock,
   type UiConfirmBlock,
   uiBlockFallbackQuestions,
 } from "@openbot/contracts/ui-blocks";
+import { Button } from "@openbot/ui";
 import type { AgentMessage as RendererAgentMessage, RoutineRunMarkerModel } from "@openbot/ui/data";
+import { AgentTaskPanel } from "@openbot/ui/features/conversation/AgentTasks";
 import { BrowserTakeoverCard } from "@openbot/ui/features/conversation/ConversationPrompts";
 import type { VoicePhase } from "@openbot/ui/features/conversation/VoiceRecordingMorph";
 import { currentText } from "@openbot/ui/text";
@@ -15,6 +23,7 @@ import { createEffect, createSignal, onCleanup, onSettled, Show } from "solid-js
 import { fn } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { clipboardFiles } from "../../preload/clipboard-files";
+import { toAgentMessages } from "../src/app-message-projection";
 import { Conversation, createConversationController } from "../src/features/conversation/Conversation";
 import { ConversationView } from "../src/features/conversation/ConversationView";
 import { ConversationControllerProvider } from "../src/features/conversation/conversation-controller-context";
@@ -1761,6 +1770,138 @@ export const ThinkingSettled: Story = {
         time: "10:01",
         kind: "thinking",
         items: ["Read the project brief", "Compared the milestone owners", "Drafted the next action"],
+      },
+    ],
+  },
+};
+
+/** Manual event controls keep the live, completed and stopped states repeatable without timers. */
+function ResponseProcessLifecycleConversation(props: { args: Parameters<typeof Conversation>[0] }) {
+  const turnId = "process-lifecycle-turn";
+  const firstNote: ConversationMessage = {
+    id: "process-lifecycle-note",
+    turnId,
+    author: "assistant",
+    text: "I am checking the project brief.",
+    createdAt: "2026-10-25T10:00:00.000Z",
+    status: "streaming",
+    itemType: "commentary",
+  };
+  const [stored, setStored] = createSignal<ConversationMessage[]>([firstNote]);
+  const [active, setActive] = createSignal<string | null>(turnId);
+  const finish = (status: "completed" | "failed" | "interrupted") => {
+    setActive(null);
+    setStored((messages) => [
+      ...messages.map((message) => ({ ...message, status })),
+      ...(status === "completed"
+        ? [
+            {
+              ...firstNote,
+              id: "process-lifecycle-answer",
+              itemType: "final_answer",
+              status,
+              text: "The project brief is checked. The release owner is confirmed.",
+            },
+          ]
+        : []),
+    ]);
+  };
+  return (
+    <>
+      <fieldset aria-label="Process event controls">
+        <Button
+          onClick={() =>
+            setStored((messages) =>
+              messages.map((message) =>
+                message.id === firstNote.id
+                  ? { ...message, text: `${message.text} The release owner is confirmed.` }
+                  : message,
+              ),
+            )
+          }
+        >
+          Append process note
+        </Button>
+        <Button onClick={() => finish("completed")}>Complete reply</Button>
+        <Button onClick={() => finish("interrupted")}>Stop reply</Button>
+        <Button onClick={() => finish("failed")}>Fail reply</Button>
+        <Button
+          onClick={() => {
+            setStored([firstNote]);
+            setActive(turnId);
+          }}
+        >
+          Start new reply
+        </Button>
+      </fieldset>
+      <MockedConversation args={{ ...props.args, activeTurnId: active() }} messages={toAgentMessages(stored())} />
+    </>
+  );
+}
+
+export const ResponseProcessLifecycle: Story = {
+  render: (props) => <ResponseProcessLifecycleConversation args={props} />,
+};
+
+export const ProcessInTaskPanel: Story = {
+  render: () => (
+    <AgentTaskPanel
+      task={{
+        id: "process-task",
+        agentId: contextStoryAgent.id,
+        threadId: "process-task-thread",
+        origin: "user",
+        title: "Check the release brief",
+        state: "idle",
+        outcome: "completed",
+        hold: null,
+        activeTurnId: null,
+        progress: null,
+        error: null,
+        queuedMessages: [],
+        createdAt: "2026-10-25T10:00:00Z",
+        updatedAt: "2026-10-25T10:01:00Z",
+        closedAt: null,
+      }}
+      limit={2}
+      agent={contextStoryAgent}
+      agents={STORY_AGENTS}
+      messages={[
+        {
+          id: "task-process",
+          turnId: "task-turn",
+          author: "agent",
+          body: "",
+          time: "10:00",
+          kind: "thinking",
+          items: ["I checked the task brief and confirmed the release owner."],
+          status: "completed",
+        },
+        { id: "task-answer", turnId: "task-turn", author: "agent", body: "The task brief is checked.", time: "10:01" },
+      ]}
+      onSend={async () => true}
+      onStop={() => undefined}
+      onCloseTask={() => undefined}
+      onReopen={() => undefined}
+      onClosePanel={() => undefined}
+      onOpenLink={() => undefined}
+      onPreview={() => undefined}
+      onAttachmentAction={() => undefined}
+    />
+  ),
+};
+
+export const ProcessStopped: Story = {
+  args: {
+    messages: [
+      {
+        id: "stopped-process",
+        author: "agent",
+        body: "",
+        time: "10:01",
+        kind: "thinking",
+        status: "interrupted",
+        items: ["I checked the brief. The user stopped the reply before the final check."],
       },
     ],
   },

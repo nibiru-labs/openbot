@@ -44,10 +44,10 @@ export function agentTaskStatus(task: AgentTask, t: TextValue["t"]): string {
 
 /**
  * Whether the panel shows this message. A stopped turn can leave an agent message with no text and
- * nothing else in it; the thinking of a turn shows only while the task runs, in its activity row.
+ * nothing else in it. Process rows remain available after the task ends.
  */
 function shownInPanel(message: AgentMessage): boolean {
-  if (message.kind === "thinking") return false;
+  if (message.kind === "thinking") return true;
   return (
     message.author === "you" ||
     message.streaming === true ||
@@ -391,6 +391,11 @@ export function AgentTaskPanel(props: AgentTaskPanelProps) {
               <div class="virtual-chat-row">
                 <ChatMessageRow
                   message={message()}
+                  processRunning={
+                    message().turnId
+                      ? message().turnId === props.task?.activeTurnId
+                      : message().streaming === true && props.task?.state === "running"
+                  }
                   author={author(message())}
                   agents={props.agents}
                   onSelectAgent={() => undefined}
