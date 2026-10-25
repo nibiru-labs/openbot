@@ -27,6 +27,13 @@ export function ConversationHeader() {
   return (
     <SharedConversationHeader
       agent={props.agent}
+      avatarMood={
+        props.prompt || props.approval || props.browserTakeover
+          ? "waiting"
+          : agentActivity() === "Working" || props.tasks?.snapshot?.tasks.some((task) => task.state === "running")
+            ? "working"
+            : "idle"
+      }
       onSettingsIntent={() => void loadAgentSettingsPanel()}
       onOpenSettings={() => setActiveRightPanel("settings")}
       modelPicker={{

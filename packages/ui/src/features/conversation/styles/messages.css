@@ -414,53 +414,35 @@
   min-height: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--openbot-space-3);
   overflow: hidden;
-  padding: 4px 0 8px 8px;
+  padding: var(--openbot-space-2) var(--openbot-space-2) var(--openbot-space-3);
   opacity: 1;
-  filter: blur(0);
   transform: translateY(0);
   transition:
-    opacity var(--openbot-duration-overlay) var(--openbot-ease-out),
-    filter var(--openbot-duration-overlay) var(--openbot-ease-out),
-    transform var(--openbot-duration-overlay) var(--openbot-ease-out);
-  will-change: opacity, filter, transform;
+    opacity var(--openbot-duration-normal) var(--openbot-ease-out),
+    transform var(--openbot-duration-normal) var(--openbot-ease-out);
 }
 
 @starting-style {
   .agent-activity-content {
     opacity: 0;
-    filter: blur(2px);
-    transform: translateY(4px);
+    transform: translateY(var(--openbot-space-1));
   }
 }
 
 .agent-activity-entry[data-state="exiting"] .agent-activity-content {
   opacity: 0;
-  filter: blur(2px);
-  transform: translateY(2px);
+  transform: translateY(var(--openbot-space-1));
 }
 
 .agent-activity-avatar {
   --agent-avatar-optical-offset: -2px;
 
-  width: 32px;
-  height: 32px;
+  width: var(--openbot-space-6);
+  height: var(--openbot-space-6);
   flex: 0 0 auto;
   align-self: center;
-  transform: translateY(0) scale(1);
-  transition: transform var(--openbot-duration-overlay) var(--openbot-ease-out);
-  will-change: transform;
-}
-
-@starting-style {
-  .agent-activity-avatar {
-    transform: translateY(3px) scale(0.96);
-  }
-}
-
-.agent-activity-entry[data-state="exiting"] .agent-activity-avatar {
-  transform: translateY(0) scale(0.98);
 }
 
 .agent-activity-label {
@@ -468,26 +450,12 @@
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  background: linear-gradient(
-    90deg,
-    var(--openbot-text-primary) 0%,
-    var(--openbot-text-primary) 30%,
-    var(--openbot-text-muted) 45%,
-    var(--openbot-text-muted) 55%,
-    var(--openbot-text-primary) 70%,
-    var(--openbot-text-primary) 100%
-  );
-  background-size: 300% 100%;
-  background-clip: text;
-  color: transparent;
+  color: var(--openbot-text-secondary);
   font-size: var(--openbot-text-sm);
-  line-height: 20px;
+  line-height: var(--openbot-leading-xl);
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: image-generation-shine 2.25s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
 }
 
 .agent-activity-elapsed {

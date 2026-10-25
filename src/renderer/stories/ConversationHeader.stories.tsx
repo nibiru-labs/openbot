@@ -28,6 +28,14 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
+export const Working: Story = { args: { avatarMood: "working" } };
+export const Waiting: Story = { args: { avatarMood: "waiting" } };
+export const WorkingWithImage: Story = {
+  args: {
+    avatarMood: "working",
+    agent: { ...STORY_AGENT, avatarUrl: new URL("../src/assets/openbot-logo-preview.png", import.meta.url).href },
+  },
+};
 export const WorkspaceOnly: Story = { args: { agent: { ...STORY_AGENT, access: "workspace" } } };
 export const RemoteControl: Story = {
   args: { remoteControl: { enabled: true, active: true, visible: false, onOpen: fn() } },
