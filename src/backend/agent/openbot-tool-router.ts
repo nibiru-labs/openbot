@@ -124,10 +124,31 @@ export interface OpenBotToolRouterHooks {
   runsTurn(agentId: string): boolean;
   /** `false` when the turn no longer runs or `mayStop` refuses, so no stop was sent. */
   interrupt(agentId: string, turnId: string, mayStop: () => boolean): Effect.Effect<boolean, ToolOperationFailed>;
+  /**
+   * Steers a teammate's queued message into the recipient's running work, or stops that work for
+   * it. The message stays queued when the recipient is idle or the request is refused.
+   */
+  controlBusyRecipient(input: BusyRecipientControl): Effect.Effect<BusyRecipientOutcome, ToolOperationFailed>;
   /** Epoch milliseconds from the turn lifecycle; null when this process has not seen the event. */
   turnActivity(agentId: string, turnId: string | null): { startedAt: number | null; lastEventAt: number | null };
   /** Records a no-update tool call for the turn; null when no routine run started the turn. */
   requestNoUpdate(agentId: string, threadId: string, turnId: string): "quiet" | "shown" | null;
+}
+
+export interface BusyRecipientControl {
+  senderAgentId: string;
+  /** The sender's own turn, to refuse a chain of interrupts. */
+  senderTurnId: string;
+  recipientAgentId: string;
+  deliveryId: string;
+  mode: "steer" | "interrupt";
+}
+
+export interface BusyRecipientOutcome {
+  agentId: string;
+  /** `queued`: the message waits for the current work, with the reason when OpenBot refused. */
+  result: "steered" | "interrupted" | "queued";
+  reason?: string;
 }
 
 export interface OpenBotToolRouterOptions {
@@ -1301,6 +1322,10 @@ export class OpenBotToolRouter {
       if (expectsReply !== undefined && typeof expectsReply !== "boolean") {
         throw new Error("expectsReply must be a boolean.");
       }
+      const busy = params.arguments.busy ?? "queue";
+      if (busy !== "queue" && busy !== "steer" && busy !== "interrupt") {
+        throw new Error("busy must be queue, steer or interrupt.");
+      }
 
       // A request from a Slack turn: the teammate's answer goes back to that Slack thread.
       const messagingReturn = this.#mailbox
@@ -1325,12 +1350,29 @@ export class OpenBotToolRouter {
         this.#mailboxSync.emitQueue(recipient);
         this.#drain.scheduleDrain(recipient);
       }
+      const busyOutcomes: BusyRecipientOutcome[] = [];
+      if (busy !== "queue")
+        for (const delivery of receipt.deliveries)
+          busyOutcomes.push(
+            yield* this.#hooks.controlBusyRecipient({
+              senderAgentId,
+              senderTurnId: params.turnId,
+              recipientAgentId: delivery.recipientAgentId,
+              deliveryId: delivery.id,
+              mode: busy,
+            }),
+          );
       const snapshot = this.#conversation.ensureSnapshot(senderAgentId, params.threadId);
       this.#mailboxSync.syncMailboxMessages(snapshot);
       this.#conversation.emitConversation(snapshot);
       return {
         success: true,
-        contentItems: [{ type: "inputText", text: JSON.stringify(receipt) }],
+        contentItems: [
+          {
+            type: "inputText",
+            text: JSON.stringify(busyOutcomes.length > 0 ? { ...receipt, busy: busyOutcomes } : receipt),
+          },
+        ],
       };
     },
     Effect.catchDefect((cause) => Effect.fail(new ToolOperationFailed({ cause }))),

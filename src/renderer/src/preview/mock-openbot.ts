@@ -2172,6 +2172,25 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         queues.set(input.agentId, queue);
         emitAgentEvent({ type: "queue-changed", snapshot: queue });
       },
+      setQueuePaused: async (input) => {
+        const queue = queues.get(input.agentId) ?? emptyQueue(input.agentId);
+        const next: QueueSnapshot = {
+          agentId: queue.agentId,
+          deliveries: queue.deliveries,
+          ...(queue.hold ? { hold: queue.hold } : {}),
+          ...(input.paused ? { paused: true } : {}),
+        };
+        queues.set(input.agentId, next);
+        emitAgentEvent({ type: "queue-changed", snapshot: next });
+      },
+      runQueuedMessageNow: async (input) => {
+        const queue = queues.get(input.agentId) ?? emptyQueue(input.agentId);
+        const target = queue.deliveries.find((delivery) => delivery.id === input.deliveryId);
+        if (!target) return;
+        queue.deliveries = [target, ...queue.deliveries.filter((delivery) => delivery !== target)];
+        queues.set(input.agentId, queue);
+        emitAgentEvent({ type: "queue-changed", snapshot: queue });
+      },
       steerQueuedMessage: async (input: SteerQueuedMessageInput) => {
         const queue = queues.get(input.agentId) ?? emptyQueue(input.agentId);
         queue.deliveries = queue.deliveries.map((delivery) =>

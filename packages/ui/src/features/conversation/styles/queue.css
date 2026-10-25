@@ -126,6 +126,30 @@
   color: var(--openbot-text-muted);
 }
 
+.agent-queue-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--queue-row-gutter) var(--queue-row-inset-end) 0 var(--queue-row-inset-start);
+  color: var(--openbot-queue-action);
+}
+
+.agent-queue-toolbar-status {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--openbot-text-muted);
+  font-size: var(--openbot-text-sm);
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-queue-pause[aria-pressed="true"] {
+  color: var(--openbot-text-primary);
+}
+
 .agent-queue-editing-badge {
   flex: none;
   padding: 0 6px;

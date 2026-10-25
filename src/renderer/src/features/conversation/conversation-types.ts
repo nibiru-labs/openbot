@@ -210,6 +210,7 @@ export interface ConversationProps {
     replyToMessageId: string | null,
     target?: ConversationTarget,
     clientMessageId?: string,
+    options?: { interrupt?: boolean },
   ) => Promise<SendMessageResult>;
   onMarkRead: () => Promise<void>;
   onLoadOlder?: (() => void) | undefined;
@@ -250,6 +251,14 @@ export interface ConversationProps {
     target?: ConversationTarget,
   ) => Promise<boolean>;
   onReorderQueue: (deliveryIds: string[]) => void;
+  /** Pauses or resumes the agent's queue. Local agents only. */
+  onSetQueuePaused?: ((paused: boolean) => void) | undefined;
+  /** Stops the running turn and starts one queued message next. Local agents only. */
+  onRunQueuedMessageNow?: ((deliveryId: string) => void) | undefined;
+  /** Cancels every queued message of the agent. */
+  onClearQueue?: (() => void) | undefined;
+  /** Shows "Stop and send". The Team API has no route for it, so remote agents do not offer it. */
+  canStopAndSend?: boolean | undefined;
   onActivateBrowserTab: (tabId: string) => void;
   onCloseBrowserTab: (tabId: string) => void | Promise<void>;
   onOpenRemoteDesktop: (serverId: string, trigger: HTMLElement) => Promise<void>;

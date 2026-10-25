@@ -54,12 +54,14 @@ import {
   type RoutineLimitPolicy,
   type RoutineMissedPolicy,
   type RunQueuedMessageAsTaskInput,
+  type RunQueuedMessageNowInput,
   type SearchConversationFilesInput,
   type SearchConversationMessagesInput,
   type SendMessageInput,
   type SetAgentAvatarInput,
   type SetAgentMemoryInclusionInput,
   type SetMessageReactionInput,
+  type SetQueuePausedInput,
   type SidebarLayoutAction,
   type StartAgentTaskInput,
   type SteerQueuedMessageInput,
@@ -520,6 +522,7 @@ export function parseSendMessage(value: unknown): SendMessageInput {
   if (taskId !== undefined && (!isString(taskId) || !taskId || taskId.length > INPUT_LIMITS.identifier)) {
     throw new Error("Invalid task id.");
   }
+  if (value.interrupt !== undefined && typeof value.interrupt !== "boolean") throw new Error("Invalid interrupt flag.");
   return {
     agentId: requireString(value.agentId, "agentId"),
     text: value.text,
@@ -527,6 +530,20 @@ export function parseSendMessage(value: unknown): SendMessageInput {
     replyToMessageId: replyToMessageId?.trim() || null,
     ...(clientMessageId === undefined ? {} : { clientMessageId }),
     ...(taskId === undefined ? {} : { taskId }),
+    ...(value.interrupt === true ? { interrupt: true } : {}),
+  };
+}
+
+export function parseSetQueuePaused(value: unknown): SetQueuePausedInput {
+  if (!isObject(value) || typeof value.paused !== "boolean") throw new Error("Invalid queue pause request.");
+  return { agentId: requireString(value.agentId, "agentId"), paused: value.paused };
+}
+
+export function parseRunQueuedMessageNow(value: unknown): RunQueuedMessageNowInput {
+  if (!isObject(value)) throw new Error("Invalid run queued message request.");
+  return {
+    agentId: requireString(value.agentId, "agentId"),
+    deliveryId: requireString(value.deliveryId, "deliveryId"),
   };
 }
 

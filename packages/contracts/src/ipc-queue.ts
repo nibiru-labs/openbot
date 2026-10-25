@@ -21,7 +21,7 @@ export type QueueDeliveryStatus = (typeof QUEUE_DELIVERY_STATUSES)[number];
  */
 export const BUSY_MESSAGE_MODES = ["queue", "steer"] as const;
 export type BusyMessageMode = (typeof BUSY_MESSAGE_MODES)[number];
-export const DEFAULT_BUSY_MESSAGE_MODE: BusyMessageMode = "queue";
+export const DEFAULT_BUSY_MESSAGE_MODE: BusyMessageMode = "steer";
 
 export function isBusyMessageMode(value: unknown): value is BusyMessageMode {
   return isOneOf(BUSY_MESSAGE_MODES, value);
@@ -164,6 +164,11 @@ export interface QueueSnapshot {
    * key list, so a remote server drops this field instead of reporting it.
    */
   hold?: QueueHold | null;
+  /**
+   * The user paused this queue: no queued message starts a turn until the user resumes it. Channel,
+   * messaging and task work still run. Absent on a released Team API response, as `hold` is.
+   */
+  paused?: boolean;
 }
 
 export function isQueueSnapshot(value: unknown): value is QueueSnapshot {
@@ -172,7 +177,8 @@ export function isQueueSnapshot(value: unknown): value is QueueSnapshot {
     isIdentifier(value.agentId) &&
     Array.isArray(value.deliveries) &&
     value.deliveries.every(isQueueDelivery) &&
-    (value.hold === undefined || value.hold === null || isQueueHold(value.hold))
+    (value.hold === undefined || value.hold === null || isQueueHold(value.hold)) &&
+    (value.paused === undefined || isBoolean(value.paused))
   );
 }
 
@@ -230,6 +236,21 @@ export interface UpdateQueuedMessageInput {
 export interface ReorderQueueInput {
   agentId: string;
   deliveryIds: string[];
+}
+
+/** Pauses or resumes the start of queued messages for one agent. */
+export interface SetQueuePausedInput {
+  agentId: string;
+  paused: boolean;
+}
+
+/**
+ * Starts one queued message now: it moves to the front of the queue, starts even while the queue is
+ * paused, and the running turn, when there is one, stops for it.
+ */
+export interface RunQueuedMessageNowInput {
+  agentId: string;
+  deliveryId: string;
 }
 
 export interface InterruptTurnInput {

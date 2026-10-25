@@ -72,6 +72,11 @@ export interface ComposerActionsDeps {
   attachmentPicker: () => HTMLInputElement | undefined;
 }
 
+/** How a submitted message is sent: "Stop and send" sets `interrupt`. */
+interface SubmitOptions {
+  interrupt?: boolean;
+}
+
 export function createComposerActions(deps: ComposerActionsDeps) {
   function updateTeamTyping(text: string): void {
     const agentId = deps.props.agent?.id;
@@ -509,6 +514,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     draftOverride?: ComposerDraft,
     targetOverride?: ConversationTarget,
     submittedSnapshot?: ComposerDraft,
+    options: SubmitOptions = {},
   ): Promise<boolean> {
     if (deps.attachmentBusy()) return false;
     if (!draftOverride && deps.currentEditingDeliveryId()) {
@@ -531,7 +537,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     stopTeamTyping();
     deps.setComposerError(null, target);
     deps.clearConversationError(target);
-    queueSend(target, draft, text);
+    queueSend(target, draft, text, options);
     deps.clearSubmittedDraft(target, submittedSnapshot ?? draft);
     return true;
   }
@@ -540,7 +546,12 @@ export function createComposerActions(deps: ComposerActionsDeps) {
    * Shows a message at once and sends it after the earlier sends of its chat, so the host stores the
    * chat's messages in the order the user sent them. `draft` is what Edit puts back in the composer.
    */
-  function queueSend(target: ConversationTarget, draft: ComposerDraft, text: string): void {
+  function queueSend(
+    target: ConversationTarget,
+    draft: ComposerDraft,
+    text: string,
+    options: SubmitOptions = {},
+  ): void {
     const activeTarget = deps.currentTarget();
     if (activeTarget && activeTarget.agentId === target.agentId && activeTarget.serverId === target.serverId) {
       deps.setStickToLatest(true);
@@ -555,6 +566,9 @@ export function createComposerActions(deps: ComposerActionsDeps) {
       (server?.id === target.serverId &&
         (server.kind !== "remote" ||
           Boolean(server.compatibility?.capabilities.includes(TEAM_MESSAGE_CLIENT_ID_CAPABILITY))));
+    // The option belongs to this message only: an earlier send of the chat never carries it, and a
+    // retry of this message keeps it.
+    const sendOptions = options.interrupt ? { interrupt: true } : undefined;
     deps.pendingSends.add(target, { draft, text, retrySafe }, async (pending) => {
       const result = await send(
         pending.text,
@@ -562,6 +576,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
         pending.draft.replyToMessageId,
         target,
         pending.clientMessageId,
+        sendOptions,
       );
       if ("error" in result) playActionSound("error");
       return result;
@@ -592,6 +607,13 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     // A send whose answer was lost may have stored the files already; the host ignores those ids.
     for (const attachment of removed?.draft.attachments ?? [])
       void conversationRuntime(deps.props).agent.discardDraftAttachment(attachment.id, target.serverId);
+  }
+
+  /** "Stop and send": the composer text stops the running turn and runs next. */
+  function submitStopAndSend(): void {
+    if (deps.attachmentBusy()) return;
+    if (deps.voicePhase() !== "idle" || !deps.agentReady()) return;
+    void submitMessage(undefined, undefined, undefined, { interrupt: true });
   }
 
   function submitComposer(): void {
@@ -655,6 +677,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     reorderPresentedQueue,
     submitMessage,
     submitComposer,
+    submitStopAndSend,
     sendSelectionInstruction,
     retryPendingSend,
     editPendingSend,

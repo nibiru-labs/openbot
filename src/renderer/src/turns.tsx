@@ -1,11 +1,12 @@
-import type {
-  AgentApproval,
-  AgentContextState,
-  AgentEvent,
-  AgentModelChoice,
-  AgentWaitsSnapshot,
-  QueueSnapshot,
-  RoutineFields,
+import {
+  type AgentApproval,
+  type AgentContextState,
+  type AgentEvent,
+  type AgentModelChoice,
+  type AgentWaitsSnapshot,
+  isQueuedAgentReply,
+  type QueueSnapshot,
+  type RoutineFields,
 } from "@openbot/contracts/ipc";
 import { currentText } from "@openbot/ui/text";
 import { createEffect, createMemo, createSignal, untrack } from "solid-js";
@@ -386,6 +387,34 @@ const Turns = createSimpleContext({
         });
     }
 
+    function setQueuePaused(paused: boolean) {
+      const agent = activeAgent();
+      if (!agent) return;
+      const serverId = activeServerId();
+      void turnsPort()
+        .agent.setQueuePaused({ agentId: agent.id, paused })
+        .catch((error) => appendUiError(agent.id, error, currentText().t("app.errorStatus.queuePause"), serverId));
+    }
+
+    /** Stops the running turn for one queued message, which starts next. */
+    function runQueuedMessageNow(deliveryId: string) {
+      const agent = activeAgent();
+      if (!agent) return;
+      const serverId = activeServerId();
+      void turnsPort()
+        .agent.runQueuedMessageNow({ agentId: agent.id, deliveryId })
+        .catch((error) => appendUiError(agent.id, error, currentText().t("app.errorStatus.runNow"), serverId));
+    }
+
+    /** Cancels every queued message the user sees, one request each, so a failure names its row. */
+    function clearQueue() {
+      const queue = activeQueue();
+      if (!queue) return;
+      for (const delivery of queue.deliveries)
+        if (delivery.status === "queued" && !delivery.editing && !isQueuedAgentReply(delivery))
+          cancelQueuedMessage(delivery.id);
+    }
+
     function stopActiveTurn() {
       const agent = activeAgent();
       const turnId = agent ? activeTurns()[agent.id] : null;
@@ -474,6 +503,9 @@ const Turns = createSimpleContext({
       steerQueuedMessage,
       updateQueuedMessage,
       reorderQueue,
+      setQueuePaused,
+      runQueuedMessageNow,
+      clearQueue,
       stopActiveTurn,
     };
   },

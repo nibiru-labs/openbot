@@ -784,12 +784,21 @@ const Conversation = createSimpleContext({
       replyToMessageId: string | null,
       target?: { agentId: string; serverId: string },
       clientMessageId?: string,
+      options?: { interrupt?: boolean },
     ): Promise<SendMessageResult> {
       const agentId = target?.agentId ?? activeAgent()?.id;
       const serverId = target?.serverId ?? activeServerId();
       if (!agentId || (!body.trim() && attachmentDraftIds.length === 0))
         return { error: currentText().t("chat.errorStatus.send") };
-      return sendMessageToAgent(agentId, body, attachmentDraftIds, replyToMessageId, serverId, clientMessageId);
+      return sendMessageToAgent(
+        agentId,
+        body,
+        attachmentDraftIds,
+        replyToMessageId,
+        serverId,
+        clientMessageId,
+        options?.interrupt === true,
+      );
     }
 
     /** The failure goes back to the pending message, which shows it with Retry. */
@@ -800,6 +809,7 @@ const Conversation = createSimpleContext({
       replyToMessageId: string | null = null,
       serverId = activeServerId(),
       clientMessageId?: string,
+      interrupt = false,
     ): Promise<SendMessageResult> {
       const analytics = desktopAnalytics.scope();
       const properties = analyticsAgentProperties(agentId);
@@ -810,6 +820,7 @@ const Conversation = createSimpleContext({
           attachmentDraftIds,
           ...(replyToMessageId ? { replyToMessageId } : {}),
           ...(clientMessageId ? { clientMessageId } : {}),
+          ...(interrupt ? { interrupt: true } : {}),
         };
         const receipt = await conversationPort().agent.sendMessage(input, serverId);
         const errorKey = agentConversationKey(serverId, agentId);

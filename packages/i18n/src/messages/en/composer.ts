@@ -73,6 +73,8 @@ export const messages = defineMessages("composer", {
   "composer.send.voice": "Send voice message",
   "composer.send.message": "Send message",
   "composer.send.stop": "Stop agent",
+  "composer.send.stopAndSend": "Stop and send",
+  "composer.send.stopAndSendTooltip": "Stop current work and send this now",
   "composer.send.hint.enter": "Send (Enter). Shift+Enter adds a new line.",
   "composer.send.hint.modEnterMac": "Send (⌘Enter). Enter adds a new line.",
   "composer.send.hint.modEnterWin": "Send (Ctrl+Enter). Enter adds a new line.",

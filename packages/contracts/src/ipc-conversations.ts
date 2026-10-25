@@ -160,6 +160,11 @@ export interface SendMessageInput {
   clientMessageId?: string;
   /** The open task of this agent that takes the message. Without it, the agent's own chat takes it. */
   taskId?: string;
+  /**
+   * Stop the running turn and start this message next, before the other queued messages. Without
+   * it, a message to a busy agent follows the agent's busy message mode. Local hosts only.
+   */
+  interrupt?: boolean;
 }
 
 export interface SetMessageReactionInput {
