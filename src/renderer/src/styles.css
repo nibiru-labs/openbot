@@ -69,6 +69,7 @@
 @import "@openbot/ui/features/billing/billing.css";
 @import "@openbot/ui/styles/reference-chip.css";
 @import "@openbot/ui/skill-preview.css";
+@import "./styles/light-restyle.css";
 
 @source "../../../packages/ui/src";
 
