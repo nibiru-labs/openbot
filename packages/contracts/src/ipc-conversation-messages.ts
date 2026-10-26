@@ -5,6 +5,7 @@ import { type AttachmentSummary, isAttachmentSummary } from "./ipc-attachments";
 import { isBoundedString, isIdentifier, isRequestId } from "./ipc-bounded-values";
 import { CONVERSATION_PLAN_ITEM_TYPE, type ConversationPlan, isConversationPlan } from "./ipc-conversation-plan";
 import { QUEUE_DELIVERY_STATUSES, type QueueDelivery } from "./ipc-queue";
+import { type ConversationPause, isConversationPause } from "./ipc-token-budget";
 import { isBoolean, isDynamicRecord, isNumber, isOneOf, isString } from "./runtime-values";
 import { type ConversationUiBlock, isConversationUiBlock } from "./ui-blocks";
 
@@ -215,6 +216,8 @@ export interface ConversationMessage {
    * beside `questionPrompt`. Absent on a message from an older host.
    */
   uiBlock?: ConversationUiBlock | undefined;
+  /** Set on an `agent-pause` marker: the agent stopped or waits for the user, or for its plan. */
+  pause?: ConversationPause | undefined;
 }
 
 export function isConversationMessage(value: unknown): value is ConversationMessage {
@@ -258,7 +261,8 @@ export function isConversationMessage(value: unknown): value is ConversationMess
     (value.imageGeneration === undefined || isImageGenerationInfo(value.imageGeneration)) &&
     (value.questionPrompt === undefined || isConversationQuestionPrompt(value.questionPrompt)) &&
     (value.plan === undefined || isConversationPlan(value.plan)) &&
-    (value.uiBlock === undefined || isConversationUiBlock(value.uiBlock))
+    (value.uiBlock === undefined || isConversationUiBlock(value.uiBlock)) &&
+    (value.pause === undefined || isConversationPause(value.pause))
   );
 }
 

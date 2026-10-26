@@ -270,6 +270,27 @@ and interrupts the running turn, whose end drains the queue. "Stop and send" is 
 `interrupt: true`, which runs the new message now instead of steering it. These three controls are
 local only: the Team API has no route for them. The default busy-message mode is `steer`.
 
+Token budget (`src/backend/agent/token-budget.ts`, `agent-pauses.ts`). The app setting
+`TokenBudgetPreference` holds a limit per hour and a limit per turn, in processed tokens (input,
+cached input, cache writes and output); 0 means no limit, and the defaults are 15M and 5M.
+`AgentUsage.record` returns the tokens a usage report added, and `TurnLifecycle` gives them to
+`TokenBudget`, which keeps a rolling hour for each agent in memory and reads it from
+`agent_usage_records` once after a start. At the hourly limit `TokenBudget.mayDrain` is false, and
+`DrainScheduler` holds the agent with the clause `token-budget`: the running turn goes on and no new
+turn starts. A turn past the turn limit is armed, and `TokenBudget.boundary` stops it when its next
+tool step finishes: the hold is set first, then the turn is interrupted as the user's Stop does, so
+the conversation, the plan and the provider session stay. The chat gets an `agent-pause` marker
+(`AgentPauses`) that holds the reason, the counts and a `resolved` flag. Continue
+(`agent:continue-pause`, local only) marks the agent's markers done, starts a new window for the
+agent, and queues one resume message for a stopped turn. The hold ends by itself when the window
+falls under the limit or when the user raises the limit. Claude and the ACP providers report usage
+once at the end of a turn, so the turn limit cannot stop such a turn in the middle.
+
+The same marker serves the provider plan. A turn that the plan refuses after it did a tool step or
+wrote an answer ends as `interrupted`, not `failed`, and `AgentPauses.planStopped` writes a
+`plan-limit` marker. When `UsageLimitGate` releases the limit, `AgentPauses.planLimitEnded` continues
+each agent it stopped. A turn refused before it did any work is still queued again, as before.
+
 An answer to a request that went to two or more teammates waits in the requester's queue while
 another teammate's copy of that request is queued, starting or running (`MailboxStore.nextQueued`).
 When the last copy ends, the waiting answers start in one turn, and the prompt names each teammate

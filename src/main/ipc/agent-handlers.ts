@@ -83,6 +83,7 @@ import {
   parseCancelMessageLink,
   parseCancelQueuedMessage,
   parseChannelId,
+  parseContinueAgentPause,
   parseCreateAgent,
   parseInterrupt,
   parseMarkConversationRead,
@@ -635,6 +636,11 @@ export function agentIpcHandlers({
               body: { deliveryId: parsed.deliveryId },
             }),
           ),
+      }),
+      // Local only: the released Team API has no route to continue a paused agent.
+      continueAgentPause: scopedHandler(parseContinueAgentPause, {
+        local: (parsed) => runCauseEffect(service.continueAgentPause(parsed)),
+        remote: queueControlRemoteUnsupported,
       }),
       // Local only: the released Team API has no queue pause or run-now route.
       setQueuePaused: scopedHandler(parseSetQueuePaused, {

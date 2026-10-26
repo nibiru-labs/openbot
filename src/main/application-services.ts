@@ -246,6 +246,7 @@ import { TeamStore } from "./team-store";
 import { TeamWebRtcBridge } from "./team-webrtc-bridge";
 import { TeamWebRtcClientTransport } from "./team-webrtc-client-transport";
 import type { TeardownRegistry } from "./teardown-registry";
+import { TokenBudgetPreferenceStore } from "./token-budget-preference-store";
 import { TraceFile } from "./trace-file";
 import { readUpdatePreference, writeUpdatePreference } from "./update-preference-store";
 import { checkRestartReadiness, type RestartReadiness } from "./update-readiness";
@@ -284,6 +285,7 @@ const UPDATE_PREFERENCE_FILE = "openbot-update-preference-v1.json";
 const NOTIFICATION_PREFERENCE_FILE = "openbot-notification-preference-v1.json";
 const PUSH_NOTIFICATION_FILE = "openbot-push-notifications-v1.json";
 const BUSY_MESSAGE_MODE_PREFERENCE_FILE = "openbot-busy-message-mode-v1.json";
+const TOKEN_BUDGET_PREFERENCE_FILE = "openbot-token-budget-v1.json";
 const AGENT_MEMORY_LIMIT_PREFERENCE_FILE = "openbot-agent-memory-limit-v1.json";
 const SERVER_TIMEZONE_PREFERENCE_FILE = "openbot-server-timezone-v1.json";
 const REMOTE_SESSION_REUSE_PREFERENCE_FILE = "openbot-remote-session-reuse-preference-v1.json";
@@ -463,6 +465,7 @@ export interface ApplicationServices {
   appearance: AppearanceService;
   notificationPreference: NotificationPreferenceStore;
   busyMessageMode: BusyMessageModePreferenceStore;
+  tokenBudget: TokenBudgetPreferenceStore;
   agentMemoryLimit: AgentMemoryLimitSetting;
   serverTimezone: ServerTimezonePreferenceStore;
   remoteSessionReuse: RemoteSessionReusePreferenceStore;
@@ -985,6 +988,8 @@ export async function createApplicationServices({
     join(app.getPath("userData"), BUSY_MESSAGE_MODE_PREFERENCE_FILE),
   );
   await runCauseEffect(busyMessageMode.load());
+  const tokenBudget = new TokenBudgetPreferenceStore(join(app.getPath("userData"), TOKEN_BUDGET_PREFERENCE_FILE));
+  await runCauseEffect(tokenBudget.load());
   const agentMemoryLimit = new AgentMemoryLimitPreferenceStore(
     join(app.getPath("userData"), AGENT_MEMORY_LIMIT_PREFERENCE_FILE),
   );
@@ -1471,6 +1476,7 @@ export async function createApplicationServices({
     routineFlowTools: () => routineFlowRuntime,
     approvalAutomation,
     busyMessageMode: () => busyMessageMode.get().mode,
+    tokenBudget: () => tokenBudget.get(),
     agentMemoryLimit: () => agentMemoryLimit.get().limit,
     timezone: () => serverTimezone.effective(),
     deleteWithRevokedApproval: (agentId, remove) =>
@@ -2599,6 +2605,7 @@ export async function createApplicationServices({
     appearance,
     notificationPreference,
     busyMessageMode,
+    tokenBudget,
     agentMemoryLimit: agentMemoryLimitSetting,
     serverTimezone,
     remoteSessionReuse,

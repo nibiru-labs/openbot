@@ -31,6 +31,7 @@ import type {
   SetEnabledSkillInput,
   SubmitMarketplaceAgentInput,
   SubmitSkillInput,
+  TokenBudgetPreference,
   UninstallSkillInput,
   UpdatePreferenceChange,
   VerifyEmailCodeInput,
@@ -52,6 +53,7 @@ import {
   isDynamicIslandPreference,
   isDynamicIslandPresentation,
   isSkillCategory,
+  isTokenBudgetPreference,
 } from "@openbot/contracts/ipc";
 import {
   type DynamicRecord,
@@ -89,6 +91,11 @@ export function parseAnalyticsPreference(input: unknown): SetAnalyticsPreference
 export function parseBusyMessageModePreference(input: unknown): BusyMessageModePreference {
   if (!isDynamicRecord(input) || !isBusyMessageMode(input.mode)) throw new Error("Busy message mode is required.");
   return { mode: input.mode };
+}
+
+export function parseTokenBudgetPreference(input: unknown): TokenBudgetPreference {
+  if (!isTokenBudgetPreference(input)) throw new Error("Token budget limits are required.");
+  return { perHour: input.perHour, perTurn: input.perTurn };
 }
 
 export function parseAgentMemoryLimitPreference(input: unknown): AgentMemoryLimitPreference {

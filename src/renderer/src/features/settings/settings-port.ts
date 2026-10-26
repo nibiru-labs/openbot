@@ -10,6 +10,7 @@ export interface SettingsPort {
   getApprovalAutomation: OpenBotDesktopApi["getApprovalAutomation"];
   getBusyMessageModePreference: OpenBotDesktopApi["getBusyMessageModePreference"];
   getRemoteSessionReusePreference: OpenBotDesktopApi["getRemoteSessionReusePreference"];
+  getTokenBudgetPreference: OpenBotDesktopApi["getTokenBudgetPreference"];
   onAgentMemoryLimitPreference: OpenBotDesktopApi["onAgentMemoryLimitPreference"];
   onApprovalAutomation: OpenBotDesktopApi["onApprovalAutomation"];
   onOpenSettings: OpenBotDesktopApi["onOpenSettings"];
@@ -17,6 +18,7 @@ export interface SettingsPort {
   setAnalyticsPreference: OpenBotDesktopApi["setAnalyticsPreference"];
   setBusyMessageModePreference: OpenBotDesktopApi["setBusyMessageModePreference"];
   setRemoteSessionReusePreference: OpenBotDesktopApi["setRemoteSessionReusePreference"];
+  setTokenBudgetPreference: OpenBotDesktopApi["setTokenBudgetPreference"];
   dynamicIsland: Pick<
     OpenBotDesktopApi["dynamicIsland"],
     "getBuiltInDisplayGeometry" | "getPreference" | "setPreference"

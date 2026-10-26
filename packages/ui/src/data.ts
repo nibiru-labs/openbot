@@ -9,6 +9,7 @@ import type {
   AvatarHue,
   ChannelRoutingConversationEvent,
   ConversationMessageSender,
+  ConversationPause,
   ConversationPlan,
   ConversationQuestionPrompt,
   ConversationReaction,
@@ -135,6 +136,8 @@ export type ChatActionMarkerModel =
   | { kind: "context-reset"; timestamp: string }
   /** The agent left its model for a usage limit, or went back to it. `text` is the host's note. */
   | { kind: "model-switch"; reason: ModelSwitchReason; text: string; timestamp: string }
+  /** The agent stopped or waits for the user or for its plan. `text` is the host's note. */
+  | { kind: "agent-pause"; messageId: string; pause: ConversationPause; text: string; timestamp: string }
   | {
       kind: "unavailable";
       label: string;

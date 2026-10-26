@@ -429,6 +429,7 @@ import type {
   UpdateHostIdentityInput,
   UpdateTeamMemberInput,
 } from "./ipc-team-host";
+import type { ContinueAgentPauseInput, TokenBudgetPreference } from "./ipc-token-budget";
 import type {
   VoiceApiKeyInput,
   VoiceModelRequest,
@@ -539,6 +540,8 @@ export const IPC_ENDPOINTS = {
     setBusyMessageModePreference: request<BusyMessageModePreference, BusyMessageModePreference>()(
       "app:set-busy-message-mode",
     ),
+    getTokenBudgetPreference: request<undefined, TokenBudgetPreference>()("app:get-token-budget"),
+    setTokenBudgetPreference: request<TokenBudgetPreference, TokenBudgetPreference>()("app:set-token-budget"),
     getAgentMemoryLimitPreference: request<undefined, AgentMemoryLimitPreference>()("app:get-agent-memory-limit"),
     setAgentMemoryLimitPreference: request<AgentMemoryLimitPreference, AgentMemoryLimitPreference>()(
       "app:set-agent-memory-limit",
@@ -1138,6 +1141,8 @@ export const IPC_ENDPOINTS = {
     // Local only: a joined server's Team API has no queue pause or run-now route.
     setQueuePaused: scopedRequest<SetQueuePausedInput, void>()("agent:set-queue-paused"),
     runQueuedMessageNow: scopedRequest<RunQueuedMessageNowInput, void>()("agent:run-queued-message-now"),
+    // Local only: a joined server's Team API has no route to continue a paused agent.
+    continueAgentPause: scopedRequest<ContinueAgentPauseInput, void>()("agent:continue-pause"),
     interrupt: scopedRequest<InterruptTurnInput, void>()("agent:interrupt"),
     clearContext: scopedRequest<string, void>()("agent:clear-context"),
     respondToPrompt: scopedRequest<RespondToPromptInput, void>()("agent:respond-to-prompt"),

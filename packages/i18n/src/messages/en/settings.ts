@@ -51,6 +51,14 @@ export const messages = defineMessages("settings", {
     "New messages join the agent’s current work, not the queue. Works with ChatGPT and Claude.",
   "settings.agentMemoryLimit.title": "Memories per agent",
   "settings.agentMemoryLimit.description": "How many memories each agent on this computer can keep.",
+  "settings.tokenBudget.hour.title": "Token limit per hour",
+  "settings.tokenBudget.hour.description":
+    "At this limit an agent starts no new work until you continue. The work that runs goes on.",
+  "settings.tokenBudget.turn.title": "Token limit per turn",
+  "settings.tokenBudget.turn.description":
+    "A turn that goes past this limit stops after its current step. Its work is kept, and you can continue.",
+  "settings.tokenBudget.unlimited": "No limit",
+  "settings.tokenBudget.option": "{amount} tokens",
   "settings.keepRemoteSessions.title": "Fast connection to servers",
   "settings.keepRemoteSessions.description":
     "Keep the connection to your joined servers between launches. OpenBot starts about a second faster. When you quit OpenBot, the OpenBot service does not close the connection.",

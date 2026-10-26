@@ -1,6 +1,11 @@
 export type ExternalLinkTarget = "Default browser" | "OpenBot";
 
-import { type AgentMemoryLimit, type BusyMessageMode, DEFAULT_AGENT_MEMORY_LIMIT } from "@openbot/contracts/ipc";
+import {
+  type AgentMemoryLimit,
+  type BusyMessageMode,
+  DEFAULT_AGENT_MEMORY_LIMIT,
+  DEFAULT_TOKEN_BUDGET,
+} from "@openbot/contracts/ipc";
 /** Which chord sends a message. Re-exported here so settings state can name the same type. */
 import type { SendShortcutMode } from "../conversation/send-shortcut";
 
@@ -38,6 +43,10 @@ export interface GeneralSettingsValue {
   busyMessageMode: BusyMessageMode;
   /** How many memories one agent on this computer can hold. */
   agentMemoryLimit: AgentMemoryLimit;
+  /** The tokens one agent may use in an hour, or 0 for no limit. */
+  tokenBudgetPerHour: number;
+  /** The tokens one turn may use before it stops after a step, or 0 for no limit. */
+  tokenBudgetPerTurn: number;
   /** Keep each joined server's connection between runs of the app, so the start is faster. */
   keepRemoteSessions: boolean;
   /** Short sounds that confirm the user's own actions, such as a click or a sent message. */
@@ -70,6 +79,8 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsValue = {
   sendShortcut: "enter",
   busyMessageMode: "queue",
   agentMemoryLimit: DEFAULT_AGENT_MEMORY_LIMIT,
+  tokenBudgetPerHour: DEFAULT_TOKEN_BUDGET.perHour,
+  tokenBudgetPerTurn: DEFAULT_TOKEN_BUDGET.perTurn,
   keepRemoteSessions: true,
   soundFeedback: false,
   soundTheme: "default",
