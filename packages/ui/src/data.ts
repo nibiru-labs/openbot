@@ -131,6 +131,8 @@ export type ChatActionMarkerModel =
   | (ChannelRoutingConversationEvent & { kind: "channel-routing"; timestamp: string })
   /** The agent suggested a Marketplace app. The chat shows a card to connect it. */
   | { kind: "marketplace-suggestion"; appId: string; timestamp: string }
+  /** A coding dispatch started or finished. `text` is the host's status sentence. */
+  | { kind: "dispatch"; phase: "started" | "result"; text: string; timestamp: string }
   /** The user started a new chat: the agent does not see the messages above this marker. */
   | { kind: "context-reset"; timestamp: string }
   /** The agent left its model for a usage limit, or went back to it. `text` is the host's note. */

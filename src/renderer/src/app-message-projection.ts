@@ -1,6 +1,7 @@
 import type { AgentSummary, ConversationMessage, QueueDeliveryStatus } from "@openbot/contracts/ipc";
 import {
   CONVERSATION_PLAN_ITEM_TYPE,
+  dispatchConversationEvent,
   hostedSiteConversationEvent,
   isContextResetMarker,
   marketplaceSuggestionEvent,
@@ -297,6 +298,14 @@ function chatActionMarker(
   if (skillEvent) return { ...skillEvent, kind: "skill-lifecycle", timestamp: message.createdAt };
   const suggestion = marketplaceSuggestionEvent(message);
   if (suggestion) return { kind: "marketplace-suggestion", appId: suggestion.appId, timestamp: message.createdAt };
+  const dispatchEvent = dispatchConversationEvent(message);
+  if (dispatchEvent)
+    return {
+      kind: "dispatch",
+      phase: dispatchEvent.phase,
+      text: message.text,
+      timestamp: message.createdAt,
+    };
   if (routineEvent) {
     return {
       kind: "routine-lifecycle",
