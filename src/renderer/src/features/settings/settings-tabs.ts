@@ -56,6 +56,7 @@ export const navItems: ReadonlyArray<SettingsNavItem> = [
     icon: Settings,
     rows: [
       { titleKey: "settings.language.title", descriptionKey: "settings.language.description" },
+      { titleKey: "settings.colorScheme.title", descriptionKey: "settings.colorScheme.description" },
       { titleKey: "settings.logoColor.title", descriptionKey: "settings.logoColor.description" },
       { titleKey: "settings.sendShortcut.title", descriptionKey: "settings.sendShortcut.description" },
       { titleKey: "settings.busyMessage.title", descriptionKey: "settings.busyMessage.description" },

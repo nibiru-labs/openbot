@@ -1,0 +1,130 @@
+/*
+ * The desktop light theme. Only the desktop renderer imports this file, after tokens.css.
+ *
+ * It applies when the root element has `data-appearance="light"`, which the renderer sets from the
+ * Theme setting (src/renderer/src/appearance.ts). Nothing sets it on the public web app, the status
+ * page, the Dynamic Island or the highlight overlay, so those stay on the dark base.
+ *
+ * Only colors change. The neutral values follow the mobile light theme in tokens-native.css, so a
+ * light desktop and a light phone look like one product. The accent stays the desktop blue, made
+ * darker where it is text so that it reads on a white surface. A token that is an alias of another
+ * token in tokens.css is not repeated: it resolves against the values here.
+ *
+ * `--openbot-surface-light` and the `*-on-light` text are the high-contrast pair of the default
+ * button, the user's bubble and the checked switch. They invert here, as `--openbot-action` does on
+ * mobile, so those controls stay the strongest thing on the screen. Ink that must stay dark on a
+ * surface that is light in both themes uses `--openbot-ink-on-light`.
+ */
+
+:root[data-appearance="light"] {
+  color-scheme: light;
+
+  --openbot-bg-native-canvas: #f5f5f7;
+  --openbot-bg-native-sidebar: #ffffff;
+  --openbot-bg-sheet: #fcfcfc;
+  --openbot-bg-grouped: #f2f2f2;
+  --openbot-text-grouped-secondary: #69696e;
+  --openbot-border-grouped: #dddddf;
+
+  --openbot-bg-canvas: #f5f5f7;
+  --openbot-bg-canvas-clear: rgba(245, 245, 247, 0);
+  --openbot-bg-sidebar: #f5f5f7;
+  --openbot-marketplace-detail-bg: #ececf0;
+  --openbot-bg-surface: #ffffff;
+  --openbot-bg-surface-raised: #ffffff;
+  --openbot-bg-control: #e9e9ed;
+  --openbot-bg-control-hover: #e2e2e7;
+  --openbot-bg-control-active: #dedee4;
+  --openbot-tabs-bar-bg: #e9e9ed;
+  --openbot-tabs-pill-bg: #ffffff;
+  --openbot-bg-overlay: rgba(255, 255, 255, 0.92);
+  --openbot-dialog-overlay: rgba(20, 20, 20, 0.16);
+  --openbot-dialog-ring: rgba(20, 20, 20, 0.08);
+  --openbot-bg-glass: rgba(255, 255, 255, 0.76);
+  --openbot-bg-host-inset: #ebedf0;
+  --openbot-window-frame: #e4e4e8;
+  --openbot-scroll-edge-overlay: rgba(245, 245, 247, 0.72);
+
+  --openbot-border: rgba(20, 20, 20, 0.08);
+  --openbot-border-strong: rgba(20, 20, 20, 0.12);
+  --openbot-image-outline: rgba(20, 20, 20, 0.1);
+
+  --openbot-text-primary: #141414;
+  --openbot-text-secondary: rgba(20, 20, 20, 0.78);
+  --openbot-text-muted: rgba(20, 20, 20, 0.6);
+  --openbot-text-dim: rgba(20, 20, 20, 0.4);
+  --openbot-text-readable: rgba(20, 20, 20, 0.6);
+  --openbot-text-placeholder: rgba(20, 20, 20, 0.4);
+  --openbot-settings-text-muted: rgba(20, 20, 20, 0.6);
+  --openbot-surface-light: #141414;
+  --openbot-text-on-light: #ffffff;
+  --openbot-text-muted-on-light: rgba(255, 255, 255, 0.6);
+  --openbot-text-dim-on-light: rgba(255, 255, 255, 0.42);
+  --openbot-border-on-light: rgba(255, 255, 255, 0.16);
+  --openbot-action: #141414;
+  --openbot-action-foreground: #f2f2f2;
+
+  --openbot-accent-hover: #0069d6;
+  --openbot-accent-text: #0a66c2;
+  --openbot-accent-soft: rgba(0, 124, 247, 0.12);
+  --openbot-accent-strong: rgba(0, 124, 247, 0.26);
+
+  --openbot-chart-series-codex: #9a5fd0;
+  --openbot-chart-series-grok: #1c7f92;
+
+  --openbot-success: #32a85d;
+  --openbot-success-text: #1e6f3b;
+  --openbot-success-soft: rgba(50, 168, 93, 0.14);
+  --openbot-success-wash: rgba(50, 168, 93, 0.06);
+  --openbot-warning: #c58a23;
+  --openbot-warning-text: #865700;
+  --openbot-warning-soft: rgba(197, 138, 35, 0.14);
+  --openbot-danger: #dc3640;
+  --openbot-danger-hover: #c42a33;
+  --openbot-danger-text: #b02a2f;
+  --openbot-danger-soft: rgba(220, 54, 64, 0.12);
+  --openbot-danger-soft-hover: rgba(220, 54, 64, 0.2);
+  --openbot-danger-focus: rgba(220, 54, 64, 0.32);
+  --openbot-danger-border: rgba(220, 54, 64, 0.4);
+
+  --openbot-question-option: #1c7f92;
+  --openbot-question-option-soft: rgba(28, 127, 146, 0.1);
+  --openbot-question-option-hover: rgba(28, 127, 146, 0.16);
+  --openbot-question-option-pressed: rgba(28, 127, 146, 0.22);
+  --openbot-question-badge-text: #1c7f92;
+  --openbot-question-badge-soft: rgba(28, 127, 146, 0.12);
+  --openbot-message-badge-text: #1f6fd1;
+  --openbot-message-badge-soft: rgba(31, 111, 209, 0.12);
+  --openbot-badge-new: #e0144f;
+  --openbot-badge-new-soft: rgba(224, 20, 79, 0.12);
+  --openbot-approval-badge-soft: rgba(197, 138, 35, 0.18);
+
+  --openbot-file-blue: #1f6fd1;
+  --openbot-file-blue-soft: rgba(31, 111, 209, 0.12);
+  --openbot-file-yellow: #865700;
+  --openbot-file-yellow-soft: rgba(197, 138, 35, 0.14);
+  --openbot-file-orange: #b55a1f;
+  --openbot-file-orange-soft: rgba(181, 90, 31, 0.12);
+  --openbot-file-teal: #1c7f92;
+  --openbot-file-teal-soft: rgba(28, 127, 146, 0.12);
+  --openbot-file-green: #1e6f3b;
+  --openbot-file-green-soft: rgba(50, 168, 93, 0.14);
+  --openbot-file-red: #b02a2f;
+  --openbot-file-red-soft: rgba(216, 95, 88, 0.14);
+  --openbot-file-pink: #a3478f;
+  --openbot-file-pink-soft: rgba(163, 71, 143, 0.12);
+  --openbot-file-default: #0a66c2;
+  --openbot-file-default-soft: rgba(0, 124, 247, 0.12);
+
+  --openbot-data-table-border: #e2e2e6;
+  --openbot-data-table-header-text: #6b6b70;
+  --openbot-data-table-text: #141414;
+  --openbot-data-table-ring: rgba(20, 20, 20, 0.1);
+
+  --openbot-shadow-popover-ambient: rgba(20, 20, 20, 0.12);
+  --openbot-shadow-dialog: rgba(20, 20, 20, 0.18);
+  --openbot-shadow-ring: rgba(20, 20, 20, 0.06);
+  --openbot-hover: rgba(20, 20, 20, 0.05);
+  --openbot-shadow-card: 0 1px 2px rgba(20, 20, 20, 0.05);
+  --openbot-shadow-overlay: 0 12px 32px rgba(20, 20, 20, 0.12);
+}

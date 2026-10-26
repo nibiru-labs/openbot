@@ -2,6 +2,7 @@
 @import "@fontsource-variable/inter/wght-italic.css";
 @import "tailwindcss";
 @import "@openbot/brand/tokens.css";
+@import "@openbot/brand/tokens-light.css";
 @import "@openbot/brand/logo.css";
 @import "@openbot/ui/styles.css";
 @import "@openbot/ui/features/account/otp-input.css";

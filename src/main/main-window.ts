@@ -26,6 +26,7 @@ import {
   clipboard,
   type Display,
   Menu,
+  nativeTheme,
   type Point,
   type Rectangle,
   screen,
@@ -64,6 +65,14 @@ interface MainWindowApplicationServices {
   service: AgentService;
   browser: BrowserHost;
   remoteServers: RemoteServerManager;
+}
+
+/**
+ * The color an opaque window shows before its renderer paints: the canvas of the scheme in use, so a
+ * light window does not open on a dark frame.
+ */
+export function windowBackgroundColor() {
+  return nativeTheme.shouldUseDarkColors ? "#0b0d0e" : "#f5f5f7";
 }
 
 /** The two handles that outlive any one window, so `activate` can rebuild into the same slot. */
@@ -147,7 +156,7 @@ export function createMainWindowController({
       minWidth: 960,
       minHeight: 640,
       show: false,
-      backgroundColor: "#0b0d0e",
+      backgroundColor: windowBackgroundColor(),
       title:
         developmentProfile === "test-client"
           ? getTranslate()("window.localClientTitle")
@@ -471,7 +480,7 @@ export function createComputerUsePermissionHelpWindow(translate: AppTranslate): 
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    backgroundColor: "#0b0d0e",
+    backgroundColor: windowBackgroundColor(),
     title: translate("window.computerUsePermissionTitle"),
     ...(process.platform === "darwin"
       ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 12, y: 13 } }

@@ -18,6 +18,7 @@ import type { BrowserHost } from "../../backend/browser-host";
 import type { MailboxStore } from "../../backend/mailbox-store";
 import type { AgentMemoryLimitSetting } from "../agent-memory-limit-preference-store";
 import { readAnalyticsPreference, writeAnalyticsPreference } from "../analytics-preference-store";
+import type { AppearanceService } from "../appearance-service";
 import type { ApprovalAutomation } from "../approval-automation-store";
 import type { BusyMessageModePreferenceStore } from "../busy-message-mode-preference-store";
 import type { LanguageService } from "../language-service";
@@ -31,6 +32,7 @@ import type { UpdateService } from "../update-service";
 import {
   parseAgentMemoryLimitPreference,
   parseAnalyticsPreference,
+  parseAppAppearancePreference,
   parseAppLanguagePreference,
   parseAppLogoColorPreference,
   parseBusyMessageModePreference,
@@ -87,6 +89,7 @@ export interface AppIpcDependencies {
   remoteSessionCache: RemoteSessionCache;
   language: LanguageService;
   logoColor: LogoColorService;
+  appearance: AppearanceService;
   initializeAgent: () => Promise<void>;
   appVariant: AppVariant;
   analyticsCaptureUrl: string | null;
@@ -110,6 +113,7 @@ export function appIpcHandlers({
   remoteSessionCache,
   language,
   logoColor,
+  appearance,
   initializeAgent,
   appVariant,
   analyticsCaptureUrl,
@@ -172,6 +176,10 @@ export function appIpcHandlers({
       getAppLogoColorPreference: handler(() => logoColor.preference),
       setAppLogoColorPreference: payloadHandler(parseAppLogoColorPreference, (parsed) =>
         runCauseEffect(logoColor.set(parsed)),
+      ),
+      getAppAppearancePreference: handler(() => appearance.preference),
+      setAppAppearancePreference: payloadHandler(parseAppAppearancePreference, (parsed) =>
+        runCauseEffect(appearance.set(parsed)),
       ),
       saveSetup: payloadHandler(parseSetup, async (input): Promise<AppSetupState> => {
         const state = await runCauseEffect(writeSetupState(setupFile, input));

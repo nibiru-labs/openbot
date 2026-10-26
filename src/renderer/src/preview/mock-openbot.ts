@@ -22,6 +22,7 @@ import {
   type AgentTasksSnapshot,
   type AgentTemplatePublication,
   type AnalyticsPreference,
+  type AppAppearancePreference,
   type AppInfo,
   type AppLanguagePreference,
   type AppLogoColorPreference,
@@ -44,6 +45,7 @@ import {
   createMcpServerId,
   DEFAULT_AGENT_ACCESS,
   DEFAULT_AGENT_MEMORY_LIMIT,
+  DEFAULT_APP_APPEARANCE,
   DEFAULT_APP_LOGO_COLOR,
   DEFAULT_APPROVAL_AUTOMATION_PREFERENCE,
   DEFAULT_BUSY_MESSAGE_MODE,
@@ -288,6 +290,8 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   const languageListeners = new Set<(preference: AppLanguagePreference) => void>();
   let logoColorPreference: AppLogoColorPreference = { color: DEFAULT_APP_LOGO_COLOR };
   const logoColorListeners = new Set<(preference: AppLogoColorPreference) => void>();
+  let appearancePreference: AppAppearancePreference = { appearance: DEFAULT_APP_APPEARANCE };
+  const appearanceListeners = new Set<(preference: AppAppearancePreference) => void>();
   const approvalAutomationListeners = new Set<(preference: ApprovalAutomationPreference) => void>();
   let dynamicIslandPreference: DynamicIslandPreference = { ...DEFAULT_DYNAMIC_ISLAND_PREFERENCE };
   let dynamicIslandPresentation: DynamicIslandPresentation = { serverId: "local", mode: "idle" };
@@ -815,6 +819,16 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     onAppLogoColorPreference: (listener) => {
       logoColorListeners.add(listener);
       return () => logoColorListeners.delete(listener);
+    },
+    getAppAppearancePreference: async () => clone(appearancePreference),
+    setAppAppearancePreference: async ({ appearance }) => {
+      appearancePreference = { appearance };
+      for (const listener of appearanceListeners) listener(clone(appearancePreference));
+      return clone(appearancePreference);
+    },
+    onAppAppearancePreference: (listener) => {
+      appearanceListeners.add(listener);
+      return () => appearanceListeners.delete(listener);
     },
     onOpenSettings: () => () => undefined,
     // The preview has no native page, so the overlay is never on screen and the DOM dock stays.

@@ -1,6 +1,7 @@
 export * from "./acp-agent-presets";
 export * from "./acp-registry-boundary";
 export * from "./agent-providers";
+export * from "./app-appearance";
 export * from "./app-language";
 export * from "./app-logo-color";
 export * from "./ipc-acp-registry";

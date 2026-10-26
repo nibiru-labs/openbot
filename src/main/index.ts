@@ -19,6 +19,7 @@ import {
   type NativeImage,
   Notification,
   nativeImage,
+  nativeTheme,
   net,
   powerMonitor,
   protocol,
@@ -96,6 +97,7 @@ import {
   createMainWindowController,
   createMainWindowHolder,
   showMainWindow,
+  windowBackgroundColor,
 } from "./main-window";
 import { ensureMacApplicationPresence, secondLaunchResponse } from "./main-window-state";
 import { MessageLinkRelay, openHttpLink } from "./message-link-relay";
@@ -468,6 +470,7 @@ function registerIpcHandlers({
   agentHostSettings,
   language,
   logoColor,
+  appearance,
   notificationPreference,
   busyMessageMode,
   agentMemoryLimit,
@@ -531,6 +534,7 @@ function registerIpcHandlers({
       remoteSessionCache,
       language,
       logoColor,
+      appearance,
       initializeAgent: () => runCauseEffect(agentInitialization.start()),
       appVariant,
       analyticsCaptureUrl,
@@ -1000,6 +1004,7 @@ if (!hasSingleInstanceLock) {
         teamStore,
         language,
         logoColor,
+        appearance,
         trace,
       } = built;
 
@@ -1127,6 +1132,17 @@ if (!hasSingleInstanceLock) {
         applyAppIconColor(preference.color);
         for (const window of BrowserWindow.getAllWindows()) {
           sendToRenderer(window, IPC_ENDPOINTS.app.appLogoColorPreference, preference);
+        }
+      });
+      // The main window was built before the saved appearance was read, and in "system" the scheme
+      // can change at any time, so its frame color follows every change.
+      const followScheme = () => windowHolder.current?.setBackgroundColor(windowBackgroundColor());
+      followScheme();
+      nativeTheme.on("updated", followScheme);
+      appearance.subscribe((preference) => {
+        nativeTheme.themeSource = preference.appearance;
+        for (const window of BrowserWindow.getAllWindows()) {
+          sendToRenderer(window, IPC_ENDPOINTS.app.appAppearancePreference, preference);
         }
       });
       await runCauseEffect(dynamicIsland.initialize()).catch((error) =>

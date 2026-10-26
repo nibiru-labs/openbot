@@ -3,7 +3,7 @@
  * one L around the card. */
 .app-window {
   /* The frame is darker than the card, so the card comes forward. */
-  --window-frame: color-mix(in srgb, var(--openbot-bg-canvas) 50%, var(--openbot-bg-notch));
+  --window-frame: var(--openbot-window-frame);
   /* The thin frame at the right and the bottom of the card */
   --window-edge: var(--openbot-space-1);
   --window-hairline-height: var(--openbot-icon-lg);

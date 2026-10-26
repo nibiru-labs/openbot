@@ -7,7 +7,7 @@ import {
   chatVisualThemeMessage,
   parseChatVisualMessage,
 } from "@openbot/contracts/chat-visual";
-import { createSignal, onSettled, Show, untrack } from "solid-js";
+import { createSignal, onSettled, Show } from "solid-js";
 import { useText } from "../../text";
 import { safeBrowserUrl } from "./RichMessageText";
 
@@ -96,9 +96,11 @@ export function ChatVisual(props: ChatVisualProps) {
  * a click that the user made in this frame.
  */
 function VisualFrame(props: ChatVisualProps) {
+  // The first theme sets the page URL or the document, so a change of theme does not reload the page.
   const [theme, setTheme] = createSignal<ChatVisualTheme>();
   const [reported, setReported] = createSignal<number>();
   let frame: HTMLIFrameElement | undefined;
+  let latestTheme: ChatVisualTheme | undefined;
   // The page waits for the theme, which the frame reads at its place once it is mounted.
   const url = () => {
     const current = theme();
@@ -130,9 +132,22 @@ function VisualFrame(props: ChatVisualProps) {
   };
 
   onSettled(() => {
-    if (frame) setTheme(visualTheme(frame));
+    if (frame) {
+      latestTheme = visualTheme(frame);
+      setTheme(latestTheme);
+    }
+    // A change of the app scheme reaches a page that is already open as a new theme message.
+    const appearance = new MutationObserver(() => {
+      if (!frame) return;
+      latestTheme = visualTheme(frame);
+      frame.contentWindow?.postMessage(chatVisualThemeMessage(latestTheme), "*");
+    });
+    appearance.observe(document.documentElement, { attributes: true, attributeFilter: ["data-appearance"] });
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    return () => {
+      appearance.disconnect();
+      window.removeEventListener("message", onMessage);
+    };
   });
 
   return (
@@ -152,8 +167,7 @@ function VisualFrame(props: ChatVisualProps) {
       style={props.fill ? undefined : `height: ${chatVisualFrameHeight(reported(), props.height)}px`}
       // The frame loads `about:blank` while it is inserted, which runs this handler inside a render.
       onLoad={() => {
-        const current = untrack(theme);
-        if (current) frame?.contentWindow?.postMessage(chatVisualThemeMessage(current), "*");
+        if (latestTheme) frame?.contentWindow?.postMessage(chatVisualThemeMessage(latestTheme), "*");
       }}
     />
   );

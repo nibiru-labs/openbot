@@ -19,6 +19,7 @@ import {
   type AccountSession,
   type AgentMemoryLimitPreference,
   type AnalyticsPreference,
+  type AppAppearancePreference,
   type AppInfo,
   type AppLanguagePreference,
   type AppLogoColorPreference,
@@ -48,6 +49,7 @@ import {
   isAgentMemoryLimit,
   isAgentModel,
   isAgentProvider,
+  isAppAppearance,
   isAppLanguage,
   isAppLogoColor,
   isApprovalAutomationPreference,
@@ -150,6 +152,12 @@ export function decodeAppLanguagePreference(value: unknown): AppLanguagePreferen
   const preference = decodeRecord(value, "language preference");
   if (!isAppLanguage(preference.language)) throw new Error("Invalid language.");
   return { language: preference.language };
+}
+
+export function decodeAppAppearancePreference(value: unknown): AppAppearancePreference {
+  const preference = decodeRecord(value, "appearance preference");
+  if (!isAppAppearance(preference.appearance)) throw new Error("Invalid appearance.");
+  return { appearance: preference.appearance };
 }
 
 export function decodeAppLogoColorPreference(value: unknown): AppLogoColorPreference {

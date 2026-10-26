@@ -5,8 +5,13 @@ export const messages = defineMessages("settings", {
   "settings.language.title": "Language",
   "settings.language.description": "OpenBot shows menus, buttons and messages in this language.",
   "settings.language.system": "System default",
-  // The logo color setting, General tab.
+  // The appearance settings, General tab: theme and logo color.
   "settings.appearance.title": "Appearance",
+  "settings.colorScheme.title": "Theme",
+  "settings.colorScheme.description": "System follows your device’s appearance.",
+  "settings.colorScheme.system": "System",
+  "settings.colorScheme.light": "Light",
+  "settings.colorScheme.dark": "Dark",
   "settings.logoColor.title": "Logo color",
   "settings.logoColor.description": "Shown in the Dock, the taskbar and the Dynamic Island.",
   "settings.logoColor.buildNote": "This build keeps its own logo color. The choice applies to the release app.",

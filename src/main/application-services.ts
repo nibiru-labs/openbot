@@ -80,6 +80,7 @@ import {
   clipboard,
   desktopCapturer,
   nativeImage,
+  nativeTheme,
   powerMonitor,
   safeStorage,
   screen,
@@ -117,6 +118,7 @@ import { HostAnalytics } from "./analytics";
 import { analyticsInventoryDayStore, collectAnalyticsInventory } from "./analytics-inventory";
 import { catalogPluginSlug, isReportedMcpServerName, loadCatalogPluginServers } from "./analytics-plugin-catalog";
 import { readAnalyticsPreference } from "./analytics-preference-store";
+import { AppearanceService } from "./appearance-service";
 import { ApprovalAutomation, readApprovalAutomation } from "./approval-automation-store";
 import { AutomationServer } from "./automation-server";
 import { BillingDesktopService } from "./billing-service";
@@ -277,6 +279,7 @@ const ROUTINE_FEED_FILE = "openbot-routine-feed-v1.json";
 const LEGACY_APPROVAL_AUTOMATION_FILE = "openbot-approval-automation-v1.json";
 const LANGUAGE_PREFERENCE_FILE = "openbot-language-preference-v1.json";
 const LOGO_COLOR_PREFERENCE_FILE = "openbot-logo-color-preference-v1.json";
+const APPEARANCE_PREFERENCE_FILE = "openbot-appearance-preference-v1.json";
 const UPDATE_PREFERENCE_FILE = "openbot-update-preference-v1.json";
 const NOTIFICATION_PREFERENCE_FILE = "openbot-notification-preference-v1.json";
 const PUSH_NOTIFICATION_FILE = "openbot-push-notifications-v1.json";
@@ -457,6 +460,7 @@ export interface ApplicationServices {
   agentHostSettings: AgentHostSettingsService;
   language: LanguageService;
   logoColor: LogoColorService;
+  appearance: AppearanceService;
   notificationPreference: NotificationPreferenceStore;
   busyMessageMode: BusyMessageModePreferenceStore;
   agentMemoryLimit: AgentMemoryLimitSetting;
@@ -970,6 +974,9 @@ export async function createApplicationServices({
   await runCauseEffect(language.load());
   const logoColor = new LogoColorService({ path: join(app.getPath("userData"), LOGO_COLOR_PREFERENCE_FILE) });
   await runCauseEffect(logoColor.load());
+  // Applied before any renderer loads, so the first paint is in the saved scheme.
+  const appearance = new AppearanceService({ path: join(app.getPath("userData"), APPEARANCE_PREFERENCE_FILE) });
+  nativeTheme.themeSource = (await runCauseEffect(appearance.load())).appearance;
   const notificationPreference = new NotificationPreferenceStore(
     join(app.getPath("userData"), NOTIFICATION_PREFERENCE_FILE),
   );
@@ -2589,6 +2596,7 @@ export async function createApplicationServices({
     agentHostSettings,
     language,
     logoColor,
+    appearance,
     notificationPreference,
     busyMessageMode,
     agentMemoryLimit: agentMemoryLimitSetting,

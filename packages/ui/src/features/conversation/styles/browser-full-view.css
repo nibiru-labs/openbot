@@ -30,7 +30,7 @@ body:has(.browser-full-view) .app-frame {
   min-height: 0;
   flex-direction: column;
   padding: 0 var(--browser-full-edge) var(--browser-full-edge);
-  background: color-mix(in srgb, var(--openbot-bg-canvas) 50%, var(--openbot-bg-notch));
+  background: var(--openbot-window-frame);
   color: var(--openbot-text-primary);
 }
 
