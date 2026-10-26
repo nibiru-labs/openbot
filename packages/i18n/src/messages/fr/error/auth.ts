@@ -26,4 +26,8 @@ export const messages = {
     "La connexion s’est terminée avant qu’OpenBot confirme l’envoi. Vérifiez la réception pour ne pas envoyer un autre code.",
   "error.auth.deliveryUnknown":
     "OpenBot n’a pas pu confirmer si le code de connexion a été envoyé. Vérifiez sa réception avant de le renvoyer.",
+  "error.auth.adminKeyRequired": "Saisissez la clé d’administration du service de compte.",
+  "error.auth.adminKeyRejected": "Le service de compte n’a pas accepté la clé d’administration.",
+  "error.auth.sessionNotStorable":
+    "OpenBot ne peut pas enregistrer la session de connexion sur cet ordinateur, il ne peut donc pas se connecter avec une clé d’administration.",
 } as const satisfies PartialTranslation<typeof source>;

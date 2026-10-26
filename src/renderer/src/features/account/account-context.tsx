@@ -15,6 +15,7 @@ const AUTH_SUCCESS_HOLD_MS = 600;
  */
 function authFailureCode(value: string | undefined): string {
   switch (value) {
+    case "admin_key_sign_in_failed":
     case "auth_api_error":
     case "code_recently_sent":
     case "email_delivery_failed":

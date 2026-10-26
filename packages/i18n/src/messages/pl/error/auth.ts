@@ -24,4 +24,8 @@ export const messages = {
     "Połączenie zakończyło się, zanim OpenBot potwierdził dostarczenie. Sprawdź skrzynkę, aby nie wysyłać kolejnego kodu.",
   "error.auth.deliveryUnknown":
     "OpenBot nie mógł potwierdzić, czy kod logowania został wysłany. Sprawdź skrzynkę, zanim wyślesz go ponownie.",
+  "error.auth.adminKeyRequired": "Wpisz klucz administratora usługi kont.",
+  "error.auth.adminKeyRejected": "Usługa kont nie przyjęła klucza administratora.",
+  "error.auth.sessionNotStorable":
+    "OpenBot nie może zapisać sesji logowania na tym komputerze, więc nie może zalogować się kluczem administratora.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -26,4 +26,8 @@ export const messages = {
     "OpenBot teslimatı onaylamadan önce bağlantı kesildi. Başka bir kod göndermekten kaçınmak için teslimatı kontrol edin.",
   "error.auth.deliveryUnknown":
     "OpenBot giriş kodunun gönderilip gönderilmediğini onaylayamadı. Tekrar göndermeden önce teslimatı kontrol edin.",
+  "error.auth.adminKeyRequired": "Hesap hizmetinin yönetici anahtarını girin.",
+  "error.auth.adminKeyRejected": "Hesap hizmeti yönetici anahtarını kabul etmedi.",
+  "error.auth.sessionNotStorable":
+    "OpenBot oturum bilgisini bu bilgisayarda saklayamıyor, bu yüzden yönetici anahtarıyla oturum açamıyor.",
 } as const satisfies PartialTranslation<typeof source>;

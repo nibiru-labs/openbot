@@ -25,4 +25,8 @@ export const messages = {
     "A conexão terminou antes de o OpenBot confirmar a entrega. Verifique a entrega para evitar o envio de outro código.",
   "error.auth.deliveryUnknown":
     "O OpenBot não conseguiu confirmar se o código de login foi enviado. Verifique a entrega antes de enviar novamente.",
+  "error.auth.adminKeyRequired": "Digite a chave de administração do serviço de contas.",
+  "error.auth.adminKeyRejected": "O serviço de contas não aceitou a chave de administração.",
+  "error.auth.sessionNotStorable":
+    "O OpenBot não consegue guardar a sessão de login neste computador, por isso não pode entrar com uma chave de administração.",
 } as const satisfies PartialTranslation<typeof source>;

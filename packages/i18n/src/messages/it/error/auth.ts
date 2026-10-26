@@ -25,4 +25,8 @@ export const messages = {
     "La connessione si è interrotta prima che OpenBot confermasse la consegna. Controlla la consegna per evitare di inviare un altro codice.",
   "error.auth.deliveryUnknown":
     "OpenBot non ha potuto confermare se il codice di accesso è stato inviato. Controlla la consegna prima di inviarlo di nuovo.",
+  "error.auth.adminKeyRequired": "Inserisci la chiave di amministrazione del servizio account.",
+  "error.auth.adminKeyRejected": "Il servizio account non ha accettato la chiave di amministrazione.",
+  "error.auth.sessionNotStorable":
+    "OpenBot non può salvare la sessione di accesso su questo computer, quindi non può accedere con una chiave di amministrazione.",
 } as const satisfies PartialTranslation<typeof source>;

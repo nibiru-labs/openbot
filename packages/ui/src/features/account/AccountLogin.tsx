@@ -44,7 +44,7 @@ const EMAIL_PLACEHOLDER = "you@example.com";
 const EMAIL_MARKER = "\u0000";
 
 export function AccountLogin(props: AccountLoginProps) {
-  const { t, sourceText } = useText();
+  const { t, sourceText, errorMessage } = useText();
   const [email, setEmail] = createSignal("");
   const [code, setCode] = createSignal("");
   const [adminKey, setAdminKey] = createSignal("");
@@ -361,7 +361,7 @@ export function AccountLogin(props: AccountLoginProps) {
       setAdminKeyMode(false);
       setSignedInWithAdminKey(true);
     } catch (error) {
-      showActionError(error, t("account.login.adminKeyFailed"), true);
+      showActionError(error, errorMessage(error, t("account.login.adminKeyFailed")), true);
     } finally {
       setPendingAction(null);
     }
@@ -450,7 +450,11 @@ export function AccountLogin(props: AccountLoginProps) {
               }
             >
               {verified() ? (
-                signedInWithAdminKey() ? t("account.login.adminKeyAccepted") : t("account.login.codeAccepted")
+                signedInWithAdminKey() ? (
+                  t("account.login.adminKeyAccepted")
+                ) : (
+                  t("account.login.codeAccepted")
+                )
               ) : (
                 <>
                   {codeSentParts()[0]}
