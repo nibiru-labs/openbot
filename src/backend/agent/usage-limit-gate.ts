@@ -34,7 +34,7 @@ export interface UsageLimitHooks {
 }
 
 /** The agent fields the gate reads. */
-export interface GateAgent {
+interface GateAgent {
   id: string;
   provider: AgentProvider;
   providerAccountId?: string | undefined;
