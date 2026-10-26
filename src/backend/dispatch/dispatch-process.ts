@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger } from "@openbot/logging";
 import { Effect, Schema } from "effect";
+import { assertAgentArgs, assertWindowsScriptArgs } from "../acp-agent-command";
 import { cliSpawnTarget } from "../cli";
 import { endProcessTree } from "../windows-process-tree";
 
@@ -41,6 +42,18 @@ export interface DispatchCommandOutput {
 
 /** Owns one bounded CLI request. The detached executor belongs to openswarm. */
 export const dispatchCommand = Effect.fn("DispatchProcess.command")(function* (binary: string, args: string[]) {
+  yield* Effect.try({
+    try: () => {
+      assertAgentArgs(args);
+      assertWindowsScriptArgs(binary, args);
+    },
+    catch: (cause) =>
+      dispatchFailure({
+        cause,
+        reason: cause instanceof Error ? cause.message : sourceText("error.backend.dispatchSpawnFailed"),
+        step: "spawn",
+      }),
+  });
   const target = cliSpawnTarget(binary, args);
   return yield* Effect.acquireUseRelease(
     Effect.try({

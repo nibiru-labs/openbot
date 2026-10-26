@@ -8,6 +8,7 @@ import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type { AgentApproval } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
+import { assertAgentArgs, assertWindowsScriptArgs } from "../src/backend/acp-agent-command";
 import { AttentionRegistry } from "../src/backend/agent/attention-registry";
 import type { AgentClient } from "../src/backend/agent-client";
 import { dispatchResultMailboxText } from "../src/backend/dispatch/dispatch-delivery";
@@ -261,6 +262,10 @@ esac
   assert.equal(pairedState.runs.find((record) => record.host === "remote")?.status, "cancelling");
   await Effect.runPromise(pairedService.dispose());
   report.checks.push("run status and cancel updates use the host and run ID");
+  assert.throws(() => assertWindowsScriptArgs("openswarm.cmd", ["--title", "normal&whoami>file&normal"], "win32"));
+  assert.throws(() => assertAgentArgs(["--title", "line\nbreak"]));
+  report.checks.push("a Windows wrapper and a multi-line argument are refused before the spawn");
+
   const task = { title: "Small change", card: "Update the heading in docs/example.md." };
   await exercise("ordinary work starts without approval", task, "safe");
   const workspaceVerify = await Effect.runPromise(
