@@ -8,3 +8,7 @@
   empty routine backoff table. The tests now expect version 45, use 46 as the future version, and
   expect the empty routine backoff table after a full upgrade. No migration, schema definition, or
   user-visible behavior changes.
+- Stop passing undefined Mermaid theme options for the dark scheme. The diagram configuration set
+  `themeVariables` and `themeCSS` to undefined outside the light scheme, which the ratcheted
+  `exactOptionalPropertyTypes` check rejects; the light-only options are now only present for the
+  light scheme. Diagram rendering does not change.
