@@ -15,6 +15,8 @@ export const messages = defineMessages("chat", {
   "chat.activity.agentFallback": "Agent",
   "chat.activity.current": "Current activity",
   "chat.actionCard.open": "Open",
+  "chat.responseProcess.title": "Response process",
+  "chat.responseProcess.empty": "No process notes.",
   "chat.taskList.title": "Tasks",
   "chat.taskList.count": "{done}/{total}",
   "chat.taskList.summary": "{done} of {total} tasks done",

@@ -327,9 +327,17 @@ export function decodeThreadItem(value: unknown): ThreadItem {
 
 /** Prefer the readable summary when a provider also includes raw reasoning content. */
 export function reasoningText(item: unknown): string {
-  const summary = getArray(item, "summary").filter(isString);
-  const content = getArray(item, "content").filter(isString);
+  const summary = reasoningParts(isRecord(item) ? item.summary : undefined);
+  const content = reasoningParts(isRecord(item) ? item.content : undefined);
   return (summary.length > 0 ? summary : content).join("\n\n");
+}
+
+function reasoningParts(value: unknown): string[] {
+  const parts = Array.isArray(value) ? value : [value];
+  return parts.flatMap((part) => {
+    const text = isString(part) ? part : getString(part, "text");
+    return text?.trim() ? [text] : [];
+  });
 }
 
 function decodeThreadContent(value: unknown): Array<{ type: string; text?: string }> {

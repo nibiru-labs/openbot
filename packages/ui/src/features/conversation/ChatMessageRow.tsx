@@ -11,13 +11,14 @@ import {
   MessageHeader,
 } from "@openbot/ui";
 import type { JSX } from "@solidjs/web";
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, For, Show, untrack } from "solid-js";
 import { avatarHeadColor } from "../../bloub-avatar";
 import type { AgentMessage, AgentProfile } from "../../data";
 import { useText } from "../../text";
 import { AgentAvatar } from "../agents/AgentAvatar";
 import type { AttachmentMediaSource } from "./AttachmentCards";
 import { conversationBubbleVariant, MessageBody } from "./MessageRendering";
+import { ResponseProcess } from "./ResponseProcess";
 
 /**
  * Who wrote a message, as much as a row needs to draw it.
@@ -89,6 +90,9 @@ export interface ChatMessageRowProps {
  * conversation arrives as a prop.
  */
 export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
+  if (untrack(() => props.message.kind === "thinking")) {
+    return <ResponseProcess message={props.message} />;
+  }
   const { t } = useText();
   const own = () => props.author.kind === "you";
   const member = () => props.author.kind === "member";

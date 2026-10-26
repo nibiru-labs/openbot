@@ -69,9 +69,7 @@ export function createScrollStore(deps: ScrollStoreDeps) {
   let talliedConversationIdentity: string | undefined;
 
   const [openRoutineRuns, setOpenRoutineRuns] = createSignal<RoutineRunOpenState>(new Map());
-  const shownMessages = createMemo(() =>
-    deps.props.messages.filter((message) => message.kind !== "thinking" && !silentAgentAnswer(message)),
-  );
+  const shownMessages = createMemo(() => deps.props.messages.filter((message) => !silentAgentAnswer(message)));
   const routineRunTurns = createMemo(() => routineRunTurnMessages(deps.props.messages, shownMessages()));
   /* The messages of a routine run follow its row and open and close with it. */
   const drawnMessages = createMemo(() => [

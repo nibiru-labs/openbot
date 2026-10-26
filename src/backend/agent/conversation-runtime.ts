@@ -554,7 +554,7 @@ export class ConversationRuntime {
       return execution;
     }
     const cached = this.#snapshots.get(agentId);
-    if (cached && (!threadId || cached.threadId === threadId)) return cached;
+    if (cached && (!publicId || cached.threadId === publicId)) return cached;
     const agent = this.#store.list().find((candidate) => candidate.id === agentId);
     const publicThreadId = agent?.threadId ?? threadId;
     const page = this.#store.database.readConversationPage(agentId, publicThreadId, { type: "latest" }, 100);

@@ -36,18 +36,17 @@ function taskMarkState(task: AgentTask): TaskMarkState {
 
 /** The state of a task in a few words: what a running task does now, else how its last turn ended. */
 export function agentTaskStatus(task: AgentTask, t: TextValue["t"]): string {
-  if (task.state === "running") return task.progress ?? t("conversation.tasks.state.running");
+  if (task.state === "running") return t("conversation.tasks.state.running");
   if (task.state === "queued") return t("conversation.tasks.state.queued");
   if (task.outcome === null) return t("conversation.tasks.state.new");
   return t(OUTCOME_TEXT[task.outcome]);
 }
 
 /**
- * Whether the panel shows this message. A stopped turn can leave an agent message with no text and
- * nothing else in it; the thinking of a turn shows only while the task runs, in its activity row.
+ * Keep process notes after the turn ends. Hide only empty answer messages.
  */
 function shownInPanel(message: AgentMessage): boolean {
-  if (message.kind === "thinking") return false;
+  if (message.kind === "thinking") return true;
   return (
     message.author === "you" ||
     message.streaming === true ||
@@ -401,12 +400,10 @@ export function AgentTaskPanel(props: AgentTaskPanelProps) {
               </div>
             )}
           </For>
-          <Show when={props.task?.state === "running" ? props.task : undefined}>
-            {(task) => (
-              <div class="virtual-chat-row">
-                <AgentActivityIndicator agent={props.agent} label={activityLabel} detail={task().progress} />
-              </div>
-            )}
+          <Show when={props.task?.state === "running"}>
+            <div class="virtual-chat-row">
+              <AgentActivityIndicator agent={props.agent} label={activityLabel} detail={props.task?.progress} />
+            </div>
           </Show>
           <Show when={props.task && agentTaskHoldText(props.task, props.limit, t)}>
             {(hold) => (

@@ -16,6 +16,8 @@ export const messages = {
   "chat.activity.agentFallback": "Agente",
   "chat.activity.current": "Attività in corso",
   "chat.actionCard.open": "Apri",
+  "chat.responseProcess.title": "Processo di risposta",
+  "chat.responseProcess.empty": "Nessuna nota sul processo.",
   "chat.taskList.title": "Attività",
   "chat.taskList.count": "{done}/{total}",
   "chat.taskList.summary": "{done} attività su {total} completate",

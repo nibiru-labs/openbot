@@ -28,6 +28,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
+export const Working: Story = { args: { working: true } };
+export const WaitingForInput: Story = { args: { working: false } };
 export const WorkspaceOnly: Story = { args: { agent: { ...STORY_AGENT, access: "workspace" } } };
 export const RemoteControl: Story = {
   args: { remoteControl: { enabled: true, active: true, visible: false, onOpen: fn() } },
@@ -41,5 +43,5 @@ export const AgentUsingBrowser: Story = {
   args: { sidePanel: { open: true, actingAgentName: STORY_AGENT.name, running: 0, onToggle: fn() } },
 };
 export const TasksRunning: Story = {
-  args: { sidePanel: { open: false, running: 2, onToggle: fn() } },
+  args: { working: true, sidePanel: { open: false, running: 2, onToggle: fn() } },
 };

@@ -16,6 +16,8 @@ export const messages = {
   "chat.activity.agentFallback": "Ajan",
   "chat.activity.current": "Geçerli etkinlik",
   "chat.actionCard.open": "Aç",
+  "chat.responseProcess.title": "Yanıt süreci",
+  "chat.responseProcess.empty": "Süreç notu yok.",
   "chat.taskList.title": "Görevler",
   "chat.taskList.count": "{done}/{total}",
   "chat.taskList.summary": "{total} görevden {done} tanesi tamamlandı",

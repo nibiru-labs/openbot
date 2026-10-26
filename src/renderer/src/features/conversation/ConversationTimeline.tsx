@@ -61,6 +61,7 @@ function rowDrawsTime(message: AgentMessage): boolean {
   return (
     !markerOnlyMessage(message) &&
     !message.questionPrompt &&
+    message.kind !== "thinking" &&
     message.kind !== "plan" &&
     chatVisualReply(message) === null
   );

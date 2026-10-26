@@ -11,6 +11,7 @@ import { Show } from "solid-js";
 
 export interface ConversationHeaderProps {
   agent: AgentProfile | null | undefined;
+  working?: boolean;
   modelPicker: ComponentProps<typeof ProviderModelPicker>;
   onSettingsIntent: () => void;
   onOpenSettings: () => void;
@@ -42,7 +43,7 @@ export function ConversationHeader(props: ConversationHeaderProps) {
               onFocus={props.onSettingsIntent}
               onClick={props.onOpenSettings}
             >
-              <AgentAvatar agent={agent()} />
+              <AgentAvatar agent={agent()} mood={props.working ? "working" : "idle"} />
               <h1>{agent().name}</h1>
             </Button>
           )}

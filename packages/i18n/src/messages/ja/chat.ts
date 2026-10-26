@@ -16,6 +16,8 @@ export const messages = {
   "chat.activity.agentFallback": "エージェント",
   "chat.activity.current": "現在のアクティビティ",
   "chat.actionCard.open": "開く",
+  "chat.responseProcess.title": "回答の過程",
+  "chat.responseProcess.empty": "過程のメモはありません。",
   "chat.taskList.title": "タスク",
   "chat.taskList.count": "{done}/{total}",
   "chat.taskList.summary": "{total} 件中 {done} 件のタスクが完了",

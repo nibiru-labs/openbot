@@ -24,9 +24,15 @@ export function ConversationHeader() {
     toggleSidePanel,
   } = useConversationViewScope();
   const runningTasks = () => props.tasks?.snapshot?.tasks.filter(isAgentTaskActive).length ?? 0;
+  const working = () =>
+    !props.prompt &&
+    !props.approval &&
+    !props.browserTakeover &&
+    (agentActivity() === "Working" || props.tasks?.snapshot?.tasks.some((task) => task.state === "running") === true);
   return (
     <SharedConversationHeader
       agent={props.agent}
+      working={working()}
       onSettingsIntent={() => void loadAgentSettingsPanel()}
       onOpenSettings={() => setActiveRightPanel("settings")}
       modelPicker={{

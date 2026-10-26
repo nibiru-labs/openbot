@@ -1,0 +1,12 @@
+.response-process-notes {
+  display: grid;
+  gap: var(--openbot-space-3);
+  margin: 0;
+  padding: 0 var(--openbot-space-3) var(--openbot-space-3);
+  list-style: none;
+  color: var(--openbot-text-secondary);
+  font-size: var(--openbot-text-md);
+  line-height: var(--openbot-leading-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

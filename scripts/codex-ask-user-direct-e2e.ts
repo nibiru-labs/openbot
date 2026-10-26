@@ -46,7 +46,7 @@ const { runCauseEffect } = await import("../src/backend/effect-boundary");
 const { MailboxStore } = await import("../src/backend/mailbox-store");
 const { OpenBotDatabase } = await import("../src/backend/openbot-database");
 
-/** A Codex app-server with the methods that the service calls. Each turn ends with one answer. */
+/** A Codex app-server that sends process notes, then completes, stops, or fails its turn. */
 const FAKE_CODEX = `#!/usr/bin/env node
 const fs = require("node:fs");
 if (process.argv.includes("--version")) {
@@ -81,12 +81,28 @@ const answer = (message) => {
     case "thread/read": return write({ id: message.id, result: { thread: { id: params.threadId, turns: [] } } });
     case "turn/start": {
       const turnId = "turn-" + (++turns);
+      const terminal = turns === 2 ? "interrupted" : turns === 3 ? "failed" : "completed";
       write({ id: message.id, result: { turn: { id: turnId, status: "inProgress", items: [] } } });
       write({ method: "turn/started", params: { threadId: params.threadId, turn: { id: turnId } } });
       setTimeout(() => {
+        const completeReasoning = (id, summary, content = []) => write({
+          method: "item/completed",
+          params: { threadId: params.threadId, turnId, item: { type: "reasoning", id, summary, content } },
+        });
+        completeReasoning("string-" + turnId, ["String summary."], ["Raw reasoning."]);
+        completeReasoning("direct-" + turnId, "Direct string summary.");
+        completeReasoning("blocks-" + turnId, [{ type: "summary_text", text: "Text-block summary." }]);
+        completeReasoning("fallback-" + turnId, ["  "], [{ type: "reasoning_text", text: "Content fallback." }]);
+        const streamedId = "streamed-" + turnId;
+        write({ method: "item/started", params: { threadId: params.threadId, turnId, item: { type: "reasoning", id: streamedId, summary: [] } } });
+        write({ method: "item/reasoning/summaryTextDelta", params: { threadId: params.threadId, turnId, itemId: streamedId, delta: "Keep the streamed note." } });
+        if (terminal === "completed") {
+          completeReasoning(streamedId, []);
+          completeReasoning(streamedId, [{ type: "summary_text", text: "  " }]);
+        }
         const item = { type: "agentMessage", id: "message-" + turnId, text: "Done.", phase: "final_answer" };
         write({ method: "item/completed", params: { threadId: params.threadId, turnId, item } });
-        write({ method: "turn/completed", params: { threadId: params.threadId, turn: { id: turnId, status: "completed" } } });
+        write({ method: "turn/completed", params: { threadId: params.threadId, turn: { id: turnId, status: terminal } } });
       }, 50);
       return;
     }
@@ -125,6 +141,8 @@ interface LiveReport {
 const report: {
   features: unknown;
   openbotTools: string[];
+  processNotes?: string[];
+  processOutcomes?: string[];
   live: LiveReport | "skipped";
   passed: boolean;
   error?: string;
@@ -311,7 +329,7 @@ const agents = new AgentService({
 
 try {
   await runCauseEffect(agents.initialize());
-  await runCauseEffect(
+  const agent = await runCauseEffect(
     agents.createAgent({
       name: "Ask user",
       description: "Checks how Codex calls ask_user.",
@@ -331,6 +349,54 @@ try {
     : [];
   assert.ok(report.openbotTools.includes("ask_user"), "The openbot namespace has no ask_user.");
   assert.deepEqual(getArray(getRecord(features, "code_mode"), "direct_only_tool_namespaces"), ["openbot"]);
+  const snapshot = await waitFor("the saved response process", () => {
+    const threadId = store.list().find((candidate) => candidate.id === agent.id)?.threadId;
+    if (!threadId) return null;
+    const saved = database.readConversation(agent.id, threadId);
+    return saved.messages.some((message) => message.text === "Done." && message.status === "completed") &&
+      !agents
+        .listQueue(agent.id)
+        .deliveries.some((delivery) => ["queued", "starting", "running"].includes(delivery.status))
+      ? saved
+      : null;
+  });
+  const notes = snapshot.messages.filter((message) => message.itemType === "commentary");
+  report.processNotes = notes.map((message) => message.text);
+  assert.deepEqual(report.processNotes, [
+    "String summary.",
+    "Direct string summary.",
+    "Text-block summary.",
+    "Content fallback.",
+    "Keep the streamed note.",
+  ]);
+  assert.ok(
+    notes.every((message) => message.status === "completed"),
+    "Process notes must remain after completion.",
+  );
+  report.processOutcomes = ["completed"];
+  for (const outcome of ["interrupted", "failed"] as const) {
+    const receipt = await runCauseEffect(agents.sendMessage({ agentId: agent.id, text: `End as ${outcome}.` }));
+    const deliveryId = receipt.deliveries[0]?.id;
+    assert.ok(deliveryId);
+    const delivery = await waitFor(`the ${outcome} turn`, () => {
+      const current = agents.listQueue(agent.id).deliveries.find((entry) => entry.id === deliveryId);
+      if (current?.status !== outcome || !snapshot.threadId) return null;
+      const saved = database.readConversation(agent.id, snapshot.threadId);
+      return saved.messages.some((message) => message.id === `streamed-${current.turnId}` && message.status === outcome)
+        ? current
+        : null;
+    });
+    const saved = await runCauseEffect(agents.readConversation(agent.id));
+    const turnNotes = saved.messages.filter(
+      (message) => message.turnId === delivery.turnId && message.itemType === "commentary",
+    );
+    assert.deepEqual(
+      turnNotes.map((message) => message.text),
+      report.processNotes,
+    );
+    assert.equal(turnNotes.at(-1)?.status, outcome, "An unfinished note must remain after the turn stops.");
+    report.processOutcomes.push(outcome);
+  }
   if (LIVE) report.live = await liveCheck(features, params.dynamicTools);
   report.passed = true;
 } catch (error) {
