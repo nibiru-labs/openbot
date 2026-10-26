@@ -188,7 +188,7 @@ export interface DeliveryContext {
   managedAttachments: Array<AttachmentSummary & { path: string }>;
 }
 
-export interface DispatchDeliverySource {
+interface DispatchDeliverySource {
   runId: string;
   host: string;
   threadId: string;

@@ -7,6 +7,10 @@ export const messages = defineMessages("error.backend", {
   "error.backend.dispatchLaneOptions":
     "A lane uses its configured backend and model. Omit backend and model when you select a lane.",
   "error.backend.dispatchUnknown": "This chat does not own that coding run.",
+  "error.backend.dispatchHostRequired":
+    "More than one coding run has this ID. Include the host returned by dispatch_work.",
+  "error.backend.dispatchVerifyWorkspace":
+    "The verify command runs on the executor host, outside this agent's workspace limit. A Workspace-only agent cannot set verify.",
   "error.backend.dispatchRepository": "Configure matching local and executor repository paths in openswarm fleet.json.",
   "error.backend.dispatchSpawnFailed": "openswarm could not be started.",
   "error.backend.dispatchExitCode": "openswarm exited with code {code}.",

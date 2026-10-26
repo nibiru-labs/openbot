@@ -72,6 +72,7 @@ const fleetSchema = Schema.Struct({
 const io = <A>(body: () => Promise<A>) =>
   Effect.tryPromise({ try: body, catch: (cause) => new DispatchFailed({ cause }) });
 const step = <A>(body: () => A) => Effect.try({ try: body, catch: (cause) => new DispatchFailed({ cause }) });
+const runKey = (host: string, runId: string) => JSON.stringify([host, runId]);
 const commandJson = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, output: string): S["Type"] => {
   try {
     return Schema.decodeUnknownSync(schema)(JSON.parse(output));
@@ -128,7 +129,7 @@ const commandJson = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, out
   const containingEnds: number[] = [];
   candidates.sort((left, right) => left.start - right.start || right.end - left.end);
   for (const candidate of candidates) {
-    while ((containingEnds.at(-1) ?? -1) < candidate.start) containingEnds.pop();
+    while (containingEnds.length > 0 && (containingEnds.at(-1) ?? -1) < candidate.start) containingEnds.pop();
     if (containingEnds.length === 0) topLevelCandidates.push(candidate);
     containingEnds.push(candidate.end);
   }
@@ -223,7 +224,7 @@ export class DispatchService {
       else this.#runs = safeRuns;
     }
     this.#started = true;
-    for (const record of this.#runs) if (!record.delivered) yield* this.#watch(record.runId);
+    for (const record of this.#runs) if (!record.delivered) yield* this.#watch(record.host, record.runId);
   });
 
   readonly dispose = Effect.fn("DispatchService.dispose")(function* (this: DispatchService) {
@@ -242,6 +243,12 @@ export class DispatchService {
       Effect.gen({ self: this }, function* () {
         if (!this.#started || caller.inExecutionThread)
           return yield* new DispatchFailed({ cause: new Error(sourceText("error.backend.dispatchOwnChat")) });
+        if (caller.workspaceOnly && input.verify) {
+          return yield* new DispatchFailed({
+            cause: new Error(sourceText("error.backend.dispatchVerifyWorkspace")),
+            reason: sourceText("error.backend.dispatchVerifyWorkspace"),
+          });
+        }
         const existing = this.#runs.find(
           (run) =>
             run.idempotencyKey === caller.idempotencyKey &&
@@ -310,7 +317,7 @@ export class DispatchService {
         yield* this.#options
           .publish(record, false)
           .pipe(Effect.catch(() => Effect.sync(() => this.#options.failed(record.agentId))));
-        yield* this.#watch(runId);
+        yield* this.#watch(host, runId);
         return { runId, host };
       }),
     );
@@ -320,8 +327,9 @@ export class DispatchService {
     this: DispatchService,
     runId: string,
     caller: DispatchCaller,
+    host?: string,
   ) {
-    const record = yield* this.#owned(runId, caller);
+    const record = yield* this.#owned(runId, caller, host);
     return {
       runId: record.runId,
       host: record.host,
@@ -338,14 +346,17 @@ export class DispatchService {
     this: DispatchService,
     runId: string,
     caller: DispatchCaller,
+    host?: string,
   ) {
     return yield* this.#writes.withPermit(
       Effect.gen({ self: this }, function* () {
-        const record = yield* this.#owned(runId, caller);
+        const record = yield* this.#owned(runId, caller, host);
         if (isTerminal(record)) return { runId, host: record.host, status: record.status };
         const output = yield* this.#command(record.binary, record.host, ["stop", runId]);
         yield* this.#save(
-          this.#runs.map((run) => (run === record ? { ...run, status: "cancelling" } : run)),
+          this.#runs.map((run) =>
+            runKey(run.host, run.runId) === runKey(record.host, record.runId) ? { ...run, status: "cancelling" } : run,
+          ),
           output.exitCode,
         );
         return { runId, host: record.host, status: "cancelling" };
@@ -353,13 +364,32 @@ export class DispatchService {
     );
   }, Effect.uninterruptible);
 
-  #owned(runId: string, caller: DispatchCaller) {
-    return step(() => {
-      const record = this.#runs.find(
-        (run) => run.runId === runId && run.agentId === caller.agentId && run.threadId === caller.threadId,
-      );
-      if (!record || caller.inExecutionThread) throw new Error(sourceText("error.backend.dispatchUnknown"));
-      return record;
+  #owned(runId: string, caller: DispatchCaller, host?: string) {
+    return Effect.try({
+      try: () => {
+        const ownedRuns = this.#runs.filter(
+          (run) =>
+            run.runId === runId &&
+            run.agentId === caller.agentId &&
+            run.threadId === caller.threadId &&
+            (host === undefined || run.host === host),
+        );
+        if (caller.inExecutionThread) {
+          const reason = sourceText("error.backend.dispatchUnknown");
+          throw new DispatchFailed({ cause: new Error(reason), reason });
+        }
+        if (host === undefined && ownedRuns.length > 1) {
+          const reason = sourceText("error.backend.dispatchHostRequired");
+          throw new DispatchFailed({ cause: new Error(reason), reason });
+        }
+        const record = ownedRuns.length === 1 ? ownedRuns[0] : undefined;
+        if (!record) {
+          const reason = sourceText("error.backend.dispatchUnknown");
+          throw new DispatchFailed({ cause: new Error(reason), reason });
+        }
+        return record;
+      },
+      catch: (cause) => (cause instanceof DispatchFailed ? cause : new DispatchFailed({ cause })),
     });
   }
 
@@ -405,26 +435,32 @@ export class DispatchService {
     return remote;
   });
 
-  readonly #watch = Effect.fn("DispatchService.watch")(function* (this: DispatchService, runId: string) {
-    if (this.#watching.has(runId)) return;
-    this.#watching.add(runId);
-    yield* this.#poll(runId).pipe(
-      Effect.ensuring(Effect.sync(() => this.#watching.delete(runId))),
+  readonly #watch = Effect.fn("DispatchService.watch")(function* (this: DispatchService, host: string, runId: string) {
+    const key = runKey(host, runId);
+    if (this.#watching.has(key)) return;
+    this.#watching.add(key);
+    yield* this.#poll(host, runId).pipe(
+      Effect.ensuring(Effect.sync(() => this.#watching.delete(key))),
       Effect.forkIn(this.#scope, { startImmediately: false }),
     );
   });
 
-  readonly #poll = Effect.fn("DispatchService.poll")(function* (this: DispatchService, runId: string) {
+  readonly #poll = Effect.fn("DispatchService.poll")(function* (this: DispatchService, host: string, runId: string) {
     while (this.#started) {
-      const result = yield* Effect.result(this.#refresh(runId));
+      const result = yield* Effect.result(this.#refresh(host, runId));
       if (result._tag === "Success" && result.success) return;
       // A transport failure is unknown, never a successful result. The next poll can reconnect.
       yield* Effect.sleep("2 seconds");
     }
   });
 
-  readonly #refresh = Effect.fn("DispatchService.refresh")(function* (this: DispatchService, runId: string) {
-    const current = this.#runs.find((run) => run.runId === runId);
+  readonly #refresh = Effect.fn("DispatchService.refresh")(function* (
+    this: DispatchService,
+    host: string,
+    runId: string,
+  ) {
+    const key = runKey(host, runId);
+    const current = this.#runs.find((run) => runKey(run.host, run.runId) === key);
     if (!current || current.delivered) return true;
     let finished = current;
     let exitCode: number | null = null;
@@ -461,15 +497,15 @@ export class DispatchService {
     }
     return yield* this.#writes.withPermit(
       Effect.gen({ self: this }, function* () {
-        if (this.#runs.find((run) => run.runId === runId)?.delivered) return true;
+        if (this.#runs.find((run) => runKey(run.host, run.runId) === key)?.delivered) return true;
         const safeFinished = redactDispatchRecord(finished, this.#options.redact);
         yield* this.#save(
-          this.#runs.map((run) => (run.runId === runId ? safeFinished : run)),
+          this.#runs.map((run) => (runKey(run.host, run.runId) === key ? safeFinished : run)),
           exitCode,
         );
         yield* this.#options.publish(safeFinished, true);
         yield* this.#save(
-          this.#runs.map((run) => (run.runId === runId ? { ...safeFinished, delivered: true } : run)),
+          this.#runs.map((run) => (runKey(run.host, run.runId) === key ? { ...safeFinished, delivered: true } : run)),
           exitCode,
         );
         return true;

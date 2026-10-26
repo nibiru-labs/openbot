@@ -11,7 +11,7 @@ const name = z
   .min(1)
   .max(128)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-export const dispatchWorkSchema = z
+const dispatchWorkSchema = z
   .object({
     title: z.string().trim().min(1).max(160),
     card: z.string().trim().min(1).max(64_000),
@@ -19,7 +19,13 @@ export const dispatchWorkSchema = z
     host: name.optional(),
     backend: z.enum(["codex", "ocgo", "deepseek", "cursor", "pi"]).optional(),
     model: z.string().trim().min(1).max(256).optional(),
-    verify: z.string().trim().min(1).max(4096).optional(),
+    verify: z
+      .string()
+      .trim()
+      .min(1)
+      .max(4096)
+      .optional()
+      .describe("Runs on the executor host. Workspace-only agents cannot set verify."),
     budgetMinutes: z.number().int().min(1).max(240).optional(),
     risk: z
       .boolean()
@@ -27,7 +33,7 @@ export const dispatchWorkSchema = z
       .describe("Set true when this task needs the person's approval. False cannot bypass the risk rules."),
   })
   .strict();
-const runSchema = z.object({ runId: name }).strict();
+const runSchema = z.object({ runId: name, host: name.optional() }).strict();
 export type DispatchWork = z.infer<typeof dispatchWorkSchema>;
 
 // Conservative keyword rules: quoted, excluded, and negated operations still need approval.
@@ -61,6 +67,7 @@ export interface DispatchCaller {
   agentId: string;
   threadId: string;
   inExecutionThread: boolean;
+  workspaceOnly: boolean;
   workspacePath: string;
   idempotencyKey: string;
 }
@@ -74,13 +81,14 @@ export const DISPATCH_TOOL_DEFINITIONS = [
   },
   {
     name: "dispatch_status",
-    description: "Read the status and result of a coding run dispatched from this chat.",
+    description:
+      "Read the status and result of a coding run dispatched from this chat. Include its host if the run ID is shared.",
     shape: runSchema.shape,
   },
   {
     name: "dispatch_abort",
     description:
-      "Request cancellation of a coding run dispatched from this chat. The final result arrives later; partial work can remain on its branch.",
+      "Request cancellation of a coding run dispatched from this chat. Include its host if the run ID is shared. The final result arrives later; partial work can remain on its branch.",
     shape: runSchema.shape,
   },
 ] as const;
@@ -98,6 +106,9 @@ export const handleDispatchTool = Effect.fn("DispatchTools.handle")(function* (
   const operation = Effect.gen(function* () {
     if (tool === "dispatch_work") {
       const input = yield* toolStep(() => dispatchWorkSchema.parse(args));
+      if (caller.workspaceOnly && input.verify) {
+        return openBotToolFailure(sourceText("error.backend.dispatchVerifyWorkspace"));
+      }
       if (input.lane && (input.backend || input.model))
         return openBotToolFailure(sourceText("error.backend.dispatchLaneOptions"));
       if (isRiskyDispatch(input)) {
@@ -113,7 +124,9 @@ export const handleDispatchTool = Effect.fn("DispatchTools.handle")(function* (
     }
     const input = yield* toolStep(() => runSchema.parse(args));
     return openBotToolResult(
-      yield* tool === "dispatch_abort" ? service.abort(input.runId, caller) : service.status(input.runId, caller),
+      yield* tool === "dispatch_abort"
+        ? service.abort(input.runId, caller, input.host)
+        : service.status(input.runId, caller, input.host),
     );
   });
   return yield* operation.pipe(

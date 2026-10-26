@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger } from "@openbot/logging";
 import { Effect, Schema } from "effect";
-import { shellQuote } from "../automation-command";
+import { cliSpawnTarget } from "../cli";
 import { endProcessTree } from "../windows-process-tree";
 
 export class DispatchFailed extends Schema.TaggedError<DispatchFailed>()("DispatchFailed", {
@@ -41,15 +41,14 @@ export interface DispatchCommandOutput {
 
 /** Owns one bounded CLI request. The detached executor belongs to openswarm. */
 export const dispatchCommand = Effect.fn("DispatchProcess.command")(function* (binary: string, args: string[]) {
-  const shell = process.platform === "darwin" ? "/bin/zsh" : process.env.SHELL || "/bin/sh";
-  // Every value is an argument, including cards, paths, and verify commands.
-  const script = `exec ${[binary, ...args].map(shellQuote).join(" ")}`;
+  const target = cliSpawnTarget(binary, args);
   return yield* Effect.acquireUseRelease(
     Effect.try({
       try: () =>
-        spawn(shell, [shell.endsWith("/sh") ? "-lc" : "-lic", script], {
+        spawn(target.command, target.args, {
           detached: process.platform !== "win32",
           stdio: ["ignore", "pipe", "pipe"],
+          windowsVerbatimArguments: target.windowsVerbatimArguments,
           windowsHide: true,
         }),
       catch: (cause) =>

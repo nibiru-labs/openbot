@@ -4,12 +4,14 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type { AgentApproval } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import { AttentionRegistry } from "../src/backend/agent/attention-registry";
 import type { AgentClient } from "../src/backend/agent-client";
-import { DispatchService } from "../src/backend/dispatch/dispatch-service";
+import { dispatchResultMailboxText } from "../src/backend/dispatch/dispatch-delivery";
+import { type DispatchRecord, DispatchService } from "../src/backend/dispatch/dispatch-service";
 import { type DispatchWork, handleDispatchTool } from "../src/backend/dispatch/dispatch-tools";
 import { isMissingFileError } from "../src/backend/file-errors";
 import { ApprovalAutomation } from "../src/main/approval-automation-store";
@@ -39,6 +41,7 @@ const caller = {
   agentId: "agent-approval",
   threadId: "thread-approval",
   inExecutionThread: false,
+  workspaceOnly: false,
   workspacePath: root,
   idempotencyKey: "",
 };
@@ -178,6 +181,7 @@ set -eu
 case "$1" in
   run|lane)
     printf '%s\\n' started >> "$(dirname "$0")/launches.txt"
+    printf '%s\\n' 'login shell configured'
     printf '{"id":"run-%s"}\\n' "$$"
     ;;
   fleet) printf '{"id":"%s","state":"running","result":null}\\n' "$3" ;;
@@ -187,8 +191,110 @@ esac
     { mode: 0o700 },
   );
   await Effect.runPromise(service.start());
+  const oversizedRecord: DispatchRecord = {
+    runId: "run-oversized",
+    host: "local",
+    agentId: caller.agentId,
+    threadId: caller.threadId,
+    title: "Oversized result",
+    binary,
+    idempotencyKey: "oversized",
+    status: "failed",
+    branch: "branch",
+    commit: "commit",
+    startedAt: new Date(0).toISOString(),
+    summary: "summary",
+    verify: {
+      rc: 1,
+      cmd: "x".repeat(8_000),
+      tail: "x".repeat(150_000),
+      failing: Array.from({ length: 512 }, () => "x"),
+    },
+    delivered: true,
+  };
+  const oversizedText = dispatchResultMailboxText(oversizedRecord, (text) => text);
+  assert.ok(oversizedText.length <= INPUT_LIMITS.messageText);
+  assert.doesNotThrow(() => JSON.parse(oversizedText));
+  report.checks.push("oversized result text stays within the mailbox limit");
+  const pairedDataPath = join(root, "paired-runs");
+  await mkdir(pairedDataPath, { recursive: true });
+  const pairedHosts: DispatchRecord["host"][] = ["local", "remote"];
+  const pairedRuns = pairedHosts.map(
+    (host): DispatchRecord => ({
+      runId: "run-shared",
+      host,
+      agentId: caller.agentId,
+      threadId: caller.threadId,
+      title: `${host} run`,
+      binary,
+      idempotencyKey: `${host}-run`,
+      status: "running",
+      branch: `${host}-branch`,
+      commit: null,
+      startedAt: new Date(0).toISOString(),
+      delivered: true,
+    }),
+  );
+  await writeFile(join(pairedDataPath, "openbot-dispatch-v1.json"), JSON.stringify({ version: 1, runs: pairedRuns }));
+  const pairedService = new DispatchService({
+    dataPath: pairedDataPath,
+    settings: () => ({ binaryPath: binary, defaultHost: "local", defaultLane: "" }),
+    redact: (text) => text,
+    publish: () => Effect.void,
+    failed: () => {
+      throw new Error("A paired dispatch result could not be saved.");
+    },
+  });
+  await Effect.runPromise(pairedService.start());
+  assert.equal((await Effect.runPromise(pairedService.status("run-shared", caller, "local"))).branch, "local-branch");
+  assert.equal((await Effect.runPromise(pairedService.status("run-shared", caller, "remote"))).branch, "remote-branch");
+  const ambiguousStatus = await Effect.runPromise(Effect.result(pairedService.status("run-shared", caller)));
+  assert.equal(ambiguousStatus._tag, "Failure");
+  if (ambiguousStatus._tag === "Failure") {
+    assert.equal(ambiguousStatus.failure.reason, sourceText("error.backend.dispatchHostRequired"));
+  }
+  await Effect.runPromise(pairedService.abort("run-shared", caller, "remote"));
+  const pairedState: { runs: { host: string; status: string }[] } = JSON.parse(
+    await readFile(join(pairedDataPath, "openbot-dispatch-v1.json"), "utf8"),
+  );
+  assert.equal(pairedState.runs.find((record) => record.host === "local")?.status, "running");
+  assert.equal(pairedState.runs.find((record) => record.host === "remote")?.status, "cancelling");
+  await Effect.runPromise(pairedService.dispose());
+  report.checks.push("run status and cancel updates use the host and run ID");
   const task = { title: "Small change", card: "Update the heading in docs/example.md." };
   await exercise("ordinary work starts without approval", task, "safe");
+  const workspaceVerify = await Effect.runPromise(
+    handleDispatchTool(
+      "dispatch_work",
+      { ...task, verify: "printf workspace-check" },
+      { ...caller, workspaceOnly: true, idempotencyKey: "workspace-verify" },
+      service,
+      () => {
+        throw new Error("A Workspace-only verify command must not request approval or start.");
+      },
+    ),
+  );
+  assert.equal(workspaceVerify?.success, false);
+  assert.equal(
+    JSON.parse(workspaceVerify?.contentItems[0]?.text ?? "{}").error,
+    sourceText("error.backend.dispatchVerifyWorkspace"),
+  );
+  assert.equal(await launchCount(), expectedLaunches);
+  report.checks.push("Workspace-only verify command is blocked with a reason");
+  const workspaceServiceResult = await Effect.runPromise(
+    Effect.result(
+      service.dispatch(
+        { ...task, verify: "printf workspace-check" },
+        { ...caller, workspaceOnly: true, idempotencyKey: "workspace-verify-service" },
+      ),
+    ),
+  );
+  assert.equal(workspaceServiceResult._tag, "Failure");
+  if (workspaceServiceResult._tag === "Failure") {
+    assert.equal(workspaceServiceResult.failure.reason, sourceText("error.backend.dispatchVerifyWorkspace"));
+  }
+  assert.equal(await launchCount(), expectedLaunches);
+  report.checks.push("dispatch service rejects Workspace-only verify commands");
   const risks = [
     "Run a database migration.",
     "Change the schema.",

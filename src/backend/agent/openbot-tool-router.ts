@@ -786,13 +786,15 @@ export class OpenBotToolRouter {
       ),
     };
     if (this.#dispatch) {
+      const dispatchAgent = this.#requireAgent(senderAgentId);
       const dispatchResult = yield* handleDispatchTool(
         params.tool,
         params.arguments,
         {
           ...caller,
+          workspaceOnly: workspaceAccessEnforced(dispatchAgent),
           threadId: executionThreadId,
-          workspacePath: this.#requireAgent(senderAgentId).workspacePath,
+          workspacePath: dispatchAgent.workspacePath,
           idempotencyKey: toolCallIdempotencyKey(params),
         },
         this.#dispatch,
@@ -810,7 +812,7 @@ export class OpenBotToolRouter {
                 command: this.#hooks.redactMcp(
                   redactText(JSON.stringify({ tool: "dispatch_work", ...input }, null, 2)),
                 ),
-                cwd: this.#requireAgent(senderAgentId).workspacePath,
+                cwd: dispatchAgent.workspacePath,
                 reason: sourceText("status.agent.dispatchApproval"),
                 grantRoot: null,
                 permissions: null,
