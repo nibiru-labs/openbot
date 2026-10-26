@@ -5,8 +5,13 @@ export const messages = defineMessages("settings", {
   "settings.language.title": "Language",
   "settings.language.description": "OpenBot shows menus, buttons and messages in this language.",
   "settings.language.system": "System default",
-  // The logo color setting, General tab.
+  // The appearance settings, General tab: theme and logo color.
   "settings.appearance.title": "Appearance",
+  "settings.colorScheme.title": "Theme",
+  "settings.colorScheme.description": "System follows your device’s appearance.",
+  "settings.colorScheme.system": "System",
+  "settings.colorScheme.light": "Light",
+  "settings.colorScheme.dark": "Dark",
   "settings.logoColor.title": "Logo color",
   "settings.logoColor.description": "Shown in the Dock, the taskbar and the Dynamic Island.",
   "settings.logoColor.buildNote": "This build keeps its own logo color. The choice applies to the release app.",
@@ -46,6 +51,14 @@ export const messages = defineMessages("settings", {
     "New messages join the agent’s current work, not the queue. Works with ChatGPT and Claude.",
   "settings.agentMemoryLimit.title": "Memories per agent",
   "settings.agentMemoryLimit.description": "How many memories each agent on this computer can keep.",
+  "settings.tokenBudget.hour.title": "Token limit per hour",
+  "settings.tokenBudget.hour.description":
+    "At this limit an agent starts no new work until you continue. The work that runs goes on.",
+  "settings.tokenBudget.turn.title": "Token limit per turn",
+  "settings.tokenBudget.turn.description":
+    "A turn that goes past this limit stops after its current step. Its work is kept, and you can continue.",
+  "settings.tokenBudget.unlimited": "No limit",
+  "settings.tokenBudget.option": "{amount} tokens",
   "settings.keepRemoteSessions.title": "Fast connection to servers",
   "settings.keepRemoteSessions.description":
     "Keep the connection to your joined servers between launches. OpenBot starts about a second faster. When you quit OpenBot, the OpenBot service does not close the connection.",

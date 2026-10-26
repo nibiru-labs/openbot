@@ -1,4 +1,10 @@
-import { AGENT_MEMORY_LIMITS, type AgentMemoryLimit, type AppVariant } from "@openbot/contracts/ipc";
+import {
+  AGENT_MEMORY_LIMITS,
+  type AgentMemoryLimit,
+  APP_APPEARANCES,
+  type AppAppearance,
+  type AppVariant,
+} from "@openbot/contracts/ipc";
 import type { AppTextKey } from "@openbot/i18n";
 import {
   Item,
@@ -19,9 +25,17 @@ import type { GeneralSettingsValue } from "@openbot/ui/features/settings/app-set
 import { LanguageSelect } from "@openbot/ui/features/settings/LanguageSelect";
 import { LogoColorPicker } from "@openbot/ui/features/settings/LogoColorPicker";
 import { SendShortcutSelect } from "@openbot/ui/features/settings/SendShortcutSelect";
+import { useText } from "@openbot/ui/text";
 import { Show } from "solid-js";
+import { useAppearanceChoice } from "../../appearance";
 import { useI18n } from "../../i18n-context";
 import { useLogoColorChoice } from "../../logo-color";
+
+const APPEARANCE_KEYS = {
+  system: "settings.colorScheme.system",
+  light: "settings.colorScheme.light",
+  dark: "settings.colorScheme.dark",
+} as const satisfies Record<AppAppearance, AppTextKey>;
 
 const linkTargetOptions: GeneralSettingsValue["externalLinkTarget"][] = ["Default browser", "OpenBot"];
 
@@ -51,6 +65,7 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
   const linkTargetLabel = (value: GeneralSettingsValue["externalLinkTarget"] | undefined) =>
     value === undefined ? "" : i18n.t(LINK_TARGET_KEYS[value]);
   const logoColor = useLogoColorChoice();
+  const appearance = useAppearanceChoice();
   return (
     <>
       <SettingsSection title={i18n.t("settings.appearance.title")}>
@@ -62,6 +77,34 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
             </ItemContent>
             <ItemActions>
               <LanguageSelect value={i18n.language()} onChange={i18n.changeLanguage} mount={props.selectMount} />
+            </ItemActions>
+          </Item>
+          <Item data-settings-row="settings.colorScheme.title" class="settings-modal-row">
+            <ItemContent>
+              <ItemTitle>{i18n.t("settings.colorScheme.title")}</ItemTitle>
+              <ItemDescription>{i18n.t("settings.colorScheme.description")}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <Select<AppAppearance>
+                class="settings-modal-select"
+                options={[...APP_APPEARANCES]}
+                value={appearance.appearance()}
+                onChange={(value) => value && appearance.changeAppearance(value)}
+                placement="bottom-end"
+                itemComponent={(selectProps) => (
+                  <SelectItem item={selectProps.item}>{i18n.t(APPEARANCE_KEYS[selectProps.item.rawValue])}</SelectItem>
+                )}
+              >
+                <SelectTrigger size="sm" aria-label={i18n.t("settings.colorScheme.title")}>
+                  <SelectValue<AppAppearance>>
+                    {(state) => {
+                      const selected = state.selectedOption();
+                      return selected ? i18n.t(APPEARANCE_KEYS[selected]) : "";
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent mount={props.selectMount} />
+              </Select>
             </ItemActions>
           </Item>
           <Item data-settings-row="settings.logoColor.title" class="settings-modal-row settings-logo-color-row">
@@ -123,6 +166,20 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
               </Select>
             </ItemActions>
           </Item>
+          <TokenLimitRow
+            row="hour"
+            value={props.value.tokenBudgetPerHour}
+            choices={TOKEN_LIMIT_HOUR_CHOICES}
+            selectMount={props.selectMount}
+            onChange={(value) => props.onUpdateSetting("tokenBudgetPerHour", value)}
+          />
+          <TokenLimitRow
+            row="turn"
+            value={props.value.tokenBudgetPerTurn}
+            choices={TOKEN_LIMIT_TURN_CHOICES}
+            selectMount={props.selectMount}
+            onChange={(value) => props.onUpdateSetting("tokenBudgetPerTurn", value)}
+          />
           <Item data-settings-row="settings.externalLinks.title" class="settings-modal-row">
             <ItemContent>
               <ItemTitle>{i18n.t("settings.externalLinks.title")}</ItemTitle>
@@ -196,5 +253,64 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
         </ItemGroup>
       </SettingsSection>
     </>
+  );
+}
+
+/** The limits the menu offers. 0 is no limit. A saved limit outside the list is offered too. */
+const TOKEN_LIMIT_HOUR_CHOICES = [0, 5_000_000, 15_000_000, 30_000_000, 60_000_000, 150_000_000] as const;
+const TOKEN_LIMIT_TURN_CHOICES = [0, 1_000_000, 2_000_000, 5_000_000, 10_000_000, 25_000_000] as const;
+
+const TOKEN_LIMIT_KEYS = {
+  hour: {
+    title: "settings.tokenBudget.hour.title",
+    description: "settings.tokenBudget.hour.description",
+  },
+  turn: {
+    title: "settings.tokenBudget.turn.title",
+    description: "settings.tokenBudget.turn.description",
+  },
+} as const satisfies Record<"hour" | "turn", { title: AppTextKey; description: AppTextKey }>;
+
+function TokenLimitRow(props: {
+  row: "hour" | "turn";
+  value: number;
+  choices: readonly number[];
+  selectMount: HTMLElement | undefined;
+  onChange: (value: number) => void;
+}) {
+  const { t, format } = useText();
+  const keys = TOKEN_LIMIT_KEYS[props.row];
+  const options = () =>
+    props.choices.includes(props.value) ? [...props.choices] : [...props.choices, props.value].sort((a, b) => a - b);
+  const label = (value: number | undefined) =>
+    value === undefined
+      ? ""
+      : value === 0
+        ? t("settings.tokenBudget.unlimited")
+        : t("settings.tokenBudget.option", { amount: format.compact(value) });
+  return (
+    <Item data-settings-row={keys.title} class="settings-modal-row">
+      <ItemContent>
+        <ItemTitle>{t(keys.title)}</ItemTitle>
+        <ItemDescription>{t(keys.description)}</ItemDescription>
+      </ItemContent>
+      <ItemActions>
+        <Select<number>
+          class="settings-modal-select"
+          options={options()}
+          value={props.value}
+          onChange={(value) => value !== null && value !== undefined && props.onChange(value)}
+          placement="bottom-end"
+          itemComponent={(selectProps) => (
+            <SelectItem item={selectProps.item}>{label(selectProps.item.rawValue)}</SelectItem>
+          )}
+        >
+          <SelectTrigger size="sm" aria-label={t(keys.title)}>
+            <SelectValue<number>>{(state) => label(state.selectedOption() ?? undefined)}</SelectValue>
+          </SelectTrigger>
+          <SelectContent mount={props.selectMount} />
+        </Select>
+      </ItemActions>
+    </Item>
   );
 }

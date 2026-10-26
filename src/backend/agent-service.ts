@@ -105,6 +105,7 @@ import {
   agentTaskLimit,
   type BusyMessageMode,
   CONTEXT_RESET_ITEM_TYPE,
+  type ContinueAgentPauseInput,
   DEFAULT_BUSY_MESSAGE_MODE,
   DEFAULT_OPENSWARM_SETTINGS,
   DEFAULT_PROVIDER_ACCOUNT_ID,
@@ -114,6 +115,7 @@ import {
   type OpenswarmSettings,
   type QueueSteerFallback,
   sameAgentModelChoice,
+  type TokenBudgetPreference,
   workspaceAccessEnforced,
 } from "@openbot/contracts/ipc";
 import { ContextResetBusyError } from "@openbot/contracts/team-protocol/context-reset-v1";
@@ -123,6 +125,7 @@ import { createOpenBotLogger } from "@openbot/logging";
 import { classifyFailure } from "@openbot/telemetry";
 import { Cause, Deferred, Effect, Exit, Fiber, Result, Schema, Scope, Semaphore } from "effect";
 import { AgentMemories } from "./agent/agent-memories";
+import { AgentPauses } from "./agent/agent-pauses";
 import { AgentRemoval, AgentRemovalFailed } from "./agent/agent-removal";
 import { AgentSettingsRefused } from "./agent/agent-settings-refused";
 import type { ApprovalAutomationPolicy } from "./agent/approval-automation";
@@ -184,9 +187,10 @@ import {
   type ToolUsageSignal,
 } from "./agent/thread-items";
 import { ThreadLifecycle } from "./agent/thread-lifecycle";
+import { TokenBudget } from "./agent/token-budget";
 import { toToolOperationFailed } from "./agent/tool-operation";
 import { type AgentBrowserHost, TurnLifecycle } from "./agent/turn-lifecycle";
-import { toUsageReadFailed, UsageLimitGate, type UsageLimitKey } from "./agent/usage-limit-gate";
+import { modelFamily, toUsageReadFailed, UsageLimitGate, type UsageLimitKey } from "./agent/usage-limit-gate";
 import type { AgentProvider } from "./agent-client";
 import type { AgentTables } from "./agent-data/agent-tables";
 import type { AgentStore } from "./agent-store";
@@ -291,6 +295,11 @@ export interface AgentServiceOptions {
    */
   busyMessageMode?: () => BusyMessageMode;
   /**
+   * The token limits of one agent. The main process owns the preference. Omitted, no limit applies,
+   * as before the setting existed.
+   */
+  tokenBudget?: () => TokenBudgetPreference;
+  /**
    * How many memories one agent can hold. The main process owns the preference. Omitted, the
    * default cap, which was the only cap before the setting existed.
    */
@@ -380,6 +389,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #threads: ThreadLifecycle;
   readonly #memoryHold: MemoryHold;
   readonly #usageLimits: UsageLimitGate;
+  readonly #tokenBudget: TokenBudget;
+  readonly #pauses: AgentPauses;
   readonly #drain: DrainScheduler;
   readonly #sessionSettings: SessionSettings;
   readonly #queue: QueueControls;
@@ -427,6 +438,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       githubConnector = null,
       hostMemory = null,
       busyMessageMode = () => DEFAULT_BUSY_MESSAGE_MODE,
+      tokenBudget = () => ({ perHour: 0, perTurn: 0 }),
       retireChannels = false,
     } = options;
     this.#retireChannels = retireChannels;
@@ -541,7 +553,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         excludedAgents: () =>
           new Set([...this.#duplication.pendingAgents(), ...this.#removal.deleting(), ...this.#hiddenAgentIds()]),
         isRunning: () => this.#initialized && !this.#stopping,
-        usageLimited: (agentId) => !this.#usageLimits.mayDrain(agentId),
+        usageLimited: (agentId) => !this.#usageLimits.mayDrain(agentId) || !this.#tokenBudget.mayDrain(agentId),
       },
     });
     this.#hostedSites = new HostedSiteCoordinator({
@@ -937,8 +949,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       // A held agent gets no channel assignment: one that waited for the reset would reserve the host.
       busy: (agentId) =>
         Boolean(this.#conversation.workingSnapshot(agentId)?.activeTurnId || this.#mailbox.nextQueued(agentId)) ||
-        !this.#usageLimits.mayDrain(agentId),
-      usageLimited: (agentId) => !this.#usageLimits.mayDrain(agentId),
+        !this.#usageLimits.mayDrain(agentId) ||
+        !this.#tokenBudget.mayDrain(agentId),
+      usageLimited: (agentId) => !this.#usageLimits.mayDrain(agentId) || !this.#tokenBudget.mayDrain(agentId),
       skipAtLimit: (task) => this.#channelRoutines.skipAtLimit(task.channelId, task.requestMessageId),
       steer: (agentId, threadId, turnId, messageId, text) =>
         Effect.gen({ self: this }, function* () {
@@ -1051,7 +1064,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         // A channel task that went back to its queue is assigned again only by a pump. An agent that
         // left this model for a backup goes back to it.
         released: (limit) =>
-          this.channels.wake().pipe(
+          this.#pauses.planLimitEnded(limit).pipe(
+            Effect.andThen(this.channels.wake()),
             Effect.catch((failure) => Effect.sync(() => this.#emitError("usage_limit_release_failed", failure.cause))),
             Effect.andThen(
               Effect.forEach(
@@ -1065,6 +1079,35 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
             Effect.forkIn(this.#scope, { startImmediately: true }),
             Effect.asVoid,
           ),
+      },
+    });
+    this.#tokenBudget = new TokenBudget({
+      limits: tokenBudget,
+      readSince: (agentId, sinceMs) => store.database.usage.tokensSince(agentId, sinceMs),
+      held: (notice) => this.#pauses.budgetHeld(notice),
+      released: (agentId) => this.#pauses.budgetReleased(agentId),
+      interrupt: (agentId, turnId) =>
+        this.interrupt(agentId, turnId).pipe(
+          Effect.catch((failure) =>
+            Effect.sync(() => this.#emitError("token_budget_stop_failed", failure.cause, agentId)),
+          ),
+        ),
+      scheduleDrain: (agentId) => this.#drain.scheduleDrain(agentId),
+    });
+    this.#pauses = new AgentPauses({
+      store,
+      mailbox,
+      conversation: this.#conversation,
+      budget: this.#tokenBudget,
+      hooks: {
+        emit: (event) => this.#emit(event),
+        emitError: (code, error, agentId) => this.#emitError(code, error, agentId),
+        queued: (agentId) => {
+          const agent = this.#store.list().find((item) => item.id === agentId);
+          if (agent) this.#mailboxSync.syncMailboxMessages(this.#conversation.ensureSnapshot(agent.id, agent.threadId));
+          this.#mailboxSync.emitQueue(agentId);
+          this.#drain.scheduleDrain(agentId);
+        },
       },
     });
     this.#drain = new DrainScheduler({
@@ -1082,6 +1125,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       threads: this.#threads,
       memory: this.#memoryHold,
       usageLimits: this.#usageLimits,
+      tokenBudget: this.#tokenBudget,
       tasks: this.#tasks,
       hooks: {
         emitError: (code, error, agentId) => this.#emitError(code, error, agentId),
@@ -1174,6 +1218,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       images: this.#images,
       deltas: this.#deltas,
       usageLimits: this.#usageLimits,
+      tokenBudget: this.#tokenBudget,
+      pauses: this.#pauses,
       hooks: {
         emitFailure: (failure) => this.emit("failure", failure),
         emit: (event) => this.#emit(event),
@@ -1212,6 +1258,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       hooks: {
         emit: (event) => this.#emit(event),
         listAgents: () => this.listAgents(),
+        forgetBudget: (agentId) => {
+          this.#tokenBudget.forgetAgent(agentId);
+          this.#pauses.forgetAgent(agentId);
+        },
         deleteTasks: (agentId) =>
           Effect.gen({ self: this }, function* () {
             const threadIds = yield* lifecycleStep("list agent tasks", () => this.#tasks.threadIdsForAgent(agentId));
@@ -3214,6 +3264,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     }
     yield* this.#turn.dispose();
     yield* this.#usageLimits.dispose();
+    yield* this.#tokenBudget.dispose();
     this.#drain.dispose();
     this.#browser.clearControls();
     yield* Effect.forEach(clients, (client) => client.stop().pipe(Effect.catch(() => Effect.void)), {
@@ -3591,6 +3642,25 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       .pipe(
         Effect.mapError((failure) => new AgentLifecycleFailed({ operation: "setQueuePaused", cause: failure.cause })),
       );
+  }
+
+  /**
+   * The user's Continue on an `agent-pause` marker: the agent's holds end, and a turn that stopped
+   * carries on in the same session.
+   */
+  continueAgentPause(input: ContinueAgentPauseInput): Effect.Effect<void, AgentLifecycleFailed> {
+    return this.#pauses
+      .continueAgent(input)
+      .pipe(
+        Effect.mapError(
+          (failure) => new AgentLifecycleFailed({ operation: "continueAgentPause", cause: failure.cause }),
+        ),
+      );
+  }
+
+  /** The user changed the token limits: a hold the new limits no longer justify ends. */
+  tokenBudgetChanged(): Effect.Effect<void> {
+    return this.#tokenBudget.limitsChanged();
   }
 
   runQueuedMessageNow(input: RunQueuedMessageNowInput): Effect.Effect<void, AgentLifecycleFailed> {
@@ -4085,12 +4155,21 @@ function agentModelChoice(agent: AgentSummary): AgentModelChoice {
 }
 
 function usageLimitOf(choice: AgentModelChoice): UsageLimitKey {
-  return { provider: choice.provider, accountId: agentProviderAccount(choice), model: choice.model };
+  return {
+    provider: choice.provider,
+    accountId: agentProviderAccount(choice),
+    model: choice.model,
+    family: modelFamily(choice.model),
+  };
 }
 
 function sameUsageLimit(choice: AgentModelChoice, limit: UsageLimitKey): boolean {
   const own = usageLimitOf(choice);
-  return own.provider === limit.provider && own.accountId === limit.accountId && own.model === limit.model;
+  return (
+    own.provider === limit.provider &&
+    own.accountId === limit.accountId &&
+    (limit.family === null || own.family === limit.family)
+  );
 }
 
 function lifecycleStep<A>(operation: string, run: () => A): Effect.Effect<A, AgentLifecycleFailed> {

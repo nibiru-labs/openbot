@@ -34,6 +34,7 @@ import {
   type ThreadItem,
 } from "../protocol";
 import type { AgentMemories } from "./agent-memories";
+import type { AgentPauses } from "./agent-pauses";
 import type { AttentionBrowserHost, AttentionRegistry } from "./attention-registry";
 import type { BrowserUploadTarget } from "./browser-uploads";
 import type { ContextCompaction } from "./context-compaction";
@@ -56,6 +57,7 @@ import {
   toolUsage,
   toThreadItem,
 } from "./thread-items";
+import type { TokenBudget } from "./token-budget";
 import { collectProviderUsage } from "./usage-collection";
 import { USAGE_LIMIT_METHOD, type UsageLimitGate } from "./usage-limit-gate";
 
@@ -133,6 +135,8 @@ export interface TurnLifecycleOptions {
   images: ImageGenRuntime;
   deltas: DeltaBuffer;
   usageLimits: UsageLimitGate;
+  tokenBudget: TokenBudget;
+  pauses: Pick<AgentPauses, "planStopped">;
   hooks: TurnHooks;
 }
 
@@ -158,6 +162,8 @@ export class TurnLifecycle {
   readonly #images: ImageGenRuntime;
   readonly #deltas: DeltaBuffer;
   readonly #usageLimits: UsageLimitGate;
+  readonly #tokenBudget: TokenBudget;
+  readonly #pauses: Pick<AgentPauses, "planStopped">;
   readonly #hooks: TurnHooks;
   readonly fileHistory = new ThreadFileHistory();
   readonly #failedTurns = new Map<string, string>();
@@ -192,7 +198,7 @@ export class TurnLifecycle {
     }
   >();
   /** Running turns a provider plan refused, with the reset in epoch seconds when the provider gave it. */
-  readonly #limitedTurns = new Map<string, number | null>();
+  readonly #limitedTurns = new Map<string, { resetsAt: number | null; family: string | null }>();
   /** The deliveries run again after a refused session history. Each one gets a single retry. */
   readonly #refusedRetries = new Set<string>();
   /** Running turns whose agent called the no-update tool. The completion of the turn takes the entry. */
@@ -223,6 +229,8 @@ export class TurnLifecycle {
     this.#images = options.images;
     this.#deltas = options.deltas;
     this.#usageLimits = options.usageLimits;
+    this.#tokenBudget = options.tokenBudget;
+    this.#pauses = options.pauses;
     this.#hooks = options.hooks;
   }
 
@@ -361,17 +369,25 @@ export class TurnLifecycle {
       ["turn/started", "thread/tokenUsage/updated", "openbot/usage", "model/rerouted"].includes(notification.method)
     ) {
       const agent = this.#store.list().find((entry) => entry.id === agentId);
-      const session = agent?.threadId
-        ? this.#store.database
-            .listProviderSessions(agent.threadId)
-            .find((entry) => entry.externalSessionId === threadId && entry.provider === source.provider)
-        : undefined;
+      // A task keeps its provider session under its own thread, not the agent's chat. Resolve
+      // against the thread this report names, or a task turn's usage never reaches the budget.
+      const sessionOf = (threadKey: string) =>
+        this.#store.database
+          .listProviderSessions(threadKey)
+          .find((entry) => entry.externalSessionId === threadId && entry.provider === source.provider);
+      const publicThreadId = this.#conversation.publicThreadId(agentId, threadId);
+      const session =
+        sessionOf(publicThreadId) ??
+        (agent?.threadId && agent.threadId !== publicThreadId ? sessionOf(agent.threadId) : undefined);
       if (agent && session) {
+        let added = 0;
         try {
-          collectProviderUsage(this.#store.database.usage, agent, session, notification.method, params);
+          added = collectProviderUsage(this.#store.database.usage, agent, session, notification.method, params);
         } catch {
           this.#hooks.emitError("usage_collection_failed", new Error("Usage data could not be saved."), agentId);
         }
+        // The budget counts what the database stored, so a report that repeats an earlier one adds nothing.
+        if (added > 0) yield* this.#tokenBudget.spent(agentId, getString(params, "turnId"), added);
       }
     }
 
@@ -435,6 +451,18 @@ export class TurnLifecycle {
         const itemId = getString(item, "id");
         if (itemId) this.#itemTurns.set(itemId, turnId);
         this.#markProduced(turnId, isRepeatedWork(item));
+        // A finished tool step is where a turn past its token limit stops. The stop waits for the
+        // provider to end the turn, which this fiber reads, so it runs apart from it. A task turn
+        // stops the same way: it ends in its own lane, and the hold keeps the agent's work, tasks
+        // included, from starting until the user continues or the window falls under the limit.
+        if (
+          notification.method === "item/completed" &&
+          isStepBoundary(item) &&
+          !this.#conversation.isExecutionThread(this.#conversation.publicThreadId(agentId, threadId))
+        )
+          yield* this.#tokenBudget
+            .boundary(agentId, turnId)
+            .pipe(Effect.forkIn(this.#scope, { startImmediately: true }));
         if (item.type === "contextCompaction") {
           if (this.#conversation.loadedClientFor(threadId) !== source) return;
           if (notification.method === "item/started") this.#observedCompactions.set(threadId, turnId);
@@ -585,7 +613,8 @@ export class TurnLifecycle {
       case USAGE_LIMIT_METHOD: {
         const turnId = getString(params, "turnId");
         const resetsAt = isRecord(params) && typeof params.resetsAt === "number" ? params.resetsAt : null;
-        if (turnId && this.#runningTurns.has(turnId)) this.#limitedTurns.set(turnId, resetsAt);
+        const family = isRecord(params) && typeof params.family === "string" ? params.family : null;
+        if (turnId && this.#runningTurns.has(turnId)) this.#limitedTurns.set(turnId, { resetsAt, family });
         return;
       }
       case "error":
@@ -623,7 +652,10 @@ export class TurnLifecycle {
             isPlanLimitDiagnostic(message) ||
             (error?.codexErrorInfo === "usageLimitExceeded" && !isBalanceDiagnostic(message));
           if (planLimit && notification.method === "error" && errorTurnId && this.#runningTurns.has(errorTurnId)) {
-            this.#limitedTurns.set(errorTurnId, this.#limitedTurns.get(errorTurnId) ?? null);
+            this.#limitedTurns.set(
+              errorTurnId,
+              this.#limitedTurns.get(errorTurnId) ?? { resetsAt: null, family: null },
+            );
           }
           this.#hooks.emitFailure?.({
             code: "agent_error",
@@ -682,6 +714,7 @@ export class TurnLifecycle {
     function* (this: TurnLifecycle, agentId: string, threadId: string, turnId: string, status: string) {
       const running = this.#runningTurns.get(turnId);
       this.#runningTurns.delete(turnId);
+      this.#tokenBudget.turnEnded(turnId);
       this.#markEnded(turnId);
       this.#completingTurns.add(turnId);
       const noUpdateCalled = this.#noUpdateTurns.delete(turnId);
@@ -707,7 +740,9 @@ export class TurnLifecycle {
           : null;
       const refused = running !== undefined && refusedFailure !== null;
       const limited = status === "failed" && this.#limitedTurns.has(turnId);
-      const resetsAt = this.#limitedTurns.get(turnId) ?? null;
+      const limitEntry = this.#limitedTurns.get(turnId);
+      const resetsAt = limitEntry?.resetsAt ?? null;
+      const family = limitEntry?.family ?? null;
       this.#limitedTurns.delete(turnId);
       this.#deltas.flushTurn(turnId);
       yield* this.#images.waitForOperations(threadId, turnId);
@@ -740,9 +775,12 @@ export class TurnLifecycle {
       const repeatable = limited && running !== undefined && !running.acted && deliveries.length > 0;
       const channelTurn = !taskTurn && this.#conversation.isExecutionThread(snapshot.threadId);
       const requeue = repeatable && !channelTurn;
+      // The plan refused a turn that had done work, which a second run would repeat. The turn stops
+      // where it is, as a Stop does, its work stays, and the agent carries on when the limit ends.
+      const planStopped = limited && running?.acted && !taskTurn && !channelTurn && deliveries.length > 0;
       for (const message of snapshot.messages) {
         if (this.#itemTurns.get(message.id) !== turnId || message.status !== "streaming") continue;
-        message.status = normalizeCompletionStatus(repeatable ? "interrupted" : status);
+        message.status = normalizeCompletionStatus(repeatable || planStopped ? "interrupted" : status);
         markIncompleteImageGeneration(message, message.status);
       }
       // Only this loop reads the map, so the finished turn's items go, or it holds every item ever seen.
@@ -752,12 +790,13 @@ export class TurnLifecycle {
       if (requeue) {
         yield* this.#requeueTurn(agentId, threadId, turnId, snapshot, deliveries);
         // After the requeue, so a routine set to skip finds its run back in the queue.
-        yield* this.#usageLimits.reached(agentId, resetsAt, model);
+        yield* this.#usageLimits.reached(agentId, resetsAt, model, family);
         this.#hooks.scheduleDrain(agentId);
         return;
       }
-      if (limited) yield* this.#usageLimits.reached(agentId, resetsAt, model);
-      else if (status === "completed") yield* this.#usageLimits.completed(agentId, model);
+      if (limited) yield* this.#usageLimits.reached(agentId, resetsAt, model, family);
+      else if (status === "completed") yield* this.#usageLimits.completed(agentId);
+      if (planStopped) this.#pauses.planStopped(agentId, resetsAt);
       // After the limit is recorded, so the channel does not assign the task to this agent again
       // before the reset. A channel that took the task back ends this turn as interrupted.
       let requeued = repeatable && channelTurn;
@@ -766,7 +805,7 @@ export class TurnLifecycle {
         requeued = false;
         break;
       }
-      const outcome = requeued ? "interrupted" : status;
+      const outcome = requeued || planStopped ? "interrupted" : status;
       // The failed turn of the agent's own chat only: a task shows its outcome in its own row.
       if (!taskTurn && outcome === "failed") this.#failedTurns.set(agentId, turnId);
       else if (!taskTurn) this.#failedTurns.delete(agentId);
@@ -1189,6 +1228,17 @@ export class TurnOperationFailed extends Schema.TaggedError<TurnOperationFailed>
 }) {}
 
 const { sync: turnStep, rewrap: toTurnOperationFailed } = causeHelpers(TurnOperationFailed);
+
+/** Whether a finished item is a tool step: the end of one unit of work, with the next not yet begun. */
+function isStepBoundary(item: { type?: unknown }): boolean {
+  return (
+    item.type !== "agentMessage" &&
+    item.type !== "reasoning" &&
+    item.type !== "userMessage" &&
+    item.type !== "contextCompaction" &&
+    item.type !== "plan"
+  );
+}
 
 /**
  * Whether running the turn again would repeat this item: a tool step, or answer text. Thinking and

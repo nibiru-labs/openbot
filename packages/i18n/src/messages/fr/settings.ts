@@ -8,6 +8,11 @@ export const messages = {
   "settings.language.system": "Langue du système",
   // The logo color setting, General tab.
   "settings.appearance.title": "Apparence",
+  "settings.colorScheme.title": "Thème",
+  "settings.colorScheme.description": "« Système » suit l’apparence de votre appareil.",
+  "settings.colorScheme.system": "Système",
+  "settings.colorScheme.light": "Clair",
+  "settings.colorScheme.dark": "Sombre",
   "settings.logoColor.title": "Couleur du logo",
   "settings.logoColor.description": "Affichée dans le Dock, la barre des tâches et l’îlot dynamique.",
   "settings.logoColor.buildNote":

@@ -22,6 +22,7 @@ import {
   type AgentTasksSnapshot,
   type AgentTemplatePublication,
   type AnalyticsPreference,
+  type AppAppearancePreference,
   type AppInfo,
   type AppLanguagePreference,
   type AppLogoColorPreference,
@@ -44,6 +45,7 @@ import {
   createMcpServerId,
   DEFAULT_AGENT_ACCESS,
   DEFAULT_AGENT_MEMORY_LIMIT,
+  DEFAULT_APP_APPEARANCE,
   DEFAULT_APP_LOGO_COLOR,
   DEFAULT_APPROVAL_AUTOMATION_PREFERENCE,
   DEFAULT_BUSY_MESSAGE_MODE,
@@ -51,6 +53,7 @@ import {
   DEFAULT_PROVIDER_ACCOUNT_ID,
   DEFAULT_PROVIDER_DETECTION_SETTINGS,
   DEFAULT_REMOTE_SESSION_REUSE_PREFERENCE,
+  DEFAULT_TOKEN_BUDGET,
   type DirectConversationSnapshot,
   type DirectMessageRealtimeEvent,
   type DirectTypingRealtimeEvent,
@@ -93,6 +96,7 @@ import {
   type SteerQueuedMessageInput,
   sameCustomProviderOrigin,
   type TeamPresenceSnapshot,
+  type TokenBudgetPreference,
   type UpdateAgentInput,
   type UpdatePreference,
   type UpdateQueuedMessageInput,
@@ -282,12 +286,15 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   let analyticsPreference = clone<AnalyticsPreference>(options.analyticsPreference ?? { enabled: true });
   let approvalAutomation = clone<ApprovalAutomationPreference>(DEFAULT_APPROVAL_AUTOMATION_PREFERENCE);
   let busyMessageMode: BusyMessageModePreference = { mode: DEFAULT_BUSY_MESSAGE_MODE };
+  let tokenBudget: TokenBudgetPreference = { ...DEFAULT_TOKEN_BUDGET };
   let agentMemoryLimit: AgentMemoryLimitPreference = { limit: DEFAULT_AGENT_MEMORY_LIMIT };
   let remoteSessionReuse: RemoteSessionReusePreference = { ...DEFAULT_REMOTE_SESSION_REUSE_PREFERENCE };
   let languagePreference = clone<AppLanguagePreference>(options.languagePreference ?? { language: "system" });
   const languageListeners = new Set<(preference: AppLanguagePreference) => void>();
   let logoColorPreference: AppLogoColorPreference = { color: DEFAULT_APP_LOGO_COLOR };
   const logoColorListeners = new Set<(preference: AppLogoColorPreference) => void>();
+  let appearancePreference: AppAppearancePreference = { appearance: DEFAULT_APP_APPEARANCE };
+  const appearanceListeners = new Set<(preference: AppAppearancePreference) => void>();
   const approvalAutomationListeners = new Set<(preference: ApprovalAutomationPreference) => void>();
   let dynamicIslandPreference: DynamicIslandPreference = { ...DEFAULT_DYNAMIC_ISLAND_PREFERENCE };
   let dynamicIslandPresentation: DynamicIslandPresentation = { serverId: "local", mode: "idle" };
@@ -791,6 +798,11 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
       busyMessageMode = { mode };
       return clone(busyMessageMode);
     },
+    getTokenBudgetPreference: async () => clone(tokenBudget),
+    setTokenBudgetPreference: async (preference) => {
+      tokenBudget = { perHour: preference.perHour, perTurn: preference.perTurn };
+      return clone(tokenBudget);
+    },
     getAgentMemoryLimitPreference: async () => clone(agentMemoryLimit),
     setAgentMemoryLimitPreference: async ({ limit }) => {
       agentMemoryLimit = { limit };
@@ -818,6 +830,16 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     onAppLogoColorPreference: (listener) => {
       logoColorListeners.add(listener);
       return () => logoColorListeners.delete(listener);
+    },
+    getAppAppearancePreference: async () => clone(appearancePreference),
+    setAppAppearancePreference: async ({ appearance }) => {
+      appearancePreference = { appearance };
+      for (const listener of appearanceListeners) listener(clone(appearancePreference));
+      return clone(appearancePreference);
+    },
+    onAppAppearancePreference: (listener) => {
+      appearanceListeners.add(listener);
+      return () => appearanceListeners.delete(listener);
     },
     onOpenSettings: () => () => undefined,
     // The preview has no native page, so the overlay is never on screen and the DOM dock stays.
@@ -2175,6 +2197,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         queues.set(input.agentId, queue);
         emitAgentEvent({ type: "queue-changed", snapshot: queue });
       },
+      continueAgentPause: async () => undefined,
       setQueuePaused: async (input) => {
         const queue = queues.get(input.agentId) ?? emptyQueue(input.agentId);
         const next: QueueSnapshot = {

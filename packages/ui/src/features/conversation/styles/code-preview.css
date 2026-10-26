@@ -229,3 +229,18 @@
 .message-preview-dialog-body .message-preview-frame {
   height: 100%;
 }
+
+/* In the light scheme a diagram or an HTML preview sits on the chat, not in a tinted frame inside the
+   code block's frame. The dark scheme keeps the frame. */
+:root[data-appearance="light"] .message-code-block:has(.message-preview-body) {
+  background: transparent;
+}
+
+:root[data-appearance="light"] .message-preview-body,
+:root[data-appearance="light"] .message-preview-frame {
+  background: transparent;
+}
+
+:root[data-appearance="light"] .message-code-block:has(.message-preview-body) .message-code-header {
+  background: transparent;
+}

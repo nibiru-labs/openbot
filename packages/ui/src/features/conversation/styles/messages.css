@@ -808,8 +808,19 @@ button.chat-action-target:active,
 /* Markers without a target pill keep the same optical label-to-time rhythm. */
 .chat-action-marker-unavailable .chat-action-marker-label,
 .chat-action-marker-context-reset .chat-action-marker-label,
+.chat-action-marker-agent-pause .chat-action-marker-label,
 .chat-action-marker-model-switch .chat-action-marker-label {
   padding-inline-end: var(--openbot-space-1-5);
+}
+
+.chat-action-pause-continue,
+.chat-action-pause-done {
+  margin-inline-start: var(--openbot-space-2);
+  flex: 0 0 auto;
+}
+
+.chat-action-pause-done {
+  color: var(--openbot-text-muted);
 }
 
 .chat-action-target-name,

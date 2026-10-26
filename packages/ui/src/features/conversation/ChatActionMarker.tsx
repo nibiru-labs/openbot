@@ -39,6 +39,8 @@ interface ChatActionMarkerProps {
   agents: AgentProfile[];
   announce?: boolean | undefined;
   onOpenSkill?: ((skill: { skillId: string }) => void) | undefined;
+  /** Continues a paused agent. Absent for an agent on another computer: the Team API has no route for it. */
+  onContinuePause?: ((messageId: string) => void) | undefined;
   routineAvailable?: boolean | undefined;
   onSelectAgent: (agentId: string) => void;
   onOpenRoutine?: ((routine: { routineId: string; name: string }) => void) | undefined;
@@ -470,6 +472,29 @@ function SingleChatActionMarker(
           <time class="chat-action-marker-time" datetime={props.marker.timestamp}>
             {formatMarkerTime(props.marker.timestamp, t, format)}
           </time>
+          <Show when={props.marker.kind === "agent-pause" && props.marker}>
+            {(marker) => (
+              <Show
+                when={!marker().pause.resolved}
+                fallback={<span class="chat-action-pause-done">{t("chat.marker.pause.continued")}</span>}
+              >
+                <Show when={props.onContinuePause}>
+                  {(onContinue) => (
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      type="button"
+                      class="chat-action-pause-continue"
+                      onClick={() => onContinue()(marker().messageId)}
+                    >
+                      <Play aria-hidden="true" />
+                      {t("chat.marker.pause.continue")}
+                    </Button>
+                  )}
+                </Show>
+              </Show>
+            )}
+          </Show>
           <Show when={messagesRun()}>
             {(run) => (
               <Button
@@ -797,7 +822,7 @@ function markerLabel(
   sourceText: (text: string) => string,
 ): string {
   if (marker.kind === "unavailable") return marker.label;
-  if (marker.kind === "model-switch") return sourceText(marker.text);
+  if (marker.kind === "model-switch" || marker.kind === "agent-pause") return sourceText(marker.text);
   if (marker.kind === "context-reset") return t("chat.marker.contextReset");
   if (marker.kind === "marketplace-suggestion") return t("chat.marker.marketplaceSuggestion");
   if (marker.kind === "dispatch") return sourceText(marker.text);
@@ -872,6 +897,7 @@ function markerAccessibleLabel(
     marker.kind === "context-reset" ||
     marker.kind === "marketplace-suggestion" ||
     marker.kind === "model-switch" ||
+    marker.kind === "agent-pause" ||
     marker.kind === "dispatch"
   )
     return label;

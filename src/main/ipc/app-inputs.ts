@@ -24,12 +24,14 @@ import type {
   ReplaceHostedSiteInput,
   SaveSetupInput,
   SetAnalyticsPreferenceInput,
+  SetAppAppearancePreferenceInput,
   SetAppLanguagePreferenceInput,
   SetAppLogoColorPreferenceInput,
   SetDynamicIslandInteractiveInput,
   SetEnabledSkillInput,
   SubmitMarketplaceAgentInput,
   SubmitSkillInput,
+  TokenBudgetPreference,
   UninstallSkillInput,
   UpdatePreferenceChange,
   VerifyEmailCodeInput,
@@ -39,6 +41,7 @@ import {
   isAgentMemoryLimit,
   isAgentModel,
   isAgentProvider,
+  isAppAppearance,
   isAppLanguage,
   isAppLogoColor,
   isBrowserDockAction,
@@ -50,6 +53,7 @@ import {
   isDynamicIslandPreference,
   isDynamicIslandPresentation,
   isSkillCategory,
+  isTokenBudgetPreference,
 } from "@openbot/contracts/ipc";
 import {
   type DynamicRecord,
@@ -89,6 +93,11 @@ export function parseBusyMessageModePreference(input: unknown): BusyMessageModeP
   return { mode: input.mode };
 }
 
+export function parseTokenBudgetPreference(input: unknown): TokenBudgetPreference {
+  if (!isTokenBudgetPreference(input)) throw new Error("Token budget limits are required.");
+  return { perHour: input.perHour, perTurn: input.perTurn };
+}
+
 export function parseAgentMemoryLimitPreference(input: unknown): AgentMemoryLimitPreference {
   if (!isDynamicRecord(input) || !isAgentMemoryLimit(input.limit)) throw new Error("Agent memory limit is required.");
   return { limit: input.limit };
@@ -103,6 +112,11 @@ export function parseRemoteSessionReusePreference(input: unknown): RemoteSession
 export function parseAppLanguagePreference(input: unknown): SetAppLanguagePreferenceInput {
   if (!isDynamicRecord(input) || !isAppLanguage(input.language)) throw new Error("Language preference is required.");
   return { language: input.language };
+}
+
+export function parseAppAppearancePreference(input: unknown): SetAppAppearancePreferenceInput {
+  if (!isDynamicRecord(input) || !isAppAppearance(input.appearance)) throw new Error("Appearance is required.");
+  return { appearance: input.appearance };
 }
 
 export function parseAppLogoColorPreference(input: unknown): SetAppLogoColorPreferenceInput {

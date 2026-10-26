@@ -19,6 +19,7 @@ import {
   type AccountSession,
   type AgentMemoryLimitPreference,
   type AnalyticsPreference,
+  type AppAppearancePreference,
   type AppInfo,
   type AppLanguagePreference,
   type AppLogoColorPreference,
@@ -48,6 +49,7 @@ import {
   isAgentMemoryLimit,
   isAgentModel,
   isAgentProvider,
+  isAppAppearance,
   isAppLanguage,
   isAppLogoColor,
   isApprovalAutomationPreference,
@@ -63,6 +65,7 @@ import {
   isProviderDetectionSettings,
   isRemoteDesktopSetupStatus,
   isRemoteDesktopTestStatus,
+  isTokenBudgetPreference,
   isVoiceLanguage,
   isVoiceModelId,
   type MobileConnectedDevice,
@@ -78,6 +81,7 @@ import {
   type RemoteDesktopSetupStatus,
   type RemoteDesktopTestStatus,
   type RemoteSessionReusePreference,
+  type TokenBudgetPreference,
   UPDATE_PHASES,
   type UpdatePreference,
   type UpdateStatus,
@@ -140,6 +144,11 @@ export function decodeBusyMessageModePreference(value: unknown): BusyMessageMode
   return { mode: preference.mode };
 }
 
+export const decodeTokenBudgetPreference: (value: unknown) => TokenBudgetPreference = guardedDecoder(
+  isTokenBudgetPreference,
+  "token budget preference",
+);
+
 export function decodeAgentMemoryLimitPreference(value: unknown): AgentMemoryLimitPreference {
   const preference = decodeRecord(value, "agent memory limit preference");
   if (!isAgentMemoryLimit(preference.limit)) throw new Error("Invalid agent memory limit.");
@@ -150,6 +159,12 @@ export function decodeAppLanguagePreference(value: unknown): AppLanguagePreferen
   const preference = decodeRecord(value, "language preference");
   if (!isAppLanguage(preference.language)) throw new Error("Invalid language.");
   return { language: preference.language };
+}
+
+export function decodeAppAppearancePreference(value: unknown): AppAppearancePreference {
+  const preference = decodeRecord(value, "appearance preference");
+  if (!isAppAppearance(preference.appearance)) throw new Error("Invalid appearance.");
+  return { appearance: preference.appearance };
 }
 
 export function decodeAppLogoColorPreference(value: unknown): AppLogoColorPreference {

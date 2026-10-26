@@ -18,6 +18,7 @@ import type { BrowserHost } from "../../backend/browser-host";
 import type { MailboxStore } from "../../backend/mailbox-store";
 import type { AgentMemoryLimitSetting } from "../agent-memory-limit-preference-store";
 import { readAnalyticsPreference, writeAnalyticsPreference } from "../analytics-preference-store";
+import type { AppearanceService } from "../appearance-service";
 import type { ApprovalAutomation } from "../approval-automation-store";
 import type { BusyMessageModePreferenceStore } from "../busy-message-mode-preference-store";
 import type { LanguageService } from "../language-service";
@@ -27,16 +28,19 @@ import { exportDiagnostics, exportOpenBotData } from "../maintenance-service";
 import type { RemoteSessionCache } from "../remote-session-cache";
 import type { RemoteSessionReusePreferenceStore } from "../remote-session-reuse-preference-store";
 import { readSetupState, writeSetupState } from "../setup-store";
+import type { TokenBudgetPreferenceStore } from "../token-budget-preference-store";
 import type { UpdateService } from "../update-service";
 import {
   parseAgentMemoryLimitPreference,
   parseAnalyticsPreference,
+  parseAppAppearancePreference,
   parseAppLanguagePreference,
   parseAppLogoColorPreference,
   parseBusyMessageModePreference,
   parseExternalDestination,
   parseRemoteSessionReusePreference,
   parseSetup,
+  parseTokenBudgetPreference,
 } from "./app-inputs";
 import { stringPayload } from "./validation";
 
@@ -82,11 +86,13 @@ export interface AppIpcDependencies {
   analyticsPreferenceFile: string;
   approvalAutomation: ApprovalAutomation;
   busyMessageMode: BusyMessageModePreferenceStore;
+  tokenBudget: TokenBudgetPreferenceStore;
   agentMemoryLimit: AgentMemoryLimitSetting;
   remoteSessionReuse: RemoteSessionReusePreferenceStore;
   remoteSessionCache: RemoteSessionCache;
   language: LanguageService;
   logoColor: LogoColorService;
+  appearance: AppearanceService;
   initializeAgent: () => Promise<void>;
   appVariant: AppVariant;
   analyticsCaptureUrl: string | null;
@@ -105,11 +111,13 @@ export function appIpcHandlers({
   analyticsPreferenceFile,
   approvalAutomation,
   busyMessageMode,
+  tokenBudget,
   agentMemoryLimit,
   remoteSessionReuse,
   remoteSessionCache,
   language,
   logoColor,
+  appearance,
   initializeAgent,
   appVariant,
   analyticsCaptureUrl,
@@ -154,6 +162,10 @@ export function appIpcHandlers({
       setBusyMessageModePreference: payloadHandler(parseBusyMessageModePreference, (parsed) =>
         runCauseEffect(busyMessageMode.set(parsed)),
       ),
+      getTokenBudgetPreference: handler(() => tokenBudget.get()),
+      setTokenBudgetPreference: payloadHandler(parseTokenBudgetPreference, (parsed) =>
+        runCauseEffect(tokenBudget.set(parsed).pipe(Effect.tap(() => service.tokenBudgetChanged()))),
+      ),
       getAgentMemoryLimitPreference: handler(() => agentMemoryLimit.get()),
       setAgentMemoryLimitPreference: payloadHandler(parseAgentMemoryLimitPreference, (parsed) =>
         runCauseEffect(agentMemoryLimit.set(parsed)),
@@ -172,6 +184,10 @@ export function appIpcHandlers({
       getAppLogoColorPreference: handler(() => logoColor.preference),
       setAppLogoColorPreference: payloadHandler(parseAppLogoColorPreference, (parsed) =>
         runCauseEffect(logoColor.set(parsed)),
+      ),
+      getAppAppearancePreference: handler(() => appearance.preference),
+      setAppAppearancePreference: payloadHandler(parseAppAppearancePreference, (parsed) =>
+        runCauseEffect(appearance.set(parsed)),
       ),
       saveSetup: payloadHandler(parseSetup, async (input): Promise<AppSetupState> => {
         const state = await runCauseEffect(writeSetupState(setupFile, input));

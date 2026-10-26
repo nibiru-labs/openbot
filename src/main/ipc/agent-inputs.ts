@@ -8,6 +8,7 @@ import {
   type CancelMessageLinkInput,
   type CancelQueuedMessageInput,
   type ChooseAttachmentsInput,
+  type ContinueAgentPauseInput,
   type CreateAgentInput,
   type CreateAgentMemoryInput,
   type CreateChannelMemoryInput,
@@ -532,6 +533,11 @@ export function parseSendMessage(value: unknown): SendMessageInput {
     ...(taskId === undefined ? {} : { taskId }),
     ...(value.interrupt === true ? { interrupt: true } : {}),
   };
+}
+
+export function parseContinueAgentPause(value: unknown): ContinueAgentPauseInput {
+  if (!isObject(value)) throw new Error("Invalid continue request.");
+  return { agentId: requireString(value.agentId, "agentId"), messageId: requireString(value.messageId, "messageId") };
 }
 
 export function parseSetQueuePaused(value: unknown): SetQueuePausedInput {

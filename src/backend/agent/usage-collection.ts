@@ -8,30 +8,33 @@ function count(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
-/** Translates provider counters at the process boundary, without retaining provider payloads. */
+/**
+ * Translates provider counters at the process boundary, without retaining provider payloads.
+ * Returns the processed tokens that the report added.
+ */
 export function collectProviderUsage(
   usage: AgentUsage,
   agent: Pick<AgentSummary, "id" | "model">,
   session: Pick<ProviderSession, "id" | "provider" | "createdAt">,
   method: string,
   params: unknown,
-): void {
+): number {
   if (method === "turn/started") {
     const turnId = getString(getRecord(params, "turn"), "id");
     if (turnId) usage.startTurn(agent.id, session.id, turnId, session.provider, agent.model);
-    return;
+    return 0;
   }
   if (method === "model/rerouted") {
     const turnId = getString(params, "turnId");
     const model = getString(params, "toModel");
     if (turnId && isAgentModel(model)) usage.reroute(agent.id, session.id, turnId, model);
-    return;
+    return 0;
   }
-  if (method !== "thread/tokenUsage/updated" && method !== "openbot/usage") return;
+  if (method !== "thread/tokenUsage/updated" && method !== "openbot/usage") return 0;
   const turnId = getString(params, "turnId") ?? "baseline";
   if (session.provider === "codex") {
     const total = getRecord(getRecord(params, "tokenUsage"), "total");
-    if (!total) return;
+    if (!total) return 0;
     const input = count(total.inputTokens);
     const cached = count(total.cachedInputTokens);
     const tokens: UsageTokens = {
@@ -40,7 +43,7 @@ export function collectProviderUsage(
       cacheCreation: count(total.cacheCreationInputTokens) ?? 0,
       output: count(total.outputTokens),
     };
-    usage.record({
+    return usage.record({
       agentId: agent.id,
       sessionId: session.id,
       turnId,
@@ -51,15 +54,15 @@ export function collectProviderUsage(
       tokens,
       baseline: session.createdAt < usage.collectionStartedAt() || turnId === "baseline",
     });
-    return;
   }
   if (session.provider === "claude") {
     const models = getRecord(params, "modelUsage");
     const counterId = getString(params, "counterId");
-    if (!models || !counterId) return;
+    if (!models || !counterId) return 0;
+    let added = 0;
     for (const [model, value] of Object.entries(models)) {
       if (!isDynamicRecord(value) || !isAgentModel(model)) continue;
-      usage.record({
+      added += usage.record({
         agentId: agent.id,
         sessionId: session.id,
         turnId,
@@ -76,18 +79,18 @@ export function collectProviderUsage(
         reportedCost: value.costBasis === "unknown" || value.costBasis === "managed" ? null : cost(value.costUSD),
       });
     }
-    return;
+    return added;
   }
   // ACP `Usage` is session-cumulative by contract: its fields are documented as "Sum of all token
   // types across session" and "Total input tokens across all turns". So one counter per session,
   // like Codex, and the first report of a session that predates collection is a baseline: it
   // carries tokens spent before analytics existed.
   const value = getRecord(params, "usage");
-  if (!value) return;
+  if (!value) return 0;
   const input = count(value.inputTokens);
   const cached = count(value.cachedReadTokens);
   const creation = count(value.cachedWriteTokens);
-  usage.record({
+  return usage.record({
     agentId: agent.id,
     sessionId: session.id,
     turnId,
