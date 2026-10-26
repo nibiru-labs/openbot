@@ -369,11 +369,16 @@ export class TurnLifecycle {
       ["turn/started", "thread/tokenUsage/updated", "openbot/usage", "model/rerouted"].includes(notification.method)
     ) {
       const agent = this.#store.list().find((entry) => entry.id === agentId);
-      const session = agent?.threadId
-        ? this.#store.database
-            .listProviderSessions(agent.threadId)
-            .find((entry) => entry.externalSessionId === threadId && entry.provider === source.provider)
-        : undefined;
+      // A task keeps its provider session under its own thread, not the agent's chat. Resolve
+      // against the thread this report names, or a task turn's usage never reaches the budget.
+      const sessionOf = (threadKey: string) =>
+        this.#store.database
+          .listProviderSessions(threadKey)
+          .find((entry) => entry.externalSessionId === threadId && entry.provider === source.provider);
+      const publicThreadId = this.#conversation.publicThreadId(agentId, threadId);
+      const session =
+        sessionOf(publicThreadId) ??
+        (agent?.threadId && agent.threadId !== publicThreadId ? sessionOf(agent.threadId) : undefined);
       if (agent && session) {
         let added = 0;
         try {
@@ -447,12 +452,13 @@ export class TurnLifecycle {
         if (itemId) this.#itemTurns.set(itemId, turnId);
         this.#markProduced(turnId, isRepeatedWork(item));
         // A finished tool step is where a turn past its token limit stops. The stop waits for the
-        // provider to end the turn, which this fiber reads, so it runs apart from it.
+        // provider to end the turn, which this fiber reads, so it runs apart from it. A task turn
+        // stops the same way: it ends in its own lane, and the hold keeps the agent's work, tasks
+        // included, from starting until the user continues or the window falls under the limit.
         if (
           notification.method === "item/completed" &&
           isStepBoundary(item) &&
-          !this.#conversation.isExecutionThread(this.#conversation.publicThreadId(agentId, threadId)) &&
-          !this.#conversation.isTaskThread(this.#conversation.publicThreadId(agentId, threadId))
+          !this.#conversation.isExecutionThread(this.#conversation.publicThreadId(agentId, threadId))
         )
           yield* this.#tokenBudget
             .boundary(agentId, turnId)
