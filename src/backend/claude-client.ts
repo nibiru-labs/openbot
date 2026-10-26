@@ -145,7 +145,7 @@ interface ActiveTurn {
    * Set when Claude refuses the turn for a spent plan window. The refusal arrives as an assistant
    * message that only states the limit, so its text is held here and not published as the answer.
    */
-  usageLimit: { resetsAt: number | null; text: string | null } | null;
+  usageLimit: { resetsAt: number | null; text: string | null; family: string | null } | null;
   /** The CLI started this turn itself, with no message from OpenBot, such as after a background task ended. */
   unprompted: boolean;
 }
@@ -1065,7 +1065,11 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       if (!isDynamicRecord(info)) return;
       const turn = runtime.activeTurn;
       if (turn && info.status === "rejected") {
-        turn.usageLimit = { resetsAt: claudeResetSeconds(info.resetsAt), text: turn.usageLimit?.text ?? null };
+        turn.usageLimit = {
+          resetsAt: claudeResetSeconds(info.resetsAt),
+          text: turn.usageLimit?.text ?? null,
+          family: claudeLimitFamily(info.rateLimitType),
+        };
       }
       // The plan rings follow the turn, as with Codex, instead of waiting for the next reading.
       const windows = claudePushedWindows(info, this.#weeklyLimitKey);
@@ -1100,7 +1104,11 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
         // A spent balance does not reset, so it is not held: the turn fails with its own text.
         if (isBalanceDiagnostic(text)) turn.usageLimit = null;
         else if (turn.usageLimit || isPlanLimitDiagnostic(text)) {
-          turn.usageLimit = { resetsAt: turn.usageLimit?.resetsAt ?? null, text: text || null };
+          turn.usageLimit = {
+            resetsAt: turn.usageLimit?.resetsAt ?? null,
+            text: text || null,
+            family: turn.usageLimit?.family ?? null,
+          };
           return;
         }
       }
@@ -1205,7 +1213,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
       ) {
         this.emit("notification", {
           method: USAGE_LIMIT_METHOD,
-          params: { threadId: runtime.id, turnId: turn.id, resetsAt: limit.resetsAt },
+          params: { threadId: runtime.id, turnId: turn.id, resetsAt: limit.resetsAt, family: limit.family },
         });
         this.#reconcileText(runtime, [...turn.assistantMessages.values()].join(""));
         yield* this.#completeTurn(
@@ -1747,6 +1755,17 @@ function claudeWeeklyKey(rateLimits: DynamicRecord, model: string | null): strin
   const name = model?.toLowerCase() ?? "";
   const familyKey = name.includes("opus") ? "seven_day_opus" : name.includes("sonnet") ? "seven_day_sonnet" : null;
   return familyKey && claudeUsageWindow(rateLimits[familyKey], 10_080) ? familyKey : "seven_day";
+}
+
+/**
+ * The model family a refused window covers: the family of `seven_day_opus` or `seven_day_sonnet`.
+ * Any other window, the overall weekly one and the five-hour one included, covers the whole
+ * account, and so does an event that names no window: both read as null.
+ */
+function claudeLimitFamily(rateLimitType: unknown): "opus" | "sonnet" | null {
+  if (rateLimitType === "seven_day_opus") return "opus";
+  if (rateLimitType === "seven_day_sonnet") return "sonnet";
+  return null;
 }
 
 /**

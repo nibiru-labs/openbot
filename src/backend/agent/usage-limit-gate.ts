@@ -51,6 +51,8 @@ export interface UsageLimitKey {
   /** The provider account after the first, or null for the provider's own sign-in. */
   accountId: string | null;
   model: string;
+  /** The model family a family window covers, or null when the window covers the whole account. */
+  family: string | null;
 }
 
 interface UsageLimit extends UsageLimitKey {
@@ -62,14 +64,16 @@ interface UsageLimit extends UsageLimitKey {
 /**
  * The plan limits of the provider accounts, and the queues they hold.
  *
- * Owns one entry per provider account whose last turn the plan refused. A plan window covers the whole
- * account, so while an entry exists, no agent on that provider account starts a turn: its messages and routine runs stay queued instead
- * of failing one by one. A model is part of the key because a weekly window can cover one model
- * family only; an account-wide window costs each other model one refused, requeued turn.
+ * Owns one entry per provider account and scope whose last turn the plan refused. A window the
+ * provider reports for the whole account holds every agent on that account: while the entry exists,
+ * no agent on that provider account starts a turn, and its messages and routine runs stay queued
+ * instead of failing one by one. A window it reports for one model family, such as the Opus weekly
+ * window, holds only that family, so the other families keep working and their completed turns do
+ * not end the hold.
  *
  * The entry ends at the reported reset, after a usage read that finds no spent window, or when a
- * turn on that provider account completes. It is kept in memory only: after a restart the first
- * refused turn closes the gate again.
+ * turn in its scope completes. It is kept in memory only: after a restart the first refused turn
+ * closes the gate again.
  */
 export class UsageLimitGate {
   readonly #store: UsageLimitGateOptions["store"];
@@ -87,18 +91,30 @@ export class UsageLimitGate {
 
   mayDrain(agentId: string): boolean {
     const agent = this.#agent(agentId);
-    return !agent || !this.#limits.has(limitKey(providerForAgent(agent), accountOf(agent)));
+    if (!agent) return true;
+    const provider = providerForAgent(agent);
+    const accountId = accountOf(agent);
+    if (this.#limits.has(limitKey(provider, accountId, null))) return false;
+    const family = modelFamily(agent.model);
+    return !family || !this.#limits.has(limitKey(provider, accountId, family));
   }
 
-  /** Whether a limit holds this provider account and model. */
+  /** Whether a limit holds this provider account and model: the whole account's, or its family's. */
   isLimited(limit: UsageLimitKey): boolean {
-    return this.#limits.has(limitKey(limit.provider, limit.accountId));
+    if (this.#limits.has(limitKey(limit.provider, limit.accountId, null))) return true;
+    const family = modelFamily(limit.model);
+    return family !== null && this.#limits.has(limitKey(limit.provider, limit.accountId, family));
   }
 
   /** The agents whose queue a limit holds, for the runtime snapshot. */
   limitedAgents(): NonNullable<AgentRuntimeSnapshot["usageLimits"]> {
     return this.#store.list().flatMap((agent) => {
-      const limit = this.#limits.get(limitKey(providerForAgent(agent), accountOf(agent)));
+      const provider = providerForAgent(agent);
+      const accountId = accountOf(agent);
+      const family = modelFamily(agent.model);
+      const limit =
+        this.#limits.get(limitKey(provider, accountId, null)) ??
+        (family ? this.#limits.get(limitKey(provider, accountId, family)) : undefined);
       return limit ? [{ agentId: agent.id, resetsAt: limit.resetsAt }] : [];
     });
   }
@@ -114,21 +130,31 @@ export class UsageLimitGate {
 
   /**
    * The plan refused a turn of this agent. `resetsAt` is in epoch seconds. `model` is the one the
-   * turn ran on; the agent's current model when null.
+   * turn ran on; the agent's current model when null. `family` is the model family the provider
+   * reported for the refused window; null when it reported a window for the whole account, or no
+   * window at all, and the hold then covers the whole account.
    */
   readonly reached = Effect.fn("UsageLimitGate.reached")(function* (
     this: UsageLimitGate,
     agentId: string,
     resetsAt: number | null,
     model: string | null = null,
+    family: string | null = null,
   ) {
     const agent = this.#agent(agentId);
     if (!agent) return;
     const provider = providerForAgent(agent);
     const turnModel = model ?? agent.model;
     const accountId = accountOf(agent);
-    const key = limitKey(provider, accountId);
-    const limit = this.#limits.get(key) ?? { provider, accountId, model: turnModel, resetsAt: null, timer: null };
+    const key = limitKey(provider, accountId, family);
+    const limit = this.#limits.get(key) ?? {
+      provider,
+      accountId,
+      model: turnModel,
+      family,
+      resetsAt: null,
+      timer: null,
+    };
     // A reset already past would release the queue at once into the same refusal.
     const future = (value: number | null) => (value !== null && value * 1_000 > Date.now() ? value : null);
     limit.resetsAt = future(resetsAt) ?? future(limit.resetsAt);
@@ -151,13 +177,23 @@ export class UsageLimitGate {
     );
   }).bind(this);
 
-  /** A turn of this agent completed on `model`, so its provider and model take turns again. */
+  /**
+   * A turn of this agent completed, so its scope takes turns again: a limit on the whole account,
+   * and the limit of its model family. A completed turn of another family proves nothing about
+   * this family's window, so it does not end that limit.
+   */
   readonly completed = Effect.fn("UsageLimitGate.completed")(function* (this: UsageLimitGate, agentId: string) {
     const agent = this.#agent(agentId);
     if (!agent) return;
     const provider = providerForAgent(agent);
-    const key = limitKey(provider, accountOf(agent));
-    if (this.#limits.has(key)) yield* this.#release(key);
+    const accountId = accountOf(agent);
+    const accountKey = limitKey(provider, accountId, null);
+    if (this.#limits.has(accountKey)) yield* this.#release(accountKey);
+    const family = modelFamily(agent.model);
+    if (family) {
+      const scopedKey = limitKey(provider, accountId, family);
+      if (this.#limits.has(scopedKey)) yield* this.#release(scopedKey);
+    }
     if (![...this.#limits.values()].some((limit) => limit.provider === provider)) this.#announced.delete(provider);
   }).bind(this);
 
@@ -239,18 +275,40 @@ export class UsageLimitGate {
       this.#announced.delete(limit.provider);
     this.#hooks.emitRuntimeSnapshot();
     for (const agent of this.#heldAgents(limit)) this.#hooks.scheduleDrain(agent.id);
-    yield* this.#hooks.released({ provider: limit.provider, accountId: limit.accountId, model: limit.model });
+    yield* this.#hooks.released({
+      provider: limit.provider,
+      accountId: limit.accountId,
+      model: limit.model,
+      family: limit.family,
+    });
   });
 
   #heldAgents(limit: UsageLimit) {
     return this.#store
       .list()
-      .filter((agent) => providerForAgent(agent) === limit.provider && accountOf(agent) === limit.accountId);
+      .filter(
+        (agent) =>
+          providerForAgent(agent) === limit.provider &&
+          accountOf(agent) === limit.accountId &&
+          (limit.family === null || modelFamily(agent.model) === limit.family),
+      );
   }
 }
 
-function limitKey(provider: AgentProvider, accountId: string | null): string {
-  return `${provider}\u0000${accountId ?? ""}`;
+function limitKey(provider: AgentProvider, accountId: string | null, family: string | null): string {
+  return `${provider}\u0000${accountId ?? ""}\u0000${family ?? ""}`;
+}
+
+/**
+ * The model family a plan window can cover on its own, or null when the model has none. The same
+ * rule the Claude adapter reads its weekly windows by: a name with "opus" is the Opus family, and
+ * a name with "sonnet" is the Sonnet family.
+ */
+export function modelFamily(model: string): "opus" | "sonnet" | null {
+  const name = model.toLowerCase();
+  if (name.includes("opus")) return "opus";
+  if (name.includes("sonnet")) return "sonnet";
+  return null;
 }
 
 /** The latest future reset among the spent windows of a reading, in epoch seconds. */

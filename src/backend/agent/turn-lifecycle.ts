@@ -192,7 +192,7 @@ export class TurnLifecycle {
     }
   >();
   /** Running turns a provider plan refused, with the reset in epoch seconds when the provider gave it. */
-  readonly #limitedTurns = new Map<string, number | null>();
+  readonly #limitedTurns = new Map<string, { resetsAt: number | null; family: string | null }>();
   /** The deliveries run again after a refused session history. Each one gets a single retry. */
   readonly #refusedRetries = new Set<string>();
   /** Running turns whose agent called the no-update tool. The completion of the turn takes the entry. */
@@ -585,7 +585,8 @@ export class TurnLifecycle {
       case USAGE_LIMIT_METHOD: {
         const turnId = getString(params, "turnId");
         const resetsAt = isRecord(params) && typeof params.resetsAt === "number" ? params.resetsAt : null;
-        if (turnId && this.#runningTurns.has(turnId)) this.#limitedTurns.set(turnId, resetsAt);
+        const family = isRecord(params) && typeof params.family === "string" ? params.family : null;
+        if (turnId && this.#runningTurns.has(turnId)) this.#limitedTurns.set(turnId, { resetsAt, family });
         return;
       }
       case "error":
@@ -623,7 +624,10 @@ export class TurnLifecycle {
             isPlanLimitDiagnostic(message) ||
             (error?.codexErrorInfo === "usageLimitExceeded" && !isBalanceDiagnostic(message));
           if (planLimit && notification.method === "error" && errorTurnId && this.#runningTurns.has(errorTurnId)) {
-            this.#limitedTurns.set(errorTurnId, this.#limitedTurns.get(errorTurnId) ?? null);
+            this.#limitedTurns.set(
+              errorTurnId,
+              this.#limitedTurns.get(errorTurnId) ?? { resetsAt: null, family: null },
+            );
           }
           this.#hooks.emitFailure?.({
             code: "agent_error",
@@ -707,7 +711,9 @@ export class TurnLifecycle {
           : null;
       const refused = running !== undefined && refusedFailure !== null;
       const limited = status === "failed" && this.#limitedTurns.has(turnId);
-      const resetsAt = this.#limitedTurns.get(turnId) ?? null;
+      const limitEntry = this.#limitedTurns.get(turnId);
+      const resetsAt = limitEntry?.resetsAt ?? null;
+      const family = limitEntry?.family ?? null;
       this.#limitedTurns.delete(turnId);
       this.#deltas.flushTurn(turnId);
       yield* this.#images.waitForOperations(threadId, turnId);
@@ -752,11 +758,11 @@ export class TurnLifecycle {
       if (requeue) {
         yield* this.#requeueTurn(agentId, threadId, turnId, snapshot, deliveries);
         // After the requeue, so a routine set to skip finds its run back in the queue.
-        yield* this.#usageLimits.reached(agentId, resetsAt, model);
+        yield* this.#usageLimits.reached(agentId, resetsAt, model, family);
         this.#hooks.scheduleDrain(agentId);
         return;
       }
-      if (limited) yield* this.#usageLimits.reached(agentId, resetsAt, model);
+      if (limited) yield* this.#usageLimits.reached(agentId, resetsAt, model, family);
       else if (status === "completed") yield* this.#usageLimits.completed(agentId);
       // After the limit is recorded, so the channel does not assign the task to this agent again
       // before the reset. A channel that took the task back ends this turn as interrupted.
