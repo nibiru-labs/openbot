@@ -18,9 +18,9 @@ import {
 } from "../database/database-rows";
 import type { OpenBotDatabase } from "../openbot-database";
 
-export const UNCHANGED_RUNS_BEFORE_BACKOFF = 3;
-export const FIRST_BACKOFF_MS = 60 * 60_000;
-export const MAX_BACKOFF_MS = 4 * 60 * 60_000;
+const UNCHANGED_RUNS_BEFORE_BACKOFF = 3;
+const FIRST_BACKOFF_MS = 60 * 60_000;
+const MAX_BACKOFF_MS = 4 * 60 * 60_000;
 
 export interface RoutineBackoffRecord {
   fingerprint: string;
