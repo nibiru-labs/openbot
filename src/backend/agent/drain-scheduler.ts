@@ -221,7 +221,8 @@ export class DrainScheduler {
       },
       head: (key) => {
         const lane = laneOf(key);
-        return this.#mailbox.nextQueued(lane.agentId, lane.taskId)?.delivery ?? null;
+        const context = this.#mailbox.nextQueued(lane.agentId, lane.taskId);
+        return context ? { ...context.delivery, ...(context.dispatch ? { dispatch: true as const } : {}) } : null;
       },
     });
   }
@@ -488,7 +489,7 @@ export class DrainScheduler {
         const assignment = this.#channels?.store.assignmentForDelivery(context.delivery.id);
         const publicThreadId = assignment
           ? this.#channels?.store.context(assignment.channelId, assignment.agentId).threadId
-          : (this.#messaging?.threadForDelivery(context.delivery.id) ?? agent?.threadId);
+          : (context.dispatch?.threadId ?? this.#messaging?.threadForDelivery(context.delivery.id) ?? agent?.threadId);
         const session =
           agent && publicThreadId ? this.#store.database.activeProviderSession(publicThreadId, agent.provider) : null;
         if (session && this.#compaction.reserve(agentId, session.externalSessionId)) {
@@ -523,10 +524,11 @@ export class DrainScheduler {
     // the same request. The person's message goes last, so the turn answers it with the answers
     // already read.
     const companions =
-      channelDelivery || (messagingDelivery && delivery.sender.kind !== "agent")
+      context.dispatch || channelDelivery || (messagingDelivery && delivery.sender.kind !== "agent")
         ? []
         : this.#mailbox.repliesToStartWith(delivery.id);
-    let batch = delivery.sender.kind === "user" ? [...companions, context] : [context, ...companions];
+    let batch =
+      delivery.sender.kind === "user" && !context.dispatch ? [...companions, context] : [context, ...companions];
     let confirmedTurnId: string | null = null;
     const claimed = this.#deliveryProviders(delivery.recipientAgentId);
     for (const provider of claimed) this.#startingDeliveries.set(provider, this.#starting(provider) + 1);
@@ -579,8 +581,9 @@ export class DrainScheduler {
       const messaging = this.#messaging;
       const channels = this.#channels;
       const taskThreadId = taskId === null ? null : this.#tasks.threadId(taskId);
-      const execution: { threadId: string; text?: string } | null | undefined =
-        taskId !== null
+      const execution: { threadId: string; text?: string } | null | undefined = context.dispatch
+        ? { threadId: context.dispatch.threadId }
+        : taskId !== null
           ? taskThreadId
             ? { threadId: taskThreadId }
             : null
@@ -651,13 +654,14 @@ export class DrainScheduler {
         );
       };
 
-      for (const { delivery: item } of batch) {
+      for (const { delivery: item, dispatch } of batch) {
         if (snapshot.messages.some((message) => message.id === item.id)) continue;
         snapshot.messages.push({
           id: item.id,
-          author: item.sender.kind === "agent" ? "agent" : "user",
-          source: item.sender.kind === "agent" ? "agent" : "user",
+          author: dispatch ? "system" : item.sender.kind === "agent" ? "agent" : "user",
+          source: dispatch ? "system" : item.sender.kind === "agent" ? "agent" : "user",
           ...(item.sender.kind === "agent" ? { senderAgentId: item.sender.agentId } : {}),
+          ...(dispatch ? { itemType: "dispatch" } : {}),
           replyToMessageId: item.replyToMessageId,
           attachments: item.attachments,
           delivery: { id: item.id, status: "starting", position: null },

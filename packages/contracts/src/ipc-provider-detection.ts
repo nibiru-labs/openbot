@@ -29,8 +29,34 @@ export const DEFAULT_MODEL_SERVERS = {
 
 export type DefaultModelServerId = keyof typeof DEFAULT_MODEL_SERVERS;
 
+/** Coding executors on this computer or a named openswarm fleet host. No credentials. */
+export interface OpenswarmSettings {
+  binaryPath: string;
+  defaultLane: string;
+  defaultHost: string;
+}
+
+export const DEFAULT_OPENSWARM_SETTINGS: OpenswarmSettings = {
+  binaryPath: "openswarm",
+  defaultLane: "",
+  defaultHost: "local",
+};
+
+export function isOpenswarmSettings(value: unknown): value is OpenswarmSettings {
+  return (
+    isDynamicRecord(value) &&
+    isBoundedString(value.binaryPath, 2048) &&
+    !value.binaryPath.includes("\0") &&
+    isBoundedString(value.defaultLane, 128) &&
+    /^(?:[A-Za-z0-9][A-Za-z0-9._-]*)?$/.test(value.defaultLane) &&
+    isBoundedString(value.defaultHost, 128) &&
+    /^(?:[A-Za-z0-9][A-Za-z0-9._-]*)?$/.test(value.defaultHost)
+  );
+}
+
 /** Where the host looks, besides the default addresses and PATH, and the rows the user hid. */
 export interface ProviderDetectionSettings {
+  openswarm?: OpenswarmSettings;
   enabled: boolean;
   /** Base URLs of more OpenAI-compatible servers. */
   addresses: string[];
@@ -113,6 +139,7 @@ function isEntryList(value: unknown, limit: number): value is string[] {
 export function isProviderDetectionSettings(value: unknown): value is ProviderDetectionSettings {
   return (
     isDynamicRecord(value) &&
+    (value.openswarm === undefined || isOpenswarmSettings(value.openswarm)) &&
     isBoolean(value.enabled) &&
     isEntryList(value.addresses, PROVIDER_DETECTION_LIMITS.entries) &&
     isEntryList(value.folders, PROVIDER_DETECTION_LIMITS.entries) &&

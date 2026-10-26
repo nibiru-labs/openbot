@@ -61,7 +61,9 @@ export function toAgentMessage(message: ConversationMessage, ownerAgentId?: stri
   const hostedSiteEvent = hostedSiteConversationEvent(message);
   const actionMarker = chatActionMarker(message, ownerAgentId, routineEvent, routineRunEvent, hostedSiteEvent);
   const plan = messagePlan(message);
-  const senderMember = message.author === "user" ? message.senderMember : undefined;
+  const dispatchResult = message.itemType === "dispatch" && message.delivery !== undefined;
+  const isUserMessage = message.author === "user" && !dispatchResult;
+  const senderMember = isUserMessage ? message.senderMember : undefined;
   const status =
     message.exchange || message.routine
       ? undefined
@@ -77,8 +79,8 @@ export function toAgentMessage(message: ConversationMessage, ownerAgentId?: stri
   return {
     id: message.id,
     ...(message.turnId === undefined ? {} : { turnId: message.turnId }),
-    author: message.author === "user" ? "you" : "agent",
-    body: message.author === "user" ? message.text : cleanAgentMessageText(message.text),
+    author: isUserMessage ? "you" : "agent",
+    body: isUserMessage ? message.text : cleanAgentMessageText(message.text),
     time: formatMessageTime(message.createdAt),
     createdAt: message.createdAt,
     streaming: message.status === "streaming",

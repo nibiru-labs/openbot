@@ -29,8 +29,8 @@ export type AgentAutoReadEntry =
   | { messageId: string; status: "succeeded"; state: ConversationReadState };
 
 /**
- * Routine, routine-run, hosted-site, model switch and Marketplace suggestion markers are
- * bookkeeping the agent writes about itself, so they never make a conversation
+ * Routine, routine-run, hosted-site, dispatch, model switch and Marketplace suggestion markers are
+ * bookkeeping the agent writes about its own work, so they never make a conversation
  * unread.
  */
 export function isRoutineEventItem(message: { itemType?: string | undefined }): boolean {
@@ -40,6 +40,7 @@ export function isRoutineEventItem(message: { itemType?: string | undefined }): 
     message.itemType?.startsWith(HOSTED_SITE_EVENT_ITEM_TYPE_PREFIX) === true ||
     message.itemType?.startsWith(SKILL_EVENT_ITEM_TYPE_PREFIX) === true ||
     message.itemType?.startsWith(MARKETPLACE_SUGGESTION_ITEM_TYPE_PREFIX) === true ||
+    message.itemType === "dispatch" ||
     message.itemType?.startsWith(MODEL_SWITCH_ITEM_TYPE_PREFIX) === true ||
     message.itemType === CONTEXT_RESET_ITEM_TYPE
   );

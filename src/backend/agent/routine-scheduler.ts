@@ -178,8 +178,10 @@ export class RoutineScheduler implements RoutineDueSource {
 
   /** The zone of the person whose message this turn runs, when their client sent one. */
   #turnSenderTimezone(agentId: string, turnId: string): string | undefined {
-    for (const { delivery } of this.#mailbox.findDeliveriesByTurn(agentId, turnId)) {
-      const timezone = delivery.sender.kind === "user" ? this.#deliveryTimezones.get(delivery.id) : undefined;
+    for (const context of this.#mailbox.findDeliveriesByTurn(agentId, turnId)) {
+      const { delivery } = context;
+      const timezone =
+        delivery.sender.kind === "user" && !context.dispatch ? this.#deliveryTimezones.get(delivery.id) : undefined;
       if (timezone !== undefined) return timezone;
     }
     return undefined;

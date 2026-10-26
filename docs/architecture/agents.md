@@ -1,5 +1,23 @@
 # Agents
 
+## Coding work with openswarm
+
+An agent can send an independent coding task from its own chat with `dispatch_work`. The task card
+names the goal, files, constraints, acceptance checks, and verify command. OpenBot starts an
+openswarm lane or detached run and returns its run id and host. `dispatch_status` reads the saved
+result, and `dispatch_abort` requests cancellation.
+
+The backend stores each run in `openbot-dispatch-v1.json` under the app data directory. It watches
+unfinished local or fleet runs and resumes that watch after an app restart. A terminal result adds a
+status message to the original chat and queues the result for that same agent and thread. The event
+is data from a local script. It gives the agent no new permissions. The agent must review the branch,
+commit, summary, and verify evidence before it reports success. OpenBot does not merge, push, or
+publish a result.
+
+The binary path, default lane, and default fleet host use the local provider detection settings
+file. A blank lane starts a detached run. Lane settings use the backend and model saved on that lane.
+Remote runs need matching local and remote repository entries in the openswarm fleet configuration.
+
 ## Local scripts API
 
 `src/main/automation-server.ts` is a loopback HTTP listener through which a local script sends

@@ -106,10 +106,12 @@ import {
   type BusyMessageMode,
   CONTEXT_RESET_ITEM_TYPE,
   DEFAULT_BUSY_MESSAGE_MODE,
+  DEFAULT_OPENSWARM_SETTINGS,
   DEFAULT_PROVIDER_ACCOUNT_ID,
   isContextResetMarker,
   MODEL_SWITCH_ITEM_TYPES,
   type ModelSwitchReason,
+  type OpenswarmSettings,
   type QueueSteerFallback,
   sameAgentModelChoice,
   workspaceAccessEnforced,
@@ -199,6 +201,8 @@ import { ChannelService } from "./channel-service";
 import type { BundledProviderExecutables } from "./cli";
 import type { ConversationMarkerExclusions } from "./conversation-read-store";
 import type { ProviderSession } from "./database/provider-sessions";
+import { DispatchDelivery } from "./dispatch/dispatch-delivery";
+import { DispatchService } from "./dispatch/dispatch-service";
 import { reportOriginalFailure } from "./effect-boundary";
 import type { HostMemory } from "./host-memory";
 import type { MailboxStore } from "./mailbox-store";
@@ -244,6 +248,7 @@ interface AgentServiceEvents {
 }
 
 export interface AgentServiceOptions {
+  openswarmSettings?: () => OpenswarmSettings;
   store: AgentStore;
   mailbox: MailboxStore;
   browser: AgentBrowserHost;
@@ -342,6 +347,7 @@ const USER_SEND_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_SECTION_TEAMMATES = 32;
 
 export class AgentService extends EventEmitter<AgentServiceEvents> {
+  readonly #dispatch: DispatchService;
   readonly channels: ChannelService;
   readonly messaging: MessagingThreads;
   readonly #profileSave: ProfileSave;
@@ -1214,7 +1220,24 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           }).pipe(Effect.mapError((failure) => new AgentRemovalFailed({ cause: failure.cause }))),
       },
     });
+    const dispatchDelivery = new DispatchDelivery({
+      store,
+      mailbox,
+      conversation: this.#conversation,
+      mailboxSync: this.#mailboxSync,
+      drain: this.#drain,
+      redact: (text) => this.#mcp.redact(text),
+    });
+    this.#dispatch = new DispatchService({
+      dataPath: store.database.userDataPath,
+      settings: options.openswarmSettings ?? (() => DEFAULT_OPENSWARM_SETTINGS),
+      redact: (text) => this.#mcp.redact(text),
+      publish: (record, terminal) => dispatchDelivery.publish(record, terminal),
+      failed: (agentId) =>
+        this.#emitError("dispatch_publish_failed", new Error(sourceText("error.backend.dispatchCommand")), agentId),
+    });
     this.#tools = new OpenBotToolRouter({
+      dispatch: this.#dispatch,
       capturedSteps: (session) => this.#threads.capturedWorkSteps(session).pipe(toToolOperationFailed),
       store,
       mailbox,
@@ -2801,6 +2824,13 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           (failure) => new AgentLifecycleFailed({ operation: "resume channel routines", cause: failure.cause }),
         ),
       );
+    yield* this.#dispatch
+      .start()
+      .pipe(
+        Effect.mapError(
+          (failure) => new AgentLifecycleFailed({ operation: "resume coding dispatches", cause: failure.cause }),
+        ),
+      );
     yield* lifecycleStep("arm routines", () => {
       this.#channelRoutines.reconcileAll();
       this.#routineTimer.arm();
@@ -3159,6 +3189,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       { startImmediately: true },
     );
     this.#initialized = false;
+    yield* this.#dispatch.dispose();
     this.#routineTimer.dispose();
     yield* this.#memoryHold.dispose();
     this.#hostedSites.dispose();

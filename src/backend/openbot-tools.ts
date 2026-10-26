@@ -33,6 +33,7 @@ import {
   CLOSE_WAIT_TOOL,
   closeWaitToolSchema,
 } from "./agent-waits/agent-waits";
+import { DISPATCH_TOOL_DEFINITIONS } from "./dispatch/dispatch-tools";
 import { MESSAGING_TOOL_DEFINITIONS } from "./messaging/messaging-tools";
 import { ROUTINE_FLOW_TOOL_DEFINITIONS } from "./routine-flows/routine-flow-tools";
 import {
@@ -221,6 +222,7 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
   ...DATA_TOOL_DEFINITIONS,
   ...LOCAL_SKILL_TOOL_DEFINITIONS,
   ...ROUTINE_FLOW_TOOL_DEFINITIONS,
+  ...DISPATCH_TOOL_DEFINITIONS,
   {
     name: "list_sites",
     description:

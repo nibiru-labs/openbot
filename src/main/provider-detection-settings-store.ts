@@ -23,6 +23,7 @@ function copy(settings: ProviderDetectionSettings): ProviderDetectionSettings {
     addresses: [...settings.addresses],
     folders: [...settings.folders],
     hiddenIds: [...settings.hiddenIds],
+    ...(settings.openswarm ? { openswarm: { ...settings.openswarm } } : {}),
   };
 }
 

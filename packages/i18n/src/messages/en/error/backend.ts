@@ -1,6 +1,13 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("error.backend", {
+  "error.backend.dispatchCommand":
+    "Could not complete the openswarm request. Check the executor settings and run status before trying again.",
+  "error.backend.dispatchOwnChat": "Dispatch coding work from your own chat only.",
+  "error.backend.dispatchLaneOptions":
+    "A lane uses its configured backend and model. Omit backend and model when you select a lane.",
+  "error.backend.dispatchUnknown": "This chat does not own that coding run.",
+  "error.backend.dispatchRepository": "Configure matching local and executor repository paths in openswarm fleet.json.",
   "error.backend.eventsUnavailable": "Events are not available on this host.",
   "error.backend.databaseIntegrity": "OpenBot database failed its integrity check.",
   "error.backend.webhookRouteLimit": "A host can have at most {limit} webhook routines.",
