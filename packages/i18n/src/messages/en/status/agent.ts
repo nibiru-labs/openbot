@@ -1,6 +1,8 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("status.agent", {
+  "status.agent.dispatchApproval":
+    "This coding dispatch includes a risky operation. Review its card and arguments before approval.",
   "status.agent.dispatchStarted": "Coding work started: {title}. Host: {host}. Run: {runId}.",
   "status.agent.dispatchFinished":
     "Coding work ended: {title}. Host: {host}. Result: {status}. Review the result before reporting success.",

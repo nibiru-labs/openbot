@@ -430,7 +430,7 @@ export class OpenBotToolRouter {
                 return openBotToolFailure(message);
               });
             const correctable = PROFILE_TOOL_NAMES.has(tool) || tool === "attach_files_to_response";
-            const response = this.#handleOpenBotTool(toolRequest.params).pipe(
+            const response = this.#handleOpenBotTool(toolRequest.params, client, toolRequest).pipe(
               Effect.catch((failure) => (correctable ? correctableFailure(failure.cause) : Effect.fail(failure))),
               Effect.catchDefect((defect) => (correctable ? correctableFailure(defect) : Effect.die(defect))),
               Effect.tap((result) => Effect.sync(() => client.respond(toolRequest.id, result))),
@@ -563,6 +563,8 @@ export class OpenBotToolRouter {
   readonly #handleOpenBotTool = Effect.fn("OpenBotToolRouter.handleOpenBotTool")(function* (
     this: OpenBotToolRouter,
     params: DynamicToolCallParams,
+    client: AgentClient,
+    request: AppServerRequest,
   ) {
     const senderAgentId = this.#conversation.agentForThread(params.threadId);
     if (!senderAgentId) throw new Error("The sending OpenBot agent is unknown.");
@@ -794,6 +796,28 @@ export class OpenBotToolRouter {
           idempotencyKey: toolCallIdempotencyKey(params),
         },
         this.#dispatch,
+        (input) =>
+          this.#attention
+            .awaitToolApproval(
+              client,
+              request,
+              {
+                requestId: request.id,
+                agentId: senderAgentId,
+                threadId: executionThreadId,
+                turnId: params.turnId,
+                kind: "command",
+                command: this.#hooks.redactMcp(
+                  redactText(JSON.stringify({ tool: "dispatch_work", ...input }, null, 2)),
+                ),
+                cwd: this.#requireAgent(senderAgentId).workspacePath,
+                reason: sourceText("status.agent.dispatchApproval"),
+                grantRoot: null,
+                permissions: null,
+              },
+              true,
+            )
+            .pipe(Effect.map((decision) => (request.signal?.aborted || !client.running ? "cancel" : decision))),
       );
       if (dispatchResult) return dispatchResult;
     }

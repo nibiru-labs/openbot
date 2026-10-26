@@ -1,12 +1,13 @@
 // Drives dispatch_work through a real dev app and a signed-in agent. The stub openswarm command
-// accepts the run, then writes a terminal result after a delay. Start one worktree dev app first:
+// accepts the run only after approval, then returns a terminal result. Start one worktree dev app first:
 // `bun run dev`; then run `bun scripts/dispatch-e2e.ts --agent=<agent id> --allow-mutations`.
 // This adds one test message to the agent's chat. It writes .openbot-build/dispatch-e2e.json.
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { OpenBotDesktopApi, ProviderDetectionSettings } from "@openbot/contracts/ipc";
+import type { AgentApproval, OpenBotDesktopApi, ProviderDetectionSettings } from "@openbot/contracts/ipc";
 import { createOpenBotLogger } from "@openbot/logging";
 import { assertMutationAllowed, connectToDevApp } from "./dev-automation/cdp-client";
 import { readDevInstanceRecords } from "./dev-automation/instance-registry";
@@ -16,6 +17,8 @@ declare global {
     openbot: OpenBotDesktopApi;
     __dispatchE2EWait?: { done: boolean; failure: string | null };
     __dispatchE2EInterval?: number;
+    __dispatchE2EApproval?: AgentApproval;
+    __dispatchE2EUnsubscribe?: () => void;
   }
 }
 
@@ -91,15 +94,11 @@ case "\${1-}" in
     printf '{"id":"%s","state":"running","result":null}\\n' "$run_id" > "$run_dir/status.json"
     printf '%s\\n' 'login shell configured'
     printf '%s\\n' "$acknowledgement"
-    (
-      sleep 3
-      printf '%s\\n' ${json} > "$result_file"
-      printf '{"state":"finished"}\\n' > "$run_dir/status.json"
-    ) >/dev/null 2>&1 </dev/null &
+    printf '%s\\n' ${json} > "$result_file"
     ;;
   fleet)
     if [ "\${2-}" != "_run-info" ] || [ "\${3-}" != "$run_id" ]; then exit 2; fi
-    if [ -f "$result_file" ]; then
+    if [ -f "$root/release-result" ] && [ -f "$result_file" ]; then
       result=$(cat "$result_file")
       printf 'login shell configured\\n{\\n  "id": "%s",\\n  "state": "finished",\\n  "result": %s\\n}\\n' "$run_id" "$result"
     else
@@ -162,11 +161,28 @@ try {
     agentId,
   );
   assert.ok(agent, `The dev app has no agent with id ${agentId}.`);
+  const automation = await session.page.evaluate(() => window.openbot.getApprovalAutomation());
+  assert.notEqual(
+    automation.autoApproveOverrides[agentId],
+    true,
+    "Use a test agent without an explicit auto-approve grant. The test does not change that grant.",
+  );
+  await session.page.evaluate((id) => {
+    delete window.__dispatchE2EApproval;
+    window.__dispatchE2EUnsubscribe = window.openbot.agent.onEvent((event) => {
+      if (
+        event.type === "approval" &&
+        event.approval.agentId === id &&
+        event.approval.command?.includes('"tool": "dispatch_work"')
+      )
+        window.__dispatchE2EApproval = event.approval;
+    });
+  }, agentId);
   const card = [
     "# Dispatch E2E",
     "",
     "## Goal",
-    "Exercise the dispatch result delivery path. Do not edit files.",
+    "Exercise approval for a version bump and the dispatch result delivery path. The executor is a test stub. Do not edit files.",
     "",
     "## Files",
     "None.",
@@ -183,6 +199,7 @@ try {
   const userText = [
     "Run the dispatch E2E flow in this chat.",
     "Use openbot.tool_search with the query dispatch_work, describe openbot.dispatch_work, then call openbot.tool_call for that tool.",
+    "Set risk=true. Wait for the approval card to be answered; do not ask for approval with another tool.",
     `Use title ${JSON.stringify(`Dispatch E2E ${runId}`)} and this exact card:`,
     card,
     "After the tool accepts the run, reply DISPATCH_E2E_STARTED and end this turn.",
@@ -192,6 +209,17 @@ try {
     ({ id, text }) => window.openbot.agent.sendMessage({ agentId: id, text, clientMessageId: crypto.randomUUID() }),
     { id: agentId, text: userText },
   );
+
+  await session.page.waitForFunction(() => Boolean(window.__dispatchE2EApproval), undefined, { timeout: 120_000 });
+  const startedBeforeApproval = existsSync(join(stubDirectory, "arguments.txt"));
+  check("risky work does not start before approval", !startedBeforeApproval);
+  assert.equal(startedBeforeApproval, false, "The executor must not start before approval.");
+  await session.page.evaluate(async () => {
+    const approval = window.__dispatchE2EApproval;
+    if (!approval) throw new Error("The dispatch approval is missing.");
+    await window.openbot.agent.respondToApproval({ requestId: approval.requestId, decision: "accept" });
+  });
+  await writeFile(join(stubDirectory, "release-result"), "approved\n");
 
   await session.page.evaluate(
     ({ id, key, expectedMarker }) => {
@@ -253,6 +281,7 @@ try {
     );
   const args = await readFile(join(stubDirectory, "arguments.txt"), "utf8");
   check("openswarm accepted the detached run", args.includes("run") && args.includes("--task-file"), args);
+  check("risky work starts after approval", existsSync(join(stubDirectory, "arguments.txt")));
   check("the start card is in the chat", startedCard);
   check("the terminal status card is in the same chat", resultCard !== undefined, resultCard?.text);
   check("the result woke the agent in the same chat", review !== undefined, review?.text);
@@ -273,6 +302,9 @@ try {
     await session.page
       .evaluate(() => {
         window.clearInterval(window.__dispatchE2EInterval);
+        window.__dispatchE2EUnsubscribe?.();
+        delete window.__dispatchE2EUnsubscribe;
+        delete window.__dispatchE2EApproval;
         delete window.__dispatchE2EInterval;
         delete window.__dispatchE2EWait;
       })

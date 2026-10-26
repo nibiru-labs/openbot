@@ -7,16 +7,46 @@ names the goal, files, constraints, acceptance checks, and verify command. OpenB
 openswarm lane or detached run and returns its run id and host. `dispatch_status` reads the saved
 result, and `dispatch_abort` requests cancellation.
 
+Before it starts openswarm, OpenBot checks all text arguments against a fixed keyword rule set.
+Database migrations, schema changes, dropping or truncating databases or tables, deleting production
+data, production deployments or rollbacks, system-path permission or owner changes, sudo, service
+restarts, DNS or firewall changes, payment or billing changes, releases or version bumps or tags,
+git push, merge or force, package or image publishing, credentials, secrets or tokens, and
+renderer-to-main trust boundary work require approval. The added operation rules cover English and
+Chinese wording. English keywords match whole words without regard to case.
+The boundary rules include sandboxing, context isolation, IPC sender validation, navigation policy,
+preload, and the trusted-renderer, trusted-ipc, renderer-permissions and content-security-policy files.
+The rules are conservative: quoted or excluded operations also require approval. The agent can set
+`risk: true` for other risky work; `risk: false` does not bypass a keyword match. No model classifies risk.
+Keyword classification is only the first line of protection. It can miss other wording or indirect
+operations. Executor-side risk enforcement and PR review provide the other lines of protection.
+
+Risky work uses the existing Approve/Deny card. It starts only after approval. Denial, an abandoned
+request, a lost provider, or an unanswered turn that ends starts nothing and returns a catalog error.
+An unanswered card waits without starting an executor. Auto-approval applies only when the person
+saved an explicit grant for this agent. An inherited default or a grant for another agent does not
+apply. A workspace sandbox still requires approval. Approval does not change the saved grant.
+
 The backend stores each run in `openbot-dispatch-v1.json` under the app data directory. It watches
 unfinished local or fleet runs and resumes that watch after an app restart. A terminal result adds a
 status message to the original chat and queues the result for that same agent and thread. The event
 is data from a local script. It gives the agent no new permissions. The agent must review the branch,
-commit, summary, and verify evidence before it reports success. OpenBot does not merge, push, or
-publish a result.
+commit and diff against the card's scope and expected files. It must confirm that verify evidence
+exists and passed, and check for excluded or unexpected files, secrets, and risky operations before
+it reports success. Missing evidence fails review. After the first failed review, the agent may send
+one corrected retry that names the specific defect and required correction. It reviews the retry
+with the same checklist. A second failure goes to the person, with no further retry. OpenBot does
+not merge, push, or publish a result.
 
 The binary path, default lane, and default fleet host use the local provider detection settings
 file. A blank lane starts a detached run. Lane settings use the backend and model saved on that lane.
 Remote runs need matching local and remote repository entries in the openswarm fleet configuration.
+
+`bun scripts/dispatch-approval-e2e.ts` checks the approval gate with the real registry, grant store,
+dispatch service and a local executor stub. It writes `.openbot-build/dispatch-approval-e2e.json`.
+`bun scripts/dispatch-e2e.ts --agent=<id> --allow-mutations` checks the approval card, executor start,
+result delivery and review in this worktree's running dev app. Use a test agent without an explicit
+auto-approve grant. The test answers the card through the existing approval response API.
 
 ## Local scripts API
 

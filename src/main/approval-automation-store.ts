@@ -131,6 +131,10 @@ export class ApprovalAutomation {
     );
   }
 
+  explicitlyAutoApproves(agentId: string): boolean {
+    return this.autoApproves(agentId) && this.#preference.autoApproveOverrides[agentId] === true;
+  }
+
   /**
    * Called after each saved change. A remote admin can change a grant through `agent-admin-v1`, so
    * the local window cannot rely on its own writes to know the current value.

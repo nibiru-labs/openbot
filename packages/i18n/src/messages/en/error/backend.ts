@@ -14,6 +14,8 @@ export const messages = defineMessages("error.backend", {
   "error.backend.dispatchTimeout": "openswarm did not respond before the time limit.",
   "error.backend.dispatchOutputUnreadable": "openswarm output could not be read.",
   "error.backend.dispatchSaveFailed": "The openswarm request could not be saved.",
+  "error.backend.dispatchApprovalDenied": "The person denied this coding dispatch. Nothing was started.",
+  "error.backend.dispatchApprovalMissing": "This coding dispatch has no approval. Nothing was started.",
   "error.backend.eventsUnavailable": "Events are not available on this host.",
   "error.backend.databaseIntegrity": "OpenBot database failed its integrity check.",
   "error.backend.webhookRouteLimit": "A host can have at most {limit} webhook routines.",

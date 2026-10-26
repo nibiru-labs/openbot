@@ -15,6 +15,8 @@ import type { AgentApproval } from "@openbot/contracts/ipc";
 export interface ApprovalAutomationPolicy {
   /** Whether this agent's eligible approvals are answered for it. */
   autoApproves(agentId: string): boolean;
+  /** A saved grant for this agent, without the default for new agents. */
+  explicitlyAutoApproves?(agentId: string): boolean;
 }
 
 export const NO_APPROVAL_AUTOMATION: ApprovalAutomationPolicy = {
