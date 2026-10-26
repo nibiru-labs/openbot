@@ -26,15 +26,17 @@ import { Effect, Schema } from "effect";
 import { AgentRoutineStore } from "../agent-routine-store";
 import { AGENT_PREVIEW_MAX_LENGTH, type AgentStore } from "../agent-store";
 import type { AgentWaits } from "../agent-waits/agent-waits";
+import { databaseRow, requiredNumberColumn } from "../database/database-rows";
 import { causeHelpers } from "../effect-boundary";
 import type { MailboxStore } from "../mailbox-store";
 import type { DynamicToolCallParams } from "../protocol";
 import { recordRestartActivity } from "../restart-activity";
+import { answerFingerprint, RoutineBackoffStore } from "../routine-backoff/routine-backoff-store";
 import type { OwnedRoutineRecord, ReceivedWebhookEvent, RoutineHoldWindow, RoutineRecordInput } from "../routine-store";
 import type { RoutineDueSource, RoutineTimer } from "../routine-timer";
 import { type ConversationRuntime, withDatabaseTransaction } from "./conversation-runtime";
 import { routineStatusForDelivery } from "./delivery-content";
-import { quietRoutineRun } from "./routine-quiet-runs";
+import { quietRoutineRun, routineRunReport } from "./routine-quiet-runs";
 import {
   localTimezone,
   type OpenBotToolResponse,
@@ -135,6 +137,7 @@ export class RoutineScheduler implements RoutineDueSource {
   readonly #conversation: ConversationRuntime;
   readonly #hooks: RoutineHooks;
   readonly #routines: AgentRoutineStore;
+  readonly #backoff: RoutineBackoffStore;
   readonly #waits: AgentWaits;
   /**
    * A deletion has to interrupt live runs before it can remove their routine, so it holds the agent
@@ -165,6 +168,7 @@ export class RoutineScheduler implements RoutineDueSource {
     this.#hooks = options.hooks;
     this.#timer = options.timer;
     this.#routines = new AgentRoutineStore(options.store.database);
+    this.#backoff = new RoutineBackoffStore({ database: options.store.database });
     this.#waits = options.waits;
     this.#timezone = options.timezone ?? localTimezone;
   }
@@ -691,7 +695,10 @@ export class RoutineScheduler implements RoutineDueSource {
     if (run.status === "needs-attention" && ["starting", "running"].includes(delivery.status)) return false;
     if (run.status === status && run.error === delivery.error) return false;
     if (status === "queued") this.#routines.updateRunStatus(run.id, status, delivery.error);
-    else this.#transitionRunWithConversation(run, status, delivery.error);
+    else {
+      this.#transitionRunWithConversation(run, status, delivery.error);
+      if (status === "succeeded") this.#recordBackoff(run, delivery.turnId);
+    }
     return true;
   }
 
@@ -769,7 +776,11 @@ export class RoutineScheduler implements RoutineDueSource {
           // A run that has not finished already does this routine's work. Another one would only
           // queue behind it, and after a sleep the queue drains as a burst of identical runs. A routine
           // set to skip drops the occurrence while a spent plan would only make it wait.
+          // A routine whose answers went unchanged waits out its backoff, or skips while nothing new reached its
+          // thread. Neither costs a model turn.
+          const backoff = this.#backoff.decide(current.id, scheduledFor, this.#hasNewActivity(current));
           const queued =
+            backoff !== "run" ||
             this.#hasLiveRun(current.agentId, current.id) ||
             (current.limitPolicy === "skip" && this.#hooks.usageLimited(current.agentId))
               ? null
@@ -794,6 +805,36 @@ export class RoutineScheduler implements RoutineDueSource {
       ),
     );
   });
+
+  /** Records the answer of a finished scheduled run, so the backoff rule sees it. */
+  #recordBackoff(run: RoutineRun, turnId: string | null): void {
+    if (run.kind !== "scheduled" || turnId === null) return;
+    const agent = this.#store.list().find((candidate) => candidate.id === run.agentId);
+    if (!agent) return;
+    const snapshot = this.#conversation.ensureSnapshot(agent.id, agent.threadId);
+    this.#backoff.recordRun(run.routineId, answerFingerprint(routineRunReport(snapshot, turnId)), new Date());
+  }
+
+  /**
+   * Whether a message other than the agent's own reached its thread since the last recorded run of
+   * this routine. A routine with no record has no backoff to hold, so it always counts as active.
+   */
+  #hasNewActivity(routine: { agentId: string; id: string }): boolean {
+    const record = this.#backoff.get(routine.id);
+    if (record === null) return true;
+    const agent = this.#store.list().find((candidate) => candidate.id === routine.agentId);
+    if (!agent) return true;
+    const row = databaseRow(
+      this.#store.database.connection
+        .prepare(
+          `SELECT COUNT(*) AS count FROM projection_thread_messages
+         WHERE thread_id = ? AND created_at > ? AND author <> 'assistant'
+           AND (item_type IS NULL OR item_type NOT LIKE 'routine%')`,
+        )
+        .get(agent.threadId, record.updatedAt),
+    );
+    return row !== null && requiredNumberColumn(row, "count") > 0;
+  }
 
   /**
    * Whether an earlier run of this routine still holds a delivery in the queue. The run row alone is

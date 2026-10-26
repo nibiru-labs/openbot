@@ -15,6 +15,7 @@ import {
   MESSAGING_MEMORY_SCHEMA_SQL,
   MESSAGING_SCHEMA_SQL,
 } from "./messaging/messaging-schema";
+import { ROUTINE_BACKOFF_SCHEMA_SQL } from "./routine-backoff/routine-backoff-schema";
 import { ROUTINE_FLOW_SCHEMA_SQL } from "./routine-flows/routine-flow-schema";
 import { ROUTINE_RESULT_SCHEMA_SQL } from "./routine-results/routine-result-schema";
 
@@ -598,7 +599,8 @@ const LATEST_SCHEMA_SQL =
   V41_ATTACHMENT_OWNER_INDEX_SQL +
   V42_ROUTINE_FLOW_SWEEP_INDEX_SQL +
   V43_THREAD_EVENT_TYPE_INDEX_SQL +
-  MESSAGING_ALLOWED_ROLES_SCHEMA_SQL;
+  MESSAGING_ALLOWED_ROLES_SCHEMA_SQL +
+  ROUTINE_BACKOFF_SCHEMA_SQL;
 
 /** The end of the thread message table with the migration 40 columns before its PRIMARY KEY constraint. */
 function withThreadMessageOrderColumns(tableEnd: string): string {
@@ -848,6 +850,12 @@ const MIGRATIONS: readonly OpenBotMigration[] = [
     // Only creates a table, so no foreign-key pause and no vacuum. No connection has a role list yet, so
     // everyone can still mention OpenBot, which is what they could before.
     up: (db) => db.exec(MESSAGING_ALLOWED_ROLES_SCHEMA_SQL),
+  },
+  {
+    version: 45,
+    // Only creates a table, so no foreign-key pause and no vacuum. No routine has a backoff row yet, so
+    // every routine runs on its own schedule, which is what it did before.
+    up: (db) => db.exec(ROUTINE_BACKOFF_SCHEMA_SQL),
   },
 ];
 
