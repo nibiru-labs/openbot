@@ -184,7 +184,7 @@ import {
 import { ThreadLifecycle } from "./agent/thread-lifecycle";
 import { toToolOperationFailed } from "./agent/tool-operation";
 import { type AgentBrowserHost, TurnLifecycle } from "./agent/turn-lifecycle";
-import { toUsageReadFailed, UsageLimitGate, type UsageLimitKey } from "./agent/usage-limit-gate";
+import { modelFamily, toUsageReadFailed, UsageLimitGate, type UsageLimitKey } from "./agent/usage-limit-gate";
 import type { AgentProvider } from "./agent-client";
 import type { AgentTables } from "./agent-data/agent-tables";
 import type { AgentStore } from "./agent-store";
@@ -4054,12 +4054,21 @@ function agentModelChoice(agent: AgentSummary): AgentModelChoice {
 }
 
 function usageLimitOf(choice: AgentModelChoice): UsageLimitKey {
-  return { provider: choice.provider, accountId: agentProviderAccount(choice), model: choice.model };
+  return {
+    provider: choice.provider,
+    accountId: agentProviderAccount(choice),
+    model: choice.model,
+    family: modelFamily(choice.model),
+  };
 }
 
 function sameUsageLimit(choice: AgentModelChoice, limit: UsageLimitKey): boolean {
   const own = usageLimitOf(choice);
-  return own.provider === limit.provider && own.accountId === limit.accountId && own.model === limit.model;
+  return (
+    own.provider === limit.provider &&
+    own.accountId === limit.accountId &&
+    (limit.family === null || own.family === limit.family)
+  );
 }
 
 function lifecycleStep<A>(operation: string, run: () => A): Effect.Effect<A, AgentLifecycleFailed> {
