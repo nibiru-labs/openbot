@@ -23,14 +23,18 @@ function loadMermaid(): Promise<Mermaid> {
  * a diagram cannot change it. Mermaid reads its configuration when it renders, so each render sets it.
  */
 function configure(api: Mermaid, appearance: DiagramAppearance): void {
+  const light = appearance === "light";
   api.initialize({
     startOnLoad: false,
     securityLevel: "strict",
-    theme: appearance === "light" ? "neutral" : "dark",
-    themeVariables:
-      appearance === "light" ? { background: "transparent", edgeLabelBackground: "transparent" } : undefined,
-    // Edge labels keep their own fill in Mermaid's neutral theme, so the light drawing clears it here.
-    themeCSS: appearance === "light" ? LIGHT_EDGE_LABEL_CSS : undefined,
+    theme: light ? "neutral" : "dark",
+    ...(light
+      ? {
+          themeVariables: { background: "transparent", edgeLabelBackground: "transparent" },
+          // Edge labels keep their own fill in Mermaid's neutral theme, so the light drawing clears it here.
+          themeCSS: LIGHT_EDGE_LABEL_CSS,
+        }
+      : {}),
     fontFamily: CHAT_MERMAID_FONT_FAMILY,
     suppressErrorRendering: true,
   });
