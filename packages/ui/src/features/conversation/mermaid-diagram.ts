@@ -27,10 +27,13 @@ function configure(api: Mermaid, appearance: DiagramAppearance): void {
     startOnLoad: false,
     securityLevel: "strict",
     theme: appearance === "light" ? "neutral" : "dark",
-    themeVariables:
-      appearance === "light" ? { background: "transparent", edgeLabelBackground: "transparent" } : undefined,
-    // Edge labels keep their own fill in Mermaid's neutral theme, so the light drawing clears it here.
-    themeCSS: appearance === "light" ? LIGHT_EDGE_LABEL_CSS : undefined,
+    ...(appearance === "light"
+      ? {
+          themeVariables: { background: "transparent", edgeLabelBackground: "transparent" },
+          // Edge labels keep their own fill in Mermaid's neutral theme, so the light drawing clears it here.
+          themeCSS: LIGHT_EDGE_LABEL_CSS,
+        }
+      : {}),
     fontFamily: CHAT_MERMAID_FONT_FAMILY,
     suppressErrorRendering: true,
   });
