@@ -2,16 +2,16 @@
 // Run: bun scripts/dispatch-approval-e2e.ts. Report: .openbot-build/dispatch-approval-e2e.json.
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type { AgentApproval } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
-import { assertAgentArgs, assertWindowsScriptArgs } from "../src/backend/acp-agent-command";
 import { AttentionRegistry } from "../src/backend/agent/attention-registry";
 import type { AgentClient } from "../src/backend/agent-client";
 import { dispatchResultMailboxText } from "../src/backend/dispatch/dispatch-delivery";
+import { assertDispatchArgs, assertDispatchInputValues } from "../src/backend/dispatch/dispatch-process";
 import { type DispatchRecord, DispatchService } from "../src/backend/dispatch/dispatch-service";
 import { type DispatchWork, handleDispatchTool } from "../src/backend/dispatch/dispatch-tools";
 import { isMissingFileError } from "../src/backend/file-errors";
@@ -181,6 +181,14 @@ try {
 set -eu
 case "$1" in
   run|lane)
+    task_file=
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --task-file) task_file=$2; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    if [ -n "$task_file" ]; then cat "$task_file" > "$(dirname "$0")/last-card.md"; fi
     printf '%s\\n' started >> "$(dirname "$0")/launches.txt"
     printf '%s\\n' 'login shell configured'
     printf '{"id":"run-%s"}\\n' "$$"
@@ -262,9 +270,60 @@ esac
   assert.equal(pairedState.runs.find((record) => record.host === "remote")?.status, "cancelling");
   await Effect.runPromise(pairedService.dispose());
   report.checks.push("run status and cancel updates use the host and run ID");
-  assert.throws(() => assertWindowsScriptArgs("openswarm.cmd", ["--title", "normal&whoami>file&normal"], "win32"));
-  assert.throws(() => assertAgentArgs(["--title", "line\nbreak"]));
-  report.checks.push("a Windows wrapper and a multi-line argument are refused before the spawn");
+  assert.doesNotThrow(() =>
+    assertDispatchInputValues(
+      [
+        { name: "--title", value: "Fix heading" },
+        { name: "--cwd", value: "C:\\Users\\Jane Doe\\OpenBot Dev" },
+      ],
+      "C:\\Users\\Jane Doe\\openswarm.cmd",
+      "win32",
+    ),
+  );
+  assert.doesNotThrow(() =>
+    assertDispatchArgs(
+      "C:\\Users\\Jane Doe\\openswarm.cmd",
+      [
+        "run",
+        "--cwd",
+        "C:\\Users\\Jane Doe\\OpenBot Dev",
+        "--task-file",
+        "C:\\Users\\Jane Doe\\AppData\\dispatch card.md",
+        "--title",
+        "Fix heading",
+      ],
+      "win32",
+    ),
+  );
+  assert.throws(
+    () =>
+      assertDispatchInputValues([{ name: "--title", value: "normal&whoami>file&normal" }], "openswarm.cmd", "win32"),
+    /--title/,
+  );
+  assert.throws(
+    () =>
+      assertDispatchArgs(
+        "openswarm.cmd",
+        ["run", "--task-file", "C:\\tmp\\card.md", "--title", "normal&whoami>file&normal"],
+        "win32",
+      ),
+    /--title/,
+  );
+  assert.throws(
+    () => assertDispatchInputValues([{ name: "--card", value: "bad\0card" }], "openswarm", "linux"),
+    /--card/,
+  );
+  report.checks.push("Windows wrappers accept spaces and name unsafe dispatch arguments");
+
+  const longCard = `${"x".repeat(9_999)}\n${"y".repeat(10_000)}`;
+  assert.equal(longCard.length, 20_000);
+  await exercise(
+    "multi-line 20,000-character cards reach the executor intact",
+    { title: "Long task", card: longCard },
+    "safe",
+  );
+  assert.equal(await readFile(join(root, "last-card.md"), "utf8"), longCard);
+  assert.deepEqual(await readdir(join(root, "dispatch-cards")), []);
 
   const task = { title: "Small change", card: "Update the heading in docs/example.md." };
   await exercise("ordinary work starts without approval", task, "safe");

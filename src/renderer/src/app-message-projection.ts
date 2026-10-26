@@ -24,7 +24,7 @@ import type {
 import { formatChatTimestamp } from "@openbot/ui/features/conversation/chat-timestamp";
 import type { TaskListItem } from "@openbot/ui/features/conversation/TaskList";
 import { currentText } from "@openbot/ui/text";
-import { isRoutineEventItem } from "./features/conversation/conversation-read-state";
+import { isDispatchMailboxDelivery, isRoutineEventItem } from "./features/conversation/conversation-read-state";
 
 export function toAgentProfile(stored: AgentSummary): AgentProfile {
   return {
@@ -152,6 +152,7 @@ export function toAgentMessages(
   const result: AgentMessage[] = [];
   const thinkingByTurn = new Map<string, AgentMessage>();
   for (const [index, message] of messages.entries()) {
+    if (isDispatchMailboxDelivery(message)) continue;
     if ((message.delivery?.status === "queued" || message.delivery?.status === "cancelled") && !message.routine) {
       continue;
     }
@@ -270,6 +271,7 @@ function chatActionMarker(
   routineRunEvent: ReturnType<typeof routineRunConversationEvent>,
   hostedSiteEvent: ReturnType<typeof hostedSiteConversationEvent>,
 ): ChatActionMarkerModel | null {
+  if (isDispatchMailboxDelivery(message)) return null;
   if (message.exchange) {
     const targetDeliveries = message.exchange.deliveries.map((delivery) => ({
       agentId: delivery.recipientAgentId,

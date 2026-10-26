@@ -8,7 +8,16 @@ import { redactText } from "@openbot/logging";
 import { Effect, Exit, Schema, Scope, Semaphore } from "effect";
 import { writeFileAtomically, writeJsonFileAtomically } from "../atomic-json-file";
 import { isMissingFileError } from "../file-errors";
-import { type DispatchCommandOutput, DispatchFailed, dispatchCommand, dispatchFailure } from "./dispatch-process";
+import {
+  assertDispatchInputValues,
+  type DispatchCommandOutput,
+  DispatchFailed,
+  type DispatchFileTransport,
+  dispatchCommand,
+  dispatchFailure,
+  removeRemoteDispatchCard,
+  writeRemoteDispatchCard,
+} from "./dispatch-process";
 import type { DispatchCaller, DispatchWork } from "./dispatch-tools";
 
 const identifier = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/));
@@ -64,10 +73,14 @@ const fleetSchema = Schema.Struct({
   hosts: Schema.Array(
     Schema.Struct({
       name: identifier,
+      kind: Schema.optional(Schema.Literals(["local", "ssh", "instabox"])),
+      ssh: Schema.optional(Schema.String),
+      box: Schema.optional(Schema.String),
       repos: Schema.optional(Schema.Record(Schema.String, Schema.String)),
     }),
   ),
 });
+type DispatchFleet = typeof fleetSchema.Type;
 
 const io = <A>(body: () => Promise<A>) =>
   Effect.tryPromise({ try: body, catch: (cause) => new DispatchFailed({ cause }) });
@@ -260,39 +273,76 @@ export class DispatchService {
         const binary = expandHome(settings.binaryPath || "openswarm");
         const host = input.host ?? (settings.defaultHost || "local");
         const lane = input.lane ?? (input.backend || input.model ? "" : settings.defaultLane);
+        yield* Effect.try({
+          try: () =>
+            assertDispatchInputValues(
+              [
+                { name: "--title", value: input.title },
+                { name: "--card", value: input.card },
+                ...(input.lane === undefined ? [] : [{ name: "--lane", value: input.lane }]),
+                ...(input.host === undefined ? [] : [{ name: "--host", value: input.host }]),
+                ...(input.backend === undefined ? [] : [{ name: "--backend", value: input.backend }]),
+                ...(input.model === undefined ? [] : [{ name: "--model", value: input.model }]),
+                ...(input.verify === undefined ? [] : [{ name: "--verify", value: input.verify }]),
+              ],
+              binary,
+            ),
+          catch: (cause) =>
+            dispatchFailure({
+              cause,
+              reason: cause instanceof Error ? cause.message : sourceText("error.backend.dispatchSpawnFailed"),
+              step: "spawn",
+            }),
+        });
         const card = this.#options.redact(input.card);
         const title = this.#options.redact(input.title);
+        const fleet = host === "local" ? undefined : yield* this.#fleet();
+        const executorHost = fleet?.hosts.find((entry) => entry.name === host);
+        if (host !== "local" && !executorHost) {
+          return yield* new DispatchFailed({ cause: new Error(sourceText("error.backend.dispatchRepository")) });
+        }
         const cardPath = join(this.#options.dataPath, "dispatch-cards", `${randomUUID()}.md`);
         let cwd = caller.workspacePath;
-        if (host !== "local" && !lane) cwd = yield* this.#remoteRepository(host, cwd);
-        const args = lane ? ["lane", "assign", lane] : ["run", "--detach", "--cwd", cwd];
-        // Remote hosts cannot read this computer's card file. The CLI accepts the same card as --prompt.
-        args.push(
-          ...(host === "local" ? ["--task-file", cardPath] : ["--prompt", card]),
-          "--title",
-          title,
-          "--budget-minutes",
-          String(input.budgetMinutes ?? 40),
+        if (host !== "local" && !lane) {
+          if (!fleet)
+            return yield* new DispatchFailed({ cause: new Error(sourceText("error.backend.dispatchRepository")) });
+          cwd = yield* this.#remoteRepository(host, cwd, fleet);
+        }
+        const makeArgs = (taskFile: string) => {
+          const args = lane ? ["lane", "assign", lane] : ["run", "--detach", "--cwd", cwd];
+          args.push("--task-file", taskFile, "--title", title, "--budget-minutes", String(input.budgetMinutes ?? 40));
+          if (input.verify) args.push("--verify", this.#options.redact(input.verify));
+          if (input.backend) args.push("--backend", input.backend);
+          if (input.model) args.push("--model", input.model);
+          return args;
+        };
+        const localCard = host === "local" || executorHost?.kind === "local";
+        const transport = this.#dispatchFileTransport(executorHost);
+        const output = yield* Effect.acquireUseRelease(
+          writeFileAtomically(cardPath, card, { createDirectory: true }).pipe(
+            Effect.mapError((failure) =>
+              dispatchFailure({
+                cause: failure.cause,
+                reason: sourceText("error.backend.dispatchSaveFailed"),
+                step: "save",
+              }),
+            ),
+          ),
+          () => {
+            if (localCard) return this.#command(binary, host, makeArgs(cardPath));
+            if (!transport) {
+              return Effect.fail(
+                new DispatchFailed({ cause: new Error(`OpenSwarm host ${host} has no supported file transport.`) }),
+              );
+            }
+            return Effect.acquireUseRelease(
+              writeRemoteDispatchCard(transport, card),
+              (remotePath) => this.#command(binary, host, makeArgs(remotePath)),
+              (remotePath) => removeRemoteDispatchCard(transport, remotePath).pipe(Effect.catch(() => Effect.void)),
+            );
+          },
+          () => io(() => rm(cardPath, { force: true })).pipe(Effect.catch(() => Effect.void)),
         );
-        if (input.verify) args.push("--verify", this.#options.redact(input.verify));
-        if (input.backend) args.push("--backend", input.backend);
-        if (input.model) args.push("--model", input.model);
-        const output =
-          host === "local"
-            ? yield* Effect.acquireUseRelease(
-                writeFileAtomically(cardPath, card, { createDirectory: true }).pipe(
-                  Effect.mapError((failure) =>
-                    dispatchFailure({
-                      cause: failure.cause,
-                      reason: sourceText("error.backend.dispatchSaveFailed"),
-                      step: "save",
-                    }),
-                  ),
-                ),
-                () => this.#command(binary, host, args),
-                () => io(() => rm(cardPath, { force: true })).pipe(Effect.catch(() => Effect.void)),
-              )
-            : yield* this.#command(binary, host, args);
         const { id: runId } = yield* parseCommandJson(acknowledgement, output);
         const record: DispatchRecord = {
           runId,
@@ -420,20 +470,30 @@ export class DispatchService {
     );
   }
 
-  readonly #remoteRepository = Effect.fn("DispatchService.remoteRepository")(function* (
-    this: DispatchService,
-    host: string,
-    cwd: string,
-  ) {
+  #fleet() {
     const root = process.env.OPENSWARM_HOME || join(homedir(), ".claude", "openswarm");
-    const contents = yield* io(() => readFile(join(root, "fleet.json"), "utf8"));
-    const fleet = yield* step(() => Schema.decodeUnknownSync(fleetSchema)(JSON.parse(contents)));
-    const local = fleet.hosts.find((entry) => entry.name === "local");
-    const key = Object.entries(local?.repos ?? {}).find(([, path]) => resolve(expandHome(path)) === resolve(cwd))?.[0];
-    const remote = key ? fleet.hosts.find((entry) => entry.name === host)?.repos?.[key] : undefined;
-    if (!remote) return yield* new DispatchFailed({ cause: new Error(sourceText("error.backend.dispatchRepository")) });
-    return remote;
-  });
+    return io(() => readFile(join(root, "fleet.json"), "utf8")).pipe(
+      Effect.flatMap((contents) => step(() => Schema.decodeUnknownSync(fleetSchema)(JSON.parse(contents)))),
+    );
+  }
+
+  #remoteRepository(host: string, cwd: string, fleet: DispatchFleet) {
+    return step(() => {
+      const local = fleet.hosts.find((entry) => entry.name === "local");
+      const key = Object.entries(local?.repos ?? {}).find(
+        ([, path]) => resolve(expandHome(path)) === resolve(cwd),
+      )?.[0];
+      const remote = key ? fleet.hosts.find((entry) => entry.name === host)?.repos?.[key] : undefined;
+      if (!remote) throw new DispatchFailed({ cause: new Error(sourceText("error.backend.dispatchRepository")) });
+      return remote;
+    });
+  }
+
+  #dispatchFileTransport(host: DispatchFleet["hosts"][number] | undefined): DispatchFileTransport | null {
+    if (host?.kind === "ssh" && host.ssh) return { kind: "ssh", destination: host.ssh };
+    if (host?.kind === "instabox" && host.box) return { kind: "instabox", destination: host.box };
+    return null;
+  }
 
   readonly #watch = Effect.fn("DispatchService.watch")(function* (this: DispatchService, host: string, runId: string) {
     const key = runKey(host, runId);
