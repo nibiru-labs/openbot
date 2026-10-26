@@ -1,5 +1,6 @@
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type {
+  AdminKeySignInInput,
   AgentMemoryLimitPreference,
   AgentProviderId,
   BrowserDockAction,
@@ -220,6 +221,18 @@ export function parseEmailCodeVerification(input: unknown): VerifyEmailCodeInput
   return {
     challengeId: requireString(input.challengeId, "challengeId", INPUT_LIMITS.identifier),
     code: requireString(input.code, "code", 32),
+  };
+}
+
+/**
+ * The admin key of the account service, with the email of the account to sign in. The key is a
+ * credential of that service: it is used for one sign-in, and it is never written to disk.
+ */
+export function parseAdminKeySignIn(input: unknown): AdminKeySignInInput {
+  if (!isObject(input)) throw new Error("Admin key sign-in details are required.");
+  return {
+    email: requireString(input.email, "email", INPUT_LIMITS.email),
+    adminKey: requireString(input.adminKey, "adminKey", INPUT_LIMITS.adminKey),
   };
 }
 

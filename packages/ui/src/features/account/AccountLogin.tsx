@@ -15,9 +15,14 @@ interface AccountLoginProps {
   onRequestEmailCode: (email: string) => Promise<void>;
   onVerifyEmailCode: (challengeId: string, code: string) => Promise<void>;
   onReset: () => Promise<void>;
+  /**
+   * Present when the app can sign in with the admin key of its account service. The key is a
+   * credential of that service: it is used for this sign-in only, and never stored.
+   */
+  onSignInWithAdminKey?: (input: { email: string; adminKey: string }) => Promise<void>;
 }
 
-type PendingAction = "retry" | "send" | "check" | "verify" | "resend" | "reset";
+type PendingAction = "retry" | "send" | "check" | "verify" | "resend" | "reset" | "adminKey";
 type LoginStep = "email" | "code";
 type LoginTransition = "none" | "forward" | "back";
 
@@ -42,6 +47,9 @@ export function AccountLogin(props: AccountLoginProps) {
   const { t, sourceText } = useText();
   const [email, setEmail] = createSignal("");
   const [code, setCode] = createSignal("");
+  const [adminKey, setAdminKey] = createSignal("");
+  const [adminKeyMode, setAdminKeyMode] = createSignal(false);
+  const [signedInWithAdminKey, setSignedInWithAdminKey] = createSignal(false);
   const [presentedEmailError, setPresentedEmailError] = createSignal<string | null>(null);
   const [emailErrorActive, setEmailErrorActive] = createSignal(false);
   const [emailShaking, setEmailShaking] = createSignal(false);
@@ -122,6 +130,7 @@ export function AccountLogin(props: AccountLoginProps) {
   };
   const emailBusy = () =>
     pendingAction() === "send" || pendingAction() === "check" || props.state.status === "signing_in";
+  const adminKeyBusy = () => pendingAction() === "adminKey";
   const codeBusy = () => pendingAction() === "verify";
   const resendBusy = () => pendingAction() === "resend";
   const formIssue = createMemo(() => {
@@ -268,6 +277,21 @@ export function AccountLogin(props: AccountLoginProps) {
     setCodeError(null);
   }
 
+  function handleAdminKeyInput(value: string): void {
+    setAdminKey(value);
+    setIssueVisible(false);
+    setLocalError(null);
+  }
+
+  /** Switches between the email code and the admin key of the account service. */
+  function toggleAdminKeyMode(): void {
+    if (pendingAction()) return;
+    setAdminKeyMode((mode) => !mode);
+    setAdminKey("");
+    setIssueVisible(false);
+    setLocalError(null);
+  }
+
   async function submitEmail(): Promise<void> {
     if (pendingAction() || emailBusy() || emailRetryIn() > 0) return;
     const validationError = validateEmail(email());
@@ -307,6 +331,37 @@ export function AccountLogin(props: AccountLoginProps) {
       await props.onVerifyEmailCode(props.state.challengeId, formatCode(normalizedCode));
     } catch (error) {
       showActionError(error, t("account.login.verifyFailed"), true);
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  /**
+   * Signs in with the admin key of the account service. The key is a credential of that service:
+   * it goes to the service and nowhere else, and it is dropped from the form after the sign-in.
+   */
+  async function submitAdminKey(): Promise<void> {
+    const signIn = props.onSignInWithAdminKey;
+    if (!signIn || pendingAction() || adminKeyBusy()) return;
+    const validationError = validateEmail(email());
+    if (validationError) {
+      showEmailError(validationError);
+      emailInput?.focus();
+      return;
+    }
+    const normalizedEmail = normalizeEmailAddress(email());
+    const key = adminKey().trim();
+    if (!normalizedEmail || !key) return;
+    setIssueVisible(false);
+    setLocalError(null);
+    setPendingAction("adminKey");
+    try {
+      await signIn({ email: normalizedEmail, adminKey: key });
+      setAdminKey("");
+      setAdminKeyMode(false);
+      setSignedInWithAdminKey(true);
+    } catch (error) {
+      showActionError(error, t("account.login.adminKeyFailed"), true);
     } finally {
       setPendingAction(null);
     }
@@ -389,11 +444,13 @@ export function AccountLogin(props: AccountLoginProps) {
                   ? t("account.login.connectingDescription")
                   : unavailable()
                     ? sourceText(currentIssue()?.message ?? t("account.login.unavailableDescription"))
-                    : t("account.login.signInDescription")
+                    : adminKeyMode()
+                      ? t("account.login.adminKeyDescription")
+                      : t("account.login.signInDescription")
               }
             >
               {verified() ? (
-                t("account.login.codeAccepted")
+                signedInWithAdminKey() ? t("account.login.adminKeyAccepted") : t("account.login.codeAccepted")
               ) : (
                 <>
                   {codeSentParts()[0]}
@@ -446,11 +503,12 @@ export function AccountLogin(props: AccountLoginProps) {
                 <form
                   class="account-login-form"
                   data-auth-panel="email"
-                  aria-busy={emailBusy() ? "true" : "false"}
+                  aria-busy={emailBusy() || adminKeyBusy() ? "true" : "false"}
                   novalidate
                   onSubmit={(event) => {
                     event.preventDefault();
-                    void submitEmail();
+                    if (adminKeyMode()) void submitAdminKey();
+                    else void submitEmail();
                   }}
                 >
                   <label class="sr-only" for="account-email">
@@ -489,6 +547,25 @@ export function AccountLogin(props: AccountLoginProps) {
                     </p>
                   </div>
 
+                  <Show when={adminKeyMode()}>
+                    <label class="sr-only" for="account-admin-key">
+                      {t("account.login.adminKey")}
+                    </label>
+                    <div class="account-login-email-field t-input-wrap">
+                      <Input
+                        class="t-input"
+                        id="account-admin-key"
+                        type="password"
+                        autocomplete="off"
+                        autocapitalize="none"
+                        spellcheck={false}
+                        maxlength={INPUT_LIMITS.adminKey}
+                        value={adminKey()}
+                        onValueChange={handleAdminKeyInput}
+                      />
+                    </div>
+                  </Show>
+
                   <Show when={formIssue()}>
                     {(issue) => (
                       <p class="account-login-error" role="alert">
@@ -506,19 +583,50 @@ export function AccountLogin(props: AccountLoginProps) {
                     )}
                   </Show>
 
-                  <Button
-                    variant="default"
-                    type="submit"
-                    class="account-login-primary"
-                    disabled={emailBusy() || !email().trim() || emailRetryIn() > 0}
+                  <Show
+                    when={adminKeyMode()}
+                    fallback={
+                      <Button
+                        variant="default"
+                        type="submit"
+                        class="account-login-primary"
+                        disabled={emailBusy() || !email().trim() || emailRetryIn() > 0}
+                      >
+                        <Show when={emailBusy()} fallback={emailSubmitLabel()}>
+                          <span class="account-login-button-spinner" aria-hidden="true" />
+                          {pendingAction() === "check"
+                            ? t("account.login.checkingDelivery")
+                            : t("account.login.sendingCode")}
+                        </Show>
+                      </Button>
+                    }
                   >
-                    <Show when={emailBusy()} fallback={emailSubmitLabel()}>
-                      <span class="account-login-button-spinner" aria-hidden="true" />
-                      {pendingAction() === "check"
-                        ? t("account.login.checkingDelivery")
-                        : t("account.login.sendingCode")}
-                    </Show>
-                  </Button>
+                    <Button
+                      variant="default"
+                      type="submit"
+                      class="account-login-primary"
+                      disabled={adminKeyBusy() || !email().trim() || !adminKey().trim()}
+                    >
+                      <Show when={adminKeyBusy()} fallback={t("account.login.adminKeySubmit")}>
+                        <span class="account-login-button-spinner" aria-hidden="true" />
+                        {t("account.login.signingInWithAdminKey")}
+                      </Show>
+                    </Button>
+                  </Show>
+
+                  <Show when={props.onSignInWithAdminKey}>
+                    <Button
+                      type="button"
+                      class="account-login-alternative"
+                      variant="ghost"
+                      size="sm"
+                      disabled={pendingAction() !== null}
+                      onClick={() => toggleAdminKeyMode()}
+                    >
+                      {adminKeyMode() ? t("account.login.useEmailCode") : t("account.login.useAdminKey")}
+                    </Button>
+                  </Show>
+
                   {/* The account is for sign-in only. A new user asks what leaves the computer. */}
                   <p class="account-login-local-data">
                     <Lock size={13} aria-hidden="true" />

@@ -106,6 +106,7 @@ import type {
   UpdateAgentInput,
 } from "./ipc-agents";
 import type {
+  AdminKeySignInInput,
   AnalyticsPreference,
   AppInfo,
   AppSetupState,
@@ -1016,6 +1017,7 @@ export const IPC_ENDPOINTS = {
     retry: request<undefined, CentralAuthState>()("auth:retry"),
     requestEmailCode: request<string, CentralAuthState>()("auth:request-email-code"),
     verifyEmailCode: request<VerifyEmailCodeInput, CentralAuthState>()("auth:verify-email-code"),
+    signInWithAdminKey: request<AdminKeySignInInput, CentralAuthState>()("auth:sign-in-with-admin-key"),
     updateName: request<string, CentralAuthState>()("auth:update-name"),
     updateAvatar: request<AvatarImageInput | null, CentralAuthState>()("auth:update-avatar"),
     createMobileConnect: request<undefined, MobileConnectTicket>()("auth:create-mobile-connect"),

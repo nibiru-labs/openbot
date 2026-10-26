@@ -235,6 +235,15 @@ export interface VerifyEmailCodeInput {
   code: string;
 }
 
+/**
+ * The admin key of a self-hosted account service, with the email of the account to sign in.
+ * The key is a credential of that service: it is used for one sign-in and never stored.
+ */
+export interface AdminKeySignInInput {
+  email: string;
+  adminKey: string;
+}
+
 export type MacPermissionId = "screen-recording" | "accessibility";
 
 /**

@@ -90,6 +90,16 @@ export function createMockAuth(options: MockAuthOptions, { emit }: MockRuntime) 
       authState = { status: "signed_in", user };
       return clone(authState);
     },
+    signInWithAdminKey: async ({ email }) => {
+      const user: CentralAuthUser = {
+        id: "user-1",
+        email,
+        name: "Norbert",
+        avatarUrl: null,
+      };
+      authState = { status: "signed_in", user };
+      return clone(authState);
+    },
     updateName: async (name) => {
       if (authState.status !== "signed_in") return clone(authState);
       authState = { ...authState, user: { ...authState.user, name } };

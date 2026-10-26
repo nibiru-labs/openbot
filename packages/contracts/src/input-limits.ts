@@ -1,6 +1,8 @@
 export const INPUT_LIMITS = {
   identifier: 128,
   email: 254,
+  /** The admin key of an account service. The service reads it as a bearer token of at most 512 bytes. */
+  adminKey: 512,
   accountName: 120,
   profileNameMin: 3,
   profileName: 20,
