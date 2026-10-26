@@ -2,7 +2,7 @@ import type { AgentPauseReason, TokenBudgetPreference } from "@openbot/contracts
 import { Effect, Exit, Scope } from "effect";
 
 /** The window of the hourly limit. */
-export const TOKEN_BUDGET_WINDOW_MS = 60 * 60_000;
+const TOKEN_BUDGET_WINDOW_MS = 60 * 60_000;
 
 /** The longest delay `setTimeout` keeps. A longer wait is armed again when it fires. */
 const MAX_TIMER_MS = 2_147_483_647;

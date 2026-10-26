@@ -256,7 +256,7 @@ function pauseText(pause: ConversationPause): string {
   );
 }
 
-export class AgentPauseFailed extends Schema.TaggedError<AgentPauseFailed>()("AgentPauseFailed", {
+class AgentPauseFailed extends Schema.TaggedError<AgentPauseFailed>()("AgentPauseFailed", {
   cause: Schema.Defect(),
 }) {}
 
