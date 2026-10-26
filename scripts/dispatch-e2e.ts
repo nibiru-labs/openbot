@@ -49,21 +49,39 @@ function shellLiteral(value: string): string {
 }
 
 function stubSource(): string {
-  const resultJson = JSON.stringify({
-    id: runId,
-    status: "done",
-    branch: `openswarm/${runId}`,
-    commit: "d15ca11d15ca11d15ca11d15ca11d15ca11d15ca11d",
-    result: { summary: marker },
-    verify: { rc: 0, cmd: "bun run test:dispatch", tail: "DISPATCH_E2E_VERIFY_OK", seconds: 1, failing: [] },
-  });
+  const resultJson = JSON.stringify(
+    {
+      id: runId,
+      status: "done",
+      branch: `openswarm/${runId}`,
+      commit: "d15ca11d15ca11d15ca11d15ca11d15ca11d15ca11d",
+      result: { summary: marker },
+      verify: { rc: 0, cmd: "bun run test:dispatch", tail: "DISPATCH_E2E_VERIFY_OK", seconds: 1, failing: [] },
+    },
+    null,
+    2,
+  );
+  const acknowledgementJson = JSON.stringify(
+    {
+      ok: true,
+      id: runId,
+      state: "queued",
+      lane: "M1",
+      watch: `openswarm watch ${runId}`,
+      result: `${stubDirectory}/runs/${runId}/result.json`,
+    },
+    null,
+    2,
+  );
   const root = shellLiteral(stubDirectory);
   const id = shellLiteral(runId);
   const json = shellLiteral(resultJson);
+  const acknowledgement = shellLiteral(acknowledgementJson);
   return `#!/bin/sh
 set -eu
 root=${root}
 run_id=${id}
+acknowledgement=${acknowledgement}
 run_dir="$root/runs/$run_id"
 result_file="$run_dir/result.json"
 mkdir -p "$run_dir"
@@ -71,7 +89,8 @@ case "\${1-}" in
   run|lane)
     printf '%s\\n' "$@" > "$root/arguments.txt"
     printf '{"id":"%s","state":"running","result":null}\\n' "$run_id" > "$run_dir/status.json"
-    printf '{"id":"%s"}\\n' "$run_id"
+    printf '%s\\n' 'login shell configured'
+    printf '%s\\n' "$acknowledgement"
     (
       sleep 3
       printf '%s\\n' ${json} > "$result_file"
@@ -82,10 +101,14 @@ case "\${1-}" in
     if [ "\${2-}" != "_run-info" ] || [ "\${3-}" != "$run_id" ]; then exit 2; fi
     if [ -f "$result_file" ]; then
       result=$(cat "$result_file")
-      printf '{"id":"%s","state":"finished","result":%s}\\n' "$run_id" "$result"
+      printf 'login shell configured\\n{\\n  "id": "%s",\\n  "state": "finished",\\n  "result": %s\\n}\\n' "$run_id" "$result"
     else
-      printf '{"id":"%s","state":"running","result":null}\\n' "$run_id"
+      printf 'login shell configured\\n{\\n  "id": "%s",\\n  "state": "running",\\n  "result": null\\n}\\n' "$run_id"
     fi
+    ;;
+  stop)
+    printf '%s\\n' 'login shell configured'
+    printf '{\\n  "ok": true,\\n  "id": "%s",\\n  "state": "stopped"\\n}\\n' "$run_id"
     ;;
   *) exit 2 ;;
 esac

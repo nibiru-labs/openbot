@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/backend";
 
 export const messages = {
+  "error.backend.dispatchSpawnFailed": "openswarm başlatılamadı.",
+  "error.backend.dispatchExitCode": "openswarm {code} koduyla kapandı.",
+  "error.backend.dispatchExited": "openswarm sonuç döndürmeden durdu.",
+  "error.backend.dispatchTimeout": "openswarm süre sınırı içinde yanıt vermedi.",
+  "error.backend.dispatchOutputUnreadable": "openswarm çıktısı okunamadı.",
+  "error.backend.dispatchSaveFailed": "openswarm isteği kaydedilemedi.",
   "error.backend.eventsUnavailable": "Bu ana makinede etkinlikler kullanılamıyor.",
   "error.backend.databaseIntegrity": "OpenBot veritabanı bütünlük denetiminden geçemedi.",
   "error.backend.webhookRouteLimit": "Bir ana makinede en fazla {limit} webhook rutini olabilir.",

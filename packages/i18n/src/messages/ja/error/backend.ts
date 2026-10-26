@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/backend";
 
 export const messages = {
+  "error.backend.dispatchSpawnFailed": "openswarm を起動できませんでした。",
+  "error.backend.dispatchExitCode": "openswarm はコード {code} で終了しました。",
+  "error.backend.dispatchExited": "openswarm は結果を返す前に停止しました。",
+  "error.backend.dispatchTimeout": "openswarm は制限時間内に応答しませんでした。",
+  "error.backend.dispatchOutputUnreadable": "openswarm の出力を読み取れませんでした。",
+  "error.backend.dispatchSaveFailed": "openswarm の依頼を保存できませんでした。",
   "error.backend.eventsUnavailable": "このホストではイベントを利用できません。",
   "error.backend.databaseIntegrity": "OpenBot のデータベースが整合性チェックに失敗しました。",
   "error.backend.webhookRouteLimit": "1 つのホストの Webhook ルーティンは最大 {limit} 個です。",

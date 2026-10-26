@@ -8,7 +8,7 @@ import { redactText } from "@openbot/logging";
 import { Effect, Exit, Schema, Scope, Semaphore } from "effect";
 import { writeFileAtomically, writeJsonFileAtomically } from "../atomic-json-file";
 import { isMissingFileError } from "../file-errors";
-import { DispatchFailed, dispatchCommand } from "./dispatch-process";
+import { type DispatchCommandOutput, DispatchFailed, dispatchCommand, dispatchFailure } from "./dispatch-process";
 import type { DispatchCaller, DispatchWork } from "./dispatch-tools";
 
 const identifier = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/));
@@ -73,6 +73,74 @@ const io = <A>(body: () => Promise<A>) =>
   Effect.tryPromise({ try: body, catch: (cause) => new DispatchFailed({ cause }) });
 const step = <A>(body: () => A) => Effect.try({ try: body, catch: (cause) => new DispatchFailed({ cause }) });
 const commandJson = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, output: string): S["Type"] => {
+  try {
+    return Schema.decodeUnknownSync(schema)(JSON.parse(output));
+  } catch {
+    // The output can include login-shell text before the JSON value.
+  }
+
+  const candidates: Array<{ start: number; end: number; value: unknown }> = [];
+  const stack: Array<{ opening: string; start: number }> = [];
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < output.length; index += 1) {
+    const character = output[index];
+    if (character === undefined) continue;
+    if (stack.length === 0) {
+      if (character === "{" || character === "[") {
+        stack.push({ opening: character, start: index });
+      }
+      continue;
+    }
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      else if (character === "\n" || character === "\r") {
+        // A raw line break cannot occur inside valid JSON strings.
+        stack.length = 0;
+        inString = false;
+        escaped = false;
+      }
+      continue;
+    }
+    if (character === '"') inString = true;
+    else if (character === "{" || character === "[") stack.push({ opening: character, start: index });
+    else if (character === "}" || character === "]") {
+      const expected = character === "}" ? "{" : "[";
+      const frameIndex = stack.findLastIndex((frame) => frame.opening === expected);
+      if (frameIndex < 0) {
+        stack.length = 0;
+        continue;
+      }
+      const frame = stack[frameIndex];
+      if (!frame) continue;
+      stack.length = frameIndex;
+      try {
+        candidates.push({ start: frame.start, end: index, value: JSON.parse(output.slice(frame.start, index + 1)) });
+      } catch {
+        // A balanced shell fragment is not always JSON.
+      }
+    }
+  }
+
+  const topLevelCandidates: typeof candidates = [];
+  const containingEnds: number[] = [];
+  candidates.sort((left, right) => left.start - right.start || right.end - left.end);
+  for (const candidate of candidates) {
+    while ((containingEnds.at(-1) ?? -1) < candidate.start) containingEnds.pop();
+    if (containingEnds.length === 0) topLevelCandidates.push(candidate);
+    containingEnds.push(candidate.end);
+  }
+
+  for (const candidate of topLevelCandidates.reverse()) {
+    try {
+      return Schema.decodeUnknownSync(schema)(candidate.value);
+    } catch {
+      // Try the next top-level value before the line-by-line fallback.
+    }
+  }
+
   for (const line of output.split(/\r?\n/u).reverse()) {
     try {
       return Schema.decodeUnknownSync(schema)(JSON.parse(line));
@@ -82,6 +150,17 @@ const commandJson = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, out
   }
   throw new Error("openswarm returned invalid JSON");
 };
+const parseCommandJson = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, command: DispatchCommandOutput) =>
+  Effect.try({
+    try: () => commandJson(schema, command.output),
+    catch: (cause) =>
+      dispatchFailure({
+        cause,
+        reason: sourceText("error.backend.dispatchOutputUnreadable"),
+        step: "parse",
+        exitCode: command.exitCode,
+      }),
+  });
 const isTerminal = (record: DispatchRecord) => record.status !== "running" && record.status !== "cancelling";
 const expandHome = (path: string) => (path.startsWith("~/") ? join(homedir(), path.slice(2)) : path);
 
@@ -195,13 +274,19 @@ export class DispatchService {
           host === "local"
             ? yield* Effect.acquireUseRelease(
                 writeFileAtomically(cardPath, card, { createDirectory: true }).pipe(
-                  Effect.mapError((failure) => new DispatchFailed({ cause: failure.cause })),
+                  Effect.mapError((failure) =>
+                    dispatchFailure({
+                      cause: failure.cause,
+                      reason: sourceText("error.backend.dispatchSaveFailed"),
+                      step: "save",
+                    }),
+                  ),
                 ),
                 () => this.#command(binary, host, args),
                 () => io(() => rm(cardPath, { force: true })).pipe(Effect.catch(() => Effect.void)),
               )
             : yield* this.#command(binary, host, args);
-        const { id: runId } = yield* step(() => commandJson(acknowledgement, output));
+        const { id: runId } = yield* parseCommandJson(acknowledgement, output);
         const record: DispatchRecord = {
           runId,
           host,
@@ -216,7 +301,7 @@ export class DispatchService {
           startedAt: new Date().toISOString(),
           delivered: false,
         };
-        const saved = yield* Effect.result(this.#save([...this.#runs, record]));
+        const saved = yield* Effect.result(this.#save([...this.#runs, record], output.exitCode));
         if (saved._tag === "Failure") {
           // Do not leave an accepted executor without a durable owner.
           yield* this.#command(binary, host, ["stop", runId]).pipe(Effect.catch(() => Effect.void));
@@ -258,8 +343,11 @@ export class DispatchService {
       Effect.gen({ self: this }, function* () {
         const record = yield* this.#owned(runId, caller);
         if (isTerminal(record)) return { runId, host: record.host, status: record.status };
-        yield* this.#command(record.binary, record.host, ["stop", runId]);
-        yield* this.#save(this.#runs.map((run) => (run === record ? { ...run, status: "cancelling" } : run)));
+        const output = yield* this.#command(record.binary, record.host, ["stop", runId]);
+        yield* this.#save(
+          this.#runs.map((run) => (run === record ? { ...run, status: "cancelling" } : run)),
+          output.exitCode,
+        );
         return { runId, host: record.host, status: "cancelling" };
       }),
     );
@@ -279,14 +367,21 @@ export class DispatchService {
     return dispatchCommand(binary, host === "local" ? args : ["fleet", "exec", host, "--", ...args]);
   }
 
-  #save(runs: DispatchRecord[]) {
+  #save(runs: DispatchRecord[], exitCode: number | null = null) {
     const safeRuns = runs.map((record) => redactDispatchRecord(record, this.#options.redact));
     return writeJsonFileAtomically(
       join(this.#options.dataPath, "openbot-dispatch-v1.json"),
       { version: 1, runs: safeRuns },
       { createDirectory: true },
     ).pipe(
-      Effect.mapError((failure) => new DispatchFailed({ cause: failure.cause })),
+      Effect.mapError((failure) =>
+        dispatchFailure({
+          cause: failure.cause,
+          reason: sourceText("error.backend.dispatchSaveFailed"),
+          step: "save",
+          exitCode,
+        }),
+      ),
       Effect.tap(() =>
         Effect.sync(() => {
           this.#runs = safeRuns;
@@ -332,10 +427,12 @@ export class DispatchService {
     const current = this.#runs.find((run) => run.runId === runId);
     if (!current || current.delivered) return true;
     let finished = current;
+    let exitCode: number | null = null;
     if (!isTerminal(current)) {
       // _run-info is openswarm's fleet result endpoint; runs --json omits summary and verify.
       const output = yield* this.#command(current.binary, current.host, ["fleet", "_run-info", runId]);
-      const info = yield* step(() => commandJson(infoSchema, output));
+      exitCode = output.exitCode;
+      const info = yield* parseCommandJson(infoSchema, output);
       if (info.id !== runId) return false;
       if (info.result) {
         const safe = yield* step(() =>
@@ -366,9 +463,15 @@ export class DispatchService {
       Effect.gen({ self: this }, function* () {
         if (this.#runs.find((run) => run.runId === runId)?.delivered) return true;
         const safeFinished = redactDispatchRecord(finished, this.#options.redact);
-        yield* this.#save(this.#runs.map((run) => (run.runId === runId ? safeFinished : run)));
+        yield* this.#save(
+          this.#runs.map((run) => (run.runId === runId ? safeFinished : run)),
+          exitCode,
+        );
         yield* this.#options.publish(safeFinished, true);
-        yield* this.#save(this.#runs.map((run) => (run.runId === runId ? { ...safeFinished, delivered: true } : run)));
+        yield* this.#save(
+          this.#runs.map((run) => (run.runId === runId ? { ...safeFinished, delivered: true } : run)),
+          exitCode,
+        );
         return true;
       }),
     );

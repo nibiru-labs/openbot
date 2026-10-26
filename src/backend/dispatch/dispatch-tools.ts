@@ -75,8 +75,8 @@ export const handleDispatchTool = Effect.fn("DispatchTools.handle")(function* (
     );
   });
   return yield* operation.pipe(
-    Effect.catchTag("DispatchFailed", () =>
-      Effect.succeed(openBotToolFailure(sourceText("error.backend.dispatchCommand"))),
+    Effect.catchTag("DispatchFailed", (failure) =>
+      Effect.succeed(openBotToolFailure(failure.reason ?? sourceText("error.backend.dispatchCommand"))),
     ),
   );
 });
