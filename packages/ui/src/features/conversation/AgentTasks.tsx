@@ -402,7 +402,11 @@ export function AgentTaskPanel(props: AgentTaskPanelProps) {
           </For>
           <Show when={props.task?.state === "running"}>
             <div class="virtual-chat-row">
-              <AgentActivityIndicator agent={props.agent} label={activityLabel} detail={props.task?.progress} />
+              <AgentActivityIndicator
+                agent={props.agent}
+                label={activityLabel}
+                {...(props.task?.progress !== undefined ? { detail: props.task.progress } : {})}
+              />
             </div>
           </Show>
           <Show when={props.task && agentTaskHoldText(props.task, props.limit, t)}>

@@ -8,7 +8,11 @@ export function ResponseProcess(props: { message: AgentMessage; defaultOpen?: bo
   const { t } = useText();
   const panelId = createUniqueId();
   const [open, setOpen] = createSignal(untrack(() => props.defaultOpen ?? false));
-  const notes = createMemo(() => (props.message.items ?? [props.message.body]).filter((note) => note.trim()));
+  const notes = createMemo(() =>
+    (props.message.items ?? [props.message.body])
+      .map((text, index) => ({ text, id: props.message.itemIds?.[index] }))
+      .filter((note) => note.text.trim()),
+  );
   return (
     <section
       class="task-list response-process"
@@ -31,7 +35,7 @@ export function ResponseProcess(props: { message: AgentMessage; defaultOpen?: bo
       <div id={panelId} hidden={!open()}>
         <ol class="response-process-notes">
           <For each={notes()} keyed={false} fallback={<li>{t("chat.responseProcess.empty")}</li>}>
-            {(note) => <li>{note()}</li>}
+            {(note) => <li data-chat-search-item={note().id}>{note().text}</li>}
           </For>
         </ol>
       </div>
