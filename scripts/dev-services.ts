@@ -289,6 +289,12 @@ export function parseDevelopmentTarget(args: string[]): DevelopmentInvocation {
   };
 }
 
+// A LAN stack cannot return sign-in codes, so the throwaway dev account of a "host" or "client" role cannot
+// sign in. The desktop then uses the normal sign-in screen, unless the caller chose a role.
+export function applyLanSignInPolicy(lan: boolean, environment: NodeJS.ProcessEnv): void {
+  if (lan) environment.OPENBOT_DEV_REMOTE_ROLE ??= "none";
+}
+
 export function assertSafeDevelopmentNetwork(lan: boolean, environment: NodeJS.ProcessEnv): void {
   if (lan && normalizeBooleanFlag(environment.AUTH_EXPOSE_DEVELOPMENT_CODE ?? "")) {
     throw new Error(
@@ -318,6 +324,7 @@ async function main(): Promise<void> {
   assertSafeDevelopmentNetwork(lan, guardEnvironment);
   const developmentEnvironment = dryRun ? {} : guardEnvironment;
   const sharedEnvironment = developmentEnvironmentForTarget(target);
+  applyLanSignInPolicy(lan, sharedEnvironment);
   if (hostingTest) {
     sharedEnvironment.OPENBOT_AUTH_API_URL = TEST_ACCOUNT_API_URL;
     sharedEnvironment.OPENBOT_MOBILE_AUTH_API_URL = TEST_ACCOUNT_API_URL;

@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
+  applyLanSignInPolicy,
   assertSafeDevelopmentNetwork,
   configureMobileConnectDevelopmentNetwork,
   parseDevelopmentTarget,
@@ -47,6 +48,19 @@ check("default binds the API and Signal to loopback", () => {
   assert.equal(environment.REMOTE_SIGNAL_HOST, "127.0.0.1");
   assert.equal(environment.REMOTE_SIGNAL_URL, "ws://127.0.0.1:3101/v1/signal");
   return { apiHost: environment.OPENBOT_API_HOST, signalHost: environment.REMOTE_SIGNAL_HOST };
+});
+
+check("--lan skips the development account role that needs an exposed sign-in code", () => {
+  const lan: NodeJS.ProcessEnv = {};
+  applyLanSignInPolicy(true, lan);
+  assert.equal(lan.OPENBOT_DEV_REMOTE_ROLE, "none");
+  const chosen: NodeJS.ProcessEnv = { OPENBOT_DEV_REMOTE_ROLE: "host" };
+  applyLanSignInPolicy(true, chosen);
+  assert.equal(chosen.OPENBOT_DEV_REMOTE_ROLE, "host");
+  const loopback: NodeJS.ProcessEnv = {};
+  applyLanSignInPolicy(false, loopback);
+  assert.equal(loopback.OPENBOT_DEV_REMOTE_ROLE, undefined);
+  return { lan: "none", chosen: "host", loopback: null };
 });
 
 check("--lan refuses normalized development sign-in-code flags", () => {
