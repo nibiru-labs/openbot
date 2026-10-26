@@ -18,6 +18,8 @@ coverage/
 !apps/auth-api/.env.production
 !apps/auth-api/.env.dev
 !remote/.env.production
+# The environment files of a self-hosted deployment. They hold secrets. Never commit.
+deploy/self-host/env/*.env
 *.key
 *.p12
 *.pem

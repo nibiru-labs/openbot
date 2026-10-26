@@ -1,0 +1,31 @@
+[Unit]
+Description=OpenBot account service (the Worker of apps/auth-api, served on this host)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openbot
+Group=openbot
+WorkingDirectory=/opt/openbot/openbot/apps/auth-api
+EnvironmentFile=/etc/openbot/auth-api.env
+# The service reads the built Worker in the `dist` directory. Build it before the first start
+# with `bun run --cwd apps/auth-api build`.
+ExecStart=/opt/openbot/openbot/node_modules/.bin/vite preview --host 127.0.0.1 --port 3100
+Restart=on-failure
+RestartSec=5
+
+# The service writes its local database and its local objects under `.wrangler/state` in the
+# working directory, so the file system stays writable.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
