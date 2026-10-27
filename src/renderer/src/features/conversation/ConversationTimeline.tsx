@@ -62,6 +62,7 @@ function rowDrawsTime(message: AgentMessage): boolean {
     !markerOnlyMessage(message) &&
     !message.questionPrompt &&
     message.kind !== "plan" &&
+    message.kind !== "thinking" &&
     chatVisualReply(message) === null
   );
 }
@@ -715,6 +716,9 @@ export function ConversationTimeline() {
                         fallback={
                           <ChatMessageRow
                             message={message() ?? initialMessage}
+                            processRunning={
+                              message()?.turnId ? message()?.turnId === props.activeTurnId : message()?.streaming
+                            }
                             author={author()}
                             showAuthor={author().kind === "member" ? !continuesRun() : undefined}
                             showTime={!continuesRun()}

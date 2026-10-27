@@ -1,4 +1,5 @@
 import { Button, Lock } from "@openbot/ui";
+import type { AvatarMood } from "@openbot/ui/bloub-avatar";
 import { ProviderModelPicker } from "@openbot/ui/components/ProviderModelPicker";
 import type { AgentProfile } from "@openbot/ui/data";
 import { AgentAvatar } from "@openbot/ui/features/agents/AgentAvatar";
@@ -11,6 +12,7 @@ import { Show } from "solid-js";
 
 export interface ConversationHeaderProps {
   agent: AgentProfile | null | undefined;
+  avatarMood?: AvatarMood | undefined;
   modelPicker: ComponentProps<typeof ProviderModelPicker>;
   onSettingsIntent: () => void;
   onOpenSettings: () => void;
@@ -42,7 +44,7 @@ export function ConversationHeader(props: ConversationHeaderProps) {
               onFocus={props.onSettingsIntent}
               onClick={props.onOpenSettings}
             >
-              <AgentAvatar agent={agent()} />
+              <AgentAvatar agent={agent()} mood={props.avatarMood ?? "idle"} />
               <h1>{agent().name}</h1>
             </Button>
           )}

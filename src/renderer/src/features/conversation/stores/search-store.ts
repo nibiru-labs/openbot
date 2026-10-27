@@ -92,7 +92,11 @@ export function createSearchStore(deps: SearchStoreDeps) {
           const scrollElement = deps.scrollElement();
           if (!scrollElement || !activeMessageId) return;
           const matches = findChatSearchMatches(scrollElement, query).filter(
-            (match) => match.message.dataset.chatSearchMessage === activeMessageId,
+            (match) =>
+              match.message.dataset.chatSearchMessage === activeMessageId ||
+              (match.message.dataset.chatSearchGroup?.split(" ").includes(activeMessageId) &&
+                match.range.startContainer.parentElement?.closest<HTMLElement>("[data-chat-search-item]")?.dataset
+                  .chatSearchItem === activeMessageId),
           );
           deps.setChatSearchMatches(matches);
         });
@@ -126,6 +130,8 @@ export function createSearchStore(deps: SearchStoreDeps) {
       const match = matches[renderedIndex];
       if (!match) return;
       deps.revealMatch();
+      const disclosure = match.message.querySelector<HTMLButtonElement>('button[aria-expanded="false"][aria-controls]');
+      if (match.message.classList.contains("response-process")) disclosure?.click();
       match.message.scrollIntoView({
         behavior: prefersReducedMotion() ? "auto" : "smooth",
         block: "center",

@@ -168,6 +168,7 @@ export function toAgentMessages(
       existing.items = [...(existing.items ?? []), text];
       existing.itemIds = [...(existing.itemIds ?? []), message.id];
       existing.streaming = existing.streaming || message.status === "streaming";
+      if (message.status === "failed" || message.status === "interrupted") existing.status = message.status;
       continue;
     }
 
@@ -181,6 +182,7 @@ export function toAgentMessages(
       createdAt: message.createdAt,
       streaming: message.status === "streaming",
       itemType: "commentary",
+      status: message.status,
       kind: "thinking",
       items: [text],
       itemIds: [message.id],

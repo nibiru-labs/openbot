@@ -1,6 +1,12 @@
 import { defineMessages } from "../../message";
 
 export const messages = defineMessages("chat", {
+  "chat.process.running": "Thinking…",
+  "chat.process.completed": "Response process",
+  "chat.process.stopped": "Process stopped",
+  "chat.process.failed": "Process failed",
+  "chat.process.waiting": "Waiting for process details…",
+  "chat.process.unavailable": "No process details were provided.",
   "chat.activity.workingOnIt": "Working on it…",
   "chat.activity.thinking": "Thinking it through…",
   "chat.activity.connectingDots": "Connecting the dots…",

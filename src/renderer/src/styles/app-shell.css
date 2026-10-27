@@ -2727,8 +2727,8 @@ textarea {
 .conversation-title .agent-avatar {
   --agent-avatar-optical-offset: -2px;
 
-  width: 18px;
-  height: 18px;
+  width: var(--openbot-space-6);
+  height: var(--openbot-space-6);
 }
 
 .agent-row-copy {

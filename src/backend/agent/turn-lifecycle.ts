@@ -1145,7 +1145,9 @@ export class TurnLifecycle {
       message = newAssistantMessage(item.id, turnId);
       snapshot.messages.push(message);
     }
-    if (isString(item.text)) message.text = item.text;
+    // Some providers complete reasoning with no summary after the notes streamed.
+    const emptyCommentary = (item.phase ?? message.itemType) === "commentary" && !item.text?.trim();
+    if (isString(item.text) && !emptyCommentary) message.text = item.text;
     if (isString(item.phase)) message.itemType = item.phase;
     message.status = completed ? "completed" : "streaming";
     this.#itemTurns.set(item.id, turnId);
