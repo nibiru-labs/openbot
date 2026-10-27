@@ -265,6 +265,7 @@ export class ContextCompaction {
     if (!agent || !compactsOnRequest(mode)) return false;
     if (mode === "handoff" && !this.#rotatesSession(agentId, threadId)) return false;
     const budget = this.#budgets.get(threadId);
+    console.log("DEBUG reserve", agentId, threadId, "mode", mode, "pending", budget?.pending, "phase", budget?.phase, "compacting", this.#compacting.has(threadId), "used", budget?.usedTokens, budget?.contextWindow);
     if (!(budget?.pending || (manual && budget)) || budget.phase !== "idle" || this.#compacting.has(threadId)) {
       return false;
     }
