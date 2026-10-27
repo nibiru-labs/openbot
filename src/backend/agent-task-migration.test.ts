@@ -6,27 +6,23 @@ import { migrateOpenBotDatabase } from "./openbot-database-schema";
 // Failure modes: the upgrade changes or loses a row of any table; a failed upgrade leaves a table or its
 // marker; a newer or incomplete history is accepted; a task can point to no thread, or two tasks to one
 // thread; a deleted thread leaves its task behind; a task takes an origin or an outcome that the runtime
-// does not know. These fixtures cover each. They stop at version 46: migration 47 moves tasks to side
-// threads, and `agent-thread-migration.test.ts` covers it.
+// does not know. These fixtures cover each. They stop at version 46: migration 48 turns the tasks into
+// side threads, and `agent-thread-migration.test.ts` covers it.
 const databases: DatabaseSync[] = [];
 afterEach(() => {
   for (const db of databases.splice(0)) db.close();
 });
 
+/**
+ * The tables that the migrations from 38 to 46 create: the tasks, the role list, the routine backoff
+ * and the browser profiles. A database that stops at 46 has no workflow table, because migration 47
+ * creates those, and no side thread table, because migration 48 drops the task table.
+ */
 const TASK_TABLES = {
   projection_agent_tasks: [],
   projection_messaging_allowed_roles: [],
+  routine_backoff: [],
   browser_profiles: [],
-  workflow_edges: [],
-  workflow_nodes: [],
-  workflow_output_deliveries: [],
-  workflow_runs: [],
-  workflow_steps: [],
-  workflow_trigger_webhooks: [],
-  workflow_triggers: [],
-  workflow_versions: [],
-  workflow_webhook_receipts: [],
-  workflows: [],
 };
 
 function databaseAt(version: number): DatabaseSync {
@@ -122,9 +118,9 @@ describe("agent task migration", () => {
   it("rejects newer and incomplete migration histories before it creates the tables", () => {
     const db = databaseAtWithSeed(37);
     const before = contents(db);
-    db.exec("INSERT INTO schema_migrations VALUES(49,'now')");
+    db.exec("INSERT INTO schema_migrations VALUES(50,'now')");
     expect(() => migrateOpenBotDatabase(db)).toThrow("newer than this application supports");
-    db.exec("DELETE FROM schema_migrations WHERE version=49; DELETE FROM schema_migrations WHERE version=20");
+    db.exec("DELETE FROM schema_migrations WHERE version=50; DELETE FROM schema_migrations WHERE version=20");
     expect(() => migrateOpenBotDatabase(db)).toThrow("missing version 20");
     expect(contents(db)).toEqual(before);
     expect(taskTables(db)).toEqual([]);

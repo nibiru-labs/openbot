@@ -1,7 +1,10 @@
 // @vitest-environment node
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
+import { AGENT_THREAD_MIGRATION_SQL } from "./agent-threads/agent-thread-schema";
+import { BROWSER_PROFILE_SCHEMA_SQL } from "./browser-profiles/browser-profile-schema";
 import { migrateOpenBotDatabase } from "./openbot-database-schema";
+import { WORKFLOW_SCHEMA_SQL } from "./workflows/workflow-schema";
 
 // Failure modes: the upgrade changes or loses a row of any table; a failed upgrade leaves a table or
 // its marker; a newer or incomplete history is accepted; an edge, trigger, step or delivery can point
@@ -59,13 +62,13 @@ function seed(db: DatabaseSync, version: number): void {
   if (version >= 44)
     db.prepare(`INSERT INTO projection_messaging_allowed_roles (connection_id, role_id, role_name, created_at)
       VALUES ('connection-1', '400', 'Maintainers', '2026-01-02')`).run();
-  if (version >= 45)
+  if (version >= 46)
     db.prepare(`INSERT INTO browser_profiles (profile_id, name, hue, created_at, updated_at)
       VALUES ('0123456789abcdef0123456789abcdef', 'Work', 30, '2026-01-02', '2026-01-02')`).run();
 }
 
 /**
- * Every row of every table, by table name. Migration 47 replaces the empty task table with the thread
+ * Every row of every table, by table name. Migration 48 replaces the empty task table with the thread
  * table; `agent-thread-migration.test.ts` checks that move.
  */
 function contents(db: DatabaseSync): Record<string, unknown[]> {
@@ -85,7 +88,7 @@ function workflowTables(db: DatabaseSync) {
 }
 
 function expectHealthy(db: DatabaseSync): void {
-  expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 47 });
+  expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 49 });
   expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
   expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
@@ -131,13 +134,35 @@ function count(db: DatabaseSync, table: string): number {
 }
 
 describe("workflow migration", () => {
-  it.each(Array.from({ length: 38 }, (_, index) => index + 8))(
+  it.each([45, 46, 47])("preserves imported upstream %i data and markers", (version) => {
+    const db = databaseAt(44);
+    seed(db, 44);
+    db.exec(BROWSER_PROFILE_SCHEMA_SQL);
+    db.exec("INSERT INTO browser_profiles VALUES ('0123456789abcdef0123456789abcdef', 'Imported', 30, 'old', 'old')");
+    if (version >= 46) db.exec(WORKFLOW_SCHEMA_SQL);
+    if (version >= 46) seedWorkflow(db);
+    if (version >= 47) db.exec(AGENT_THREAD_MIGRATION_SQL);
+    for (let marker = 45; marker <= version; marker += 1) {
+      db.prepare("INSERT INTO schema_migrations VALUES (?, 'imported')").run(marker);
+    }
+    const markers = db.prepare("SELECT * FROM schema_migrations ORDER BY version").all();
+    const before = contents(db);
+    migrateOpenBotDatabase(db);
+    expect(db.prepare("SELECT * FROM schema_migrations WHERE version <= ? ORDER BY version").all(version)).toEqual(
+      markers,
+    );
+    expect(contents(db)).toEqual({ ...before, ...(version < 46 ? EMPTY_WORKFLOW_TABLES : {}), routine_backoff: [] });
+    expectHealthy(db);
+    expect(() => migrateOpenBotDatabase(db)).not.toThrow();
+  });
+
+  it.each(Array.from({ length: 39 }, (_, index) => index + 8))(
     "preserves every row from released schema %i",
     (version) => {
       const db = databaseAt(version);
       seed(db, version);
       // The earlier migrations run first; the rows after them are what v46 must keep.
-      if (version < 45) migrateUpTo(db, 45);
+      if (version < 46) migrateUpTo(db, 46);
       if (version < 25) seedConnection(db);
       const before = contents(db);
       migrateOpenBotDatabase(db);
@@ -147,15 +172,15 @@ describe("workflow migration", () => {
   );
 
   it("rolls back the tables and the marker after a late failure, then retries", () => {
-    const db = databaseAt(45);
-    seed(db, 45);
+    const db = databaseAt(46);
+    seed(db, 46);
     const before = contents(db);
-    db.exec(`CREATE TEMP TRIGGER fail_marker BEFORE INSERT ON schema_migrations WHEN new.version=46
+    db.exec(`CREATE TEMP TRIGGER fail_marker BEFORE INSERT ON schema_migrations WHEN new.version=47
       BEGIN SELECT RAISE(ABORT, 'late failure'); END;`);
-    expect(() => migrateOpenBotDatabase(db)).toThrow("migration to version 46 failed");
+    expect(() => migrateOpenBotDatabase(db)).toThrow("migration to version 47 failed");
     expect(contents(db)).toEqual(before);
     expect(workflowTables(db)).toEqual([]);
-    expect(db.prepare("SELECT version FROM schema_migrations WHERE version=46").all()).toEqual([]);
+    expect(db.prepare("SELECT version FROM schema_migrations WHERE version=47").all()).toEqual([]);
     expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
     db.exec("DROP TRIGGER fail_marker");
     migrateOpenBotDatabase(db);
@@ -164,20 +189,20 @@ describe("workflow migration", () => {
   });
 
   it("rejects newer and incomplete migration histories before it creates the tables", () => {
-    const db = databaseAt(45);
-    seed(db, 45);
+    const db = databaseAt(46);
+    seed(db, 46);
     const before = contents(db);
-    db.exec("INSERT INTO schema_migrations VALUES(48,'now')");
+    db.exec("INSERT INTO schema_migrations VALUES(50,'now')");
     expect(() => migrateOpenBotDatabase(db)).toThrow("newer than this application supports");
-    db.exec("DELETE FROM schema_migrations WHERE version=48; DELETE FROM schema_migrations WHERE version=20");
+    db.exec("DELETE FROM schema_migrations WHERE version=50; DELETE FROM schema_migrations WHERE version=20");
     expect(() => migrateOpenBotDatabase(db)).toThrow("missing version 20");
     expect(contents(db)).toEqual(before);
     expect(workflowTables(db)).toEqual([]);
   });
 
   it("refuses rows that point to nothing", () => {
-    const db = databaseAt(45);
-    seed(db, 45);
+    const db = databaseAt(46);
+    seed(db, 46);
     migrateOpenBotDatabase(db);
     seedWorkflow(db);
     const fails = (sql: string) => expect(() => db.exec(sql)).toThrow("constraint failed");
@@ -197,8 +222,8 @@ describe("workflow migration", () => {
   });
 
   it("removes the edges and trigger of a deleted node, and every row of a deleted workflow", () => {
-    const db = databaseAt(45);
-    seed(db, 45);
+    const db = databaseAt(46);
+    seed(db, 46);
     migrateOpenBotDatabase(db);
     seedWorkflow(db);
     db.exec("DELETE FROM workflow_nodes WHERE workflow_id='workflow-1' AND node_id='trigger'");
@@ -214,8 +239,8 @@ describe("workflow migration", () => {
   });
 
   it("keeps run and step keys unique in one workflow only, and refuses a step of an annotation", () => {
-    const db = databaseAt(45);
-    seed(db, 45);
+    const db = databaseAt(46);
+    seed(db, 46);
     migrateOpenBotDatabase(db);
     seedWorkflow(db);
     // A copy keeps the node ids, so its keys are the same text as the first workflow's.

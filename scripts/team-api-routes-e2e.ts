@@ -24,6 +24,7 @@ import {
   type AgentSummary,
   type AttachmentDataInput,
   type BitwardenConnectorStatus,
+  BROWSER_SECRET_RESPONSE_PATH,
   type CentralAuthUser,
   DEFAULT_AGENT_DEFAULTS,
   type HiddenAgentsSnapshot,
@@ -32,6 +33,7 @@ import {
   type RoutineResultDestination,
 } from "@openbot/contracts/ipc";
 import { TEAM_API_ROUTES } from "@openbot/contracts/team-api-routes";
+import { AGENT_ACCESS_CAPABILITY, AGENT_ACCESS_ROUTES } from "@openbot/contracts/team-protocol/agent-access-v1";
 import {
   AGENT_BACKUP_MODELS_CAPABILITY,
   AGENT_BACKUP_MODELS_ROUTES,
@@ -80,6 +82,7 @@ import { VAULT_CAPABILITY, VAULT_ROUTES } from "@openbot/contracts/team-protocol
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger } from "@openbot/logging";
 import { Effect } from "effect";
+import { ForbiddenAttentionAnswer, InactiveAttentionRequest } from "../src/backend/agent/inactive-attention-request";
 import { SteerUnsupportedError } from "../src/backend/agent/queue-controls";
 import { AgentLifecycleFailed } from "../src/backend/agent-service";
 import { BrowserProfileStore } from "../src/backend/browser-profiles/browser-profile-store";
@@ -88,6 +91,7 @@ import { runCauseEffect } from "../src/backend/effect-boundary";
 import { OpenBotDatabase } from "../src/backend/openbot-database";
 import { RoutineResultError } from "../src/backend/routine-results/routine-results";
 import { TeamChatStore } from "../src/backend/team-chat-store";
+import { AGENT_ACCESS_FILE, AgentAccessStore } from "../src/main/agent-access-store";
 import { createAgentHostSettings } from "../src/main/agent-host-settings";
 import { type BitwardenCliRunner, BitwardenConnectorService } from "../src/main/bitwarden-connector-service";
 import { BitwardenConnectorStore } from "../src/main/bitwarden-connector-store";
@@ -368,7 +372,18 @@ const fakeAgents: TeamApiAgents = {
       );
     return Effect.succeed(`Answer to ${input.question}`);
   },
-  saveProfile: unused("saveProfile"),
+  saveProfile: (input, sidebarLayout, sender) =>
+    Effect.sync(() => {
+      record("saveProfile", input, sender);
+      const target = agents.find((item) => item.id === input.agentId);
+      if (!target) throw new Error("Agent not found.");
+      target.name = input.draft.name;
+      target.title = input.draft.title;
+      target.description = input.draft.description;
+      target.avatarSeed = input.draft.avatarSeed;
+      target.avatarHue = input.draft.avatarHue;
+      return { agent: { ...target }, layout: sidebarLayout.getSnapshot() };
+    }),
   createAgent: unused("createAgent"),
   committedAgentDuplication: unused("committedAgentDuplication"),
   duplicateAgent: unused("duplicateAgent"),
@@ -411,11 +426,32 @@ const fakeAgents: TeamApiAgents = {
   sendMessage: unused("sendMessage"),
   setMessageReaction: unused("setMessageReaction"),
   clearAgentContext: unused("clearAgentContext"),
-  agentIdForRequest: () => undefined,
-  respondToPrompt: unused("respondToPrompt"),
-  respondToApproval: unused("respondToApproval"),
+  // The request that waits for an answer names the agent it acts for, so the response routes can
+  // check the level of that agent.
+  agentIdForRequest: (requestId) => (requestId === "auth-1" ? "agent-ada" : undefined),
+  respondToPrompt: (input) => Effect.sync(() => record("respondToPrompt", input)),
+  respondToApproval: (input, responder) => {
+    record("respondToApproval", input, responder);
+    // An approval that only the server owner may give refuses another member.
+    if (input.requestId === "auth-owner" && !responder?.owner)
+      return Effect.fail(
+        new AgentLifecycleFailed({
+          operation: "respondToApproval",
+          cause: new ForbiddenAttentionAnswer(sourceText("error.backend.approvalOwnerOnly")),
+        }),
+      );
+    // A request that another client answered first no longer waits.
+    if (input.requestId === "auth-gone")
+      return Effect.fail(
+        new AgentLifecycleFailed({
+          operation: "respondToApproval",
+          cause: new InactiveAttentionRequest(sourceText("error.backend.approvalInactive")),
+        }),
+      );
+    return Effect.void;
+  },
   respondToBrowserSecret: (input) => Effect.sync(() => record("respondToBrowserSecret", input)),
-  respondToBrowserTakeover: unused("respondToBrowserTakeover"),
+  respondToBrowserTakeover: (input) => Effect.sync(() => record("respondToBrowserTakeover", input)),
 };
 
 const mailbox: TeamApiMailbox = {
@@ -614,9 +650,13 @@ try {
     },
   });
 
+  const agentAccess = new AgentAccessStore(join(root, AGENT_ACCESS_FILE));
+  assert.equal(await runCauseEffect(agentAccess.load()), true, "The roles file did not load.");
+
   server = new TeamApiServer({
     appVersion: APP_VERSION,
     store,
+    agentAccess,
     agents: fakeAgents,
     mailbox,
     browser,
@@ -834,6 +874,20 @@ try {
 
   function summary(reply: Reply): ReplySummary {
     return { status: reply.status, body: reply.body ?? reply.text.slice(0, 200) };
+  }
+
+  /** Replaces the levels of the members for the agents, with the revision that the host has now. */
+  async function setAccessLevels(everyone: Record<string, string>): Promise<Reply> {
+    const current = await call("POST", AGENT_ACCESS_ROUTES.read, {
+      token: owner.sessionToken,
+      json: {},
+      capabilities: [AGENT_ACCESS_CAPABILITY],
+    });
+    return call("POST", AGENT_ACCESS_ROUTES.set, {
+      token: owner.sessionToken,
+      json: { revision: field(current.body, "revision"), everyone, roles: [] },
+      capabilities: [AGENT_ACCESS_CAPABILITY],
+    });
   }
 
   // ---- Protocol gate ----
@@ -2281,6 +2335,21 @@ try {
         callsOf("respondToBrowserSecret").length === before,
       [summary(unsupported), summary(noHandoff), summary(member)],
     );
+    // The frozen codec of the route takes an empty secret, but the response of the released route
+    // does not. The request is the caller's mistake, so the host answers 400 and logs no failure.
+    const loggedBefore = logged.length;
+    const emptySecret = await call("POST", BROWSER_SECRET_VAULT_ROUTES.respond, {
+      token: adaToken,
+      json: { requestId: "auth-1", agentId: "agent-ada", secret: "" },
+      capabilities,
+    });
+    check(
+      "a save with an empty secret gets 400, reaches no agent and logs no failure",
+      errorIs(emptySecret, 400, "Invalid secure authentication response.") &&
+        callsOf("respondToBrowserSecret").length === before &&
+        !logged.slice(loggedBefore).some((line) => line.includes("Team API request failed")),
+      [summary(emptySecret), logged.slice(loggedBefore)],
+    );
     const saved = await call("POST", BROWSER_SECRET_VAULT_ROUTES.respond, {
       token: adaToken,
       json: answer,
@@ -2686,6 +2755,238 @@ try {
       calls.slice(callsBefore).every((entry) => entry.method === "askSideQuestion"),
       calls.slice(callsBefore).map((entry) => entry.method),
     );
+  }
+
+  // ---- Profile save: existing agents need manage ----
+  {
+    const profileCapabilities = [
+      AGENT_HIDDEN_CAPABILITY,
+      TEAM_QUEUE_EDIT_CAPABILITY,
+      AGENT_ACCESS_CAPABILITY,
+      "agent-profile-generation",
+    ];
+    const profileDraft = (name: string) => ({
+      name,
+      title: "Saved title",
+      description: "Saved description for the agent profile.",
+      avatarSeed: "saved-seed",
+      avatarHue: 150,
+      sectionId: null,
+    });
+    const saveExisting = (agentId: string, name: string, operationId: string) =>
+      call("POST", TEAM_API_ROUTES.agents.saveProfile, {
+        token: bobToken,
+        json: { operationId, agentId, draft: profileDraft(name) },
+        capabilities: profileCapabilities,
+      });
+    const accessSaved = await call("POST", AGENT_ACCESS_ROUTES.set, {
+      token: owner.sessionToken,
+      json: { revision: 0, everyone: { "agent-ada": "view", "agent-oc": "chat" }, roles: [] },
+      capabilities: profileCapabilities,
+    });
+    check(
+      "profile save setup: the owner sets view and chat on two agents",
+      accessSaved.status === 200 && field(accessSaved.body, "revision") === 1,
+      summary(accessSaved),
+    );
+    const saveCallsBefore = callsOf("saveProfile").length;
+    const adaBefore = agents.find((item) => item.id === "agent-ada")?.name;
+    const ocBefore = agents.find((item) => item.id === "agent-oc")?.name;
+    const viewDenied = await saveExisting("agent-ada", "Ada denied", "22222222-2222-4222-8222-222222222222");
+    const chatDenied = await saveExisting("agent-oc", "Oscar denied", "33333333-3333-4333-8333-333333333333");
+    check(
+      "profile save: view and chat members get 403 agentManageDenied and the service is not called",
+      errorIs(viewDenied, 403, sourceText("error.team.agentManageDenied")) &&
+        errorIs(chatDenied, 403, sourceText("error.team.agentManageDenied")) &&
+        callsOf("saveProfile").length === saveCallsBefore,
+      [summary(viewDenied), summary(chatDenied)],
+    );
+    check(
+      "profile save: refused view and chat attempts leave the agents unchanged",
+      agents.find((item) => item.id === "agent-ada")?.name === adaBefore &&
+        agents.find((item) => item.id === "agent-oc")?.name === ocBefore,
+      {
+        ada: agents.find((item) => item.id === "agent-ada")?.name,
+        oc: agents.find((item) => item.id === "agent-oc")?.name,
+      },
+    );
+    const manageSaved = await saveExisting("agent-pi", "Pia saved", "44444444-4444-4444-8444-444444444444");
+    check(
+      "profile save: a manage member saves an existing profile",
+      manageSaved.status === 200 &&
+        field(manageSaved.body, "agent", "name") === "Pia saved" &&
+        callsOf("saveProfile").length === saveCallsBefore + 1,
+      summary(manageSaved),
+    );
+    const accessReset = await call("POST", AGENT_ACCESS_ROUTES.set, {
+      token: owner.sessionToken,
+      json: { revision: 1, everyone: {}, roles: [] },
+      capabilities: profileCapabilities,
+    });
+    check(
+      "profile save teardown: access levels reset so later checks keep manage on every agent",
+      accessReset.status === 200 && field(accessReset.body, "revision") === 2,
+      summary(accessReset),
+    );
+  }
+
+  // ---- The levels of a member on one agent (agent-access-v1) ----
+  {
+    const levels = await setAccessLevels({ "agent-ada": "view", "agent-oc": "chat", "agent-pi": "none" });
+    check(
+      "write gate setup: the member has a view, a chat and an agent that it may not see",
+      levels.status === 200 && typeof field(levels.body, "revision") === "number",
+      summary(levels),
+    );
+    // An action that no route serves is not a route: the dispatcher answers 404, as it did before
+    // the write gate.
+    const unknownAction = await call("POST", "/v1/agents/agent-ada/nonsense", { token: bobToken, json: {} });
+    const wrongMethod = await call("POST", "/v1/agents/agent-ada/conversation", { token: bobToken, json: {} });
+    const unknownForChat = await call("POST", "/v1/agents/agent-oc/nonsense", { token: bobToken, json: {} });
+    check(
+      "an unknown action and a wrong method answer 404 routeNotFound for a member below manage",
+      errorIs(unknownAction, 404, sourceText("error.team.routeNotFound")) &&
+        errorIs(wrongMethod, 404, sourceText("error.team.routeNotFound")) &&
+        errorIs(unknownForChat, 404, sourceText("error.team.routeNotFound")),
+      [summary(unknownAction), summary(wrongMethod), summary(unknownForChat)],
+    );
+    // A write that a route serves keeps the level that it needs.
+    const acknowledgeCalls = callsOf("acknowledgeFailedTurn").length;
+    const viewWrite = await call("POST", "/v1/agents/agent-ada/failures/acknowledge", {
+      token: bobToken,
+      json: { turnId: "turn-1" },
+    });
+    const chatWrite = await call("POST", "/v1/agents/agent-oc/memories", {
+      token: bobToken,
+      json: { text: "a memory of the agent" },
+    });
+    check(
+      "a write that a route serves keeps its level: a view cannot talk to the agent, a chat cannot change it",
+      errorIs(viewWrite, 403, sourceText("error.team.agentViewOnly")) &&
+        errorIs(chatWrite, 403, sourceText("error.team.agentManageDenied")) &&
+        callsOf("acknowledgeFailedTurn").length === acknowledgeCalls,
+      [summary(viewWrite), summary(chatWrite)],
+    );
+    // An agent that the member may not see answers as a missing agent, in the body as in the path.
+    const saveCalls = callsOf("saveProfile").length;
+    const hiddenProfile = await call("POST", TEAM_API_ROUTES.agents.saveProfile, {
+      token: bobToken,
+      json: {
+        operationId: "55555555-5555-4555-8555-555555555555",
+        agentId: "agent-pi",
+        draft: {
+          name: "Pia denied",
+          title: "Saved title",
+          description: "Saved description for the agent profile.",
+          avatarSeed: "saved-seed",
+          avatarHue: 150,
+          sectionId: null,
+        },
+      },
+      capabilities: ["agent-profile-generation"],
+    });
+    check(
+      "a profile save for an agent the member may not see answers 404 agentNotFound and reaches no service",
+      errorIs(hiddenProfile, 404, sourceText("error.team.agentNotFound")) &&
+        callsOf("saveProfile").length === saveCalls,
+      summary(hiddenProfile),
+    );
+    const reset = await setAccessLevels({});
+    check("write gate teardown: the levels are reset", reset.status === 200, summary(reset));
+  }
+
+  // ---- An answer that acts for one agent ----
+  {
+    const answerLevels = await setAccessLevels({ "agent-ada": "none" });
+    check(
+      "answer setup: the member may not see the agent that waits for the answer",
+      answerLevels.status === 200,
+      summary(answerLevels),
+    );
+    const callsBefore = {
+      prompt: callsOf("respondToPrompt").length,
+      approval: callsOf("respondToApproval").length,
+      secret: callsOf("respondToBrowserSecret").length,
+      takeover: callsOf("respondToBrowserTakeover").length,
+    };
+    const hiddenPrompt = await call("POST", TEAM_API_ROUTES.respond.prompt, {
+      token: bobToken,
+      json: { requestId: "auth-1", answers: {} },
+    });
+    const hiddenApproval = await call("POST", TEAM_API_ROUTES.respond.approval, {
+      token: bobToken,
+      json: { requestId: "auth-1", decision: "accept" },
+    });
+    const hiddenSecret = await call("POST", BROWSER_SECRET_RESPONSE_PATH, {
+      token: bobToken,
+      json: { requestId: "auth-1", agentId: "agent-ada", decision: "submit", secret: VAULT_PASSWORD },
+      capabilities: ["browser-secret-handoff"],
+    });
+    const hiddenTakeover = await call("POST", TEAM_API_ROUTES.respond.browserTakeover, {
+      token: bobToken,
+      json: { requestId: "auth-1", decision: "complete" },
+    });
+    check(
+      "an answer for an agent the member may not see answers 404 agentNotFound and reaches no service",
+      errorIs(hiddenPrompt, 404, sourceText("error.team.agentNotFound")) &&
+        errorIs(hiddenApproval, 404, sourceText("error.team.agentNotFound")) &&
+        errorIs(hiddenSecret, 404, sourceText("error.team.agentNotFound")) &&
+        errorIs(hiddenTakeover, 404, sourceText("error.team.agentNotFound")) &&
+        callsOf("respondToPrompt").length === callsBefore.prompt &&
+        callsOf("respondToApproval").length === callsBefore.approval &&
+        callsOf("respondToBrowserSecret").length === callsBefore.secret &&
+        callsOf("respondToBrowserTakeover").length === callsBefore.takeover,
+      [summary(hiddenPrompt), summary(hiddenApproval), summary(hiddenSecret), summary(hiddenTakeover)],
+    );
+    const viewLevels = await setAccessLevels({ "agent-ada": "view" });
+    check("answer setup: the member may only see the agent", viewLevels.status === 200, summary(viewLevels));
+    const viewPrompt = await call("POST", TEAM_API_ROUTES.respond.prompt, {
+      token: bobToken,
+      json: { requestId: "auth-1", answers: {} },
+    });
+    const viewApproval = await call("POST", TEAM_API_ROUTES.respond.approval, {
+      token: bobToken,
+      json: { requestId: "auth-1", decision: "accept" },
+    });
+    const viewSecret = await call("POST", BROWSER_SECRET_RESPONSE_PATH, {
+      token: bobToken,
+      json: { requestId: "auth-1", agentId: "agent-ada", decision: "submit", secret: VAULT_PASSWORD },
+      capabilities: ["browser-secret-handoff"],
+    });
+    const viewTakeover = await call("POST", TEAM_API_ROUTES.respond.browserTakeover, {
+      token: bobToken,
+      json: { requestId: "auth-1", decision: "complete" },
+    });
+    check(
+      "an answer for an agent that the member may only see answers 403 agentViewOnly",
+      errorIs(viewPrompt, 403, sourceText("error.team.agentViewOnly")) &&
+        errorIs(viewApproval, 403, sourceText("error.team.agentViewOnly")) &&
+        errorIs(viewSecret, 403, sourceText("error.team.agentViewOnly")) &&
+        errorIs(viewTakeover, 403, sourceText("error.team.agentViewOnly")),
+      [summary(viewPrompt), summary(viewApproval), summary(viewSecret), summary(viewTakeover)],
+    );
+    // An approval that only the server owner may give, and a request that no longer waits.
+    const ownerOnly = await call("POST", TEAM_API_ROUTES.respond.approval, {
+      token: adaToken,
+      json: { requestId: "auth-owner", decision: "accept" },
+    });
+    const ownerAnswer = await call("POST", TEAM_API_ROUTES.respond.approval, {
+      token: owner.sessionToken,
+      json: { requestId: "auth-owner", decision: "accept" },
+    });
+    const gone = await call("POST", TEAM_API_ROUTES.respond.approval, {
+      token: owner.sessionToken,
+      json: { requestId: "auth-gone", decision: "accept" },
+    });
+    check(
+      "an approval that only the owner may give is forbidden for an admin, and a request that no longer waits is a conflict",
+      errorIs(ownerOnly, 403, sourceText("error.backend.approvalOwnerOnly")) &&
+        ownerAnswer.status === 204 &&
+        errorIs(gone, 409, sourceText("error.backend.approvalInactive")),
+      [summary(ownerOnly), summary(ownerAnswer), summary(gone)],
+    );
+    const reset = await setAccessLevels({});
+    check("answer teardown: the levels are reset", reset.status === 200, summary(reset));
   }
 
   // ---- Attachments and files ----
