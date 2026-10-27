@@ -89,13 +89,24 @@ A script can send the data elsewhere under its own configuration.
 
 ## Agent and host usage
 
-When an agent dispatches coding work, OpenBot sends the task card and the local repository path to
-the selected openswarm executor host. A local run uses this computer. A remote run uses the named
-fleet host over its configured transport. The executor can read and change files in its worktree,
-and its selected model provider receives the task and the code context that it needs. The run id,
-host, status, branch, commit, summary, and verify result stay in the local OpenBot app data and chat.
-OpenBot does not send this data to the account service or product analytics. Do not put secrets in a
-task card. Review the returned branch and verify evidence before reporting success.
+When an agent dispatches coding work, OpenBot sends the task card, the title, the verify command,
+and the lane, backend, and model of the run to the openswarm CLI on this computer. The CLI runs the
+task on the selected executor host. A local run uses this computer and the agent's own workspace. A
+remote run uses the named fleet host over the transport that the host has, such as SSH or instabox,
+and works in the directory that the host has for that repository or lane. The workspace path on
+this computer stays here. The card travels as a file: OpenBot writes it to a temporary file, copies
+it to the host when the run is remote, and removes the copy when the request ends. The executor can
+read and change files in its worktree, and its selected model provider receives the task and the
+code context that it needs.
+
+The card, the title, and the verify command are redacted before they leave the computer, so the
+secret values that OpenBot knows do not travel with them. The run id, host, status, branch, commit,
+summary, and verify result come back from the executor, are redacted again, and stay in the local
+OpenBot app data and chat. The result returns to the chat of the agent that started the run, so it
+travels to that agent's model provider with the next turn like the rest of the conversation.
+OpenBot does not send this data to the account service or product analytics, and no part of a
+dispatch goes to an OpenBot server. Do not put secrets in a task card. Review the returned branch
+and verify evidence before reporting success.
 
 The Usage view stores numeric token counts, activity counts, provider and model identifiers,
 internal session and turn identifiers, timestamps, and cost estimates in the host's local SQLite
