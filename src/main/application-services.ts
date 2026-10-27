@@ -2120,7 +2120,7 @@ export async function createApplicationServices({
           surface: "desktop_host",
           app_version: app.getVersion(),
           platform: analyticsPlatform,
-          event_schema_version: 8,
+          event_schema_version: 7,
         },
       )
     : undefined;

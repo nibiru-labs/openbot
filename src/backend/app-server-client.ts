@@ -1,6 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { type DynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-values";
+import { redactText } from "@openbot/logging";
 import { Effect, Fiber } from "effect";
 import { type AgentProvider, RequestTimeoutError } from "./agent-client";
 import { cliSpawnTarget } from "./cli";
@@ -110,7 +111,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     // Whole records only. A chunk ends wherever the pipe filled up, and half a record is neither
     // readable nor reliably redactable.
     const diagnostics = createDiagnosticStream({
-      redact: redactDiagnostic,
+      redact: redactAppServerDiagnostic,
       emit: (message) => this.emit("diagnostic", message),
     });
     child.stderr.on("data", (chunk: Buffer) => diagnostics.push(chunk.toString("utf8")));
@@ -479,14 +480,13 @@ function freshCursor(
 }
 
 /**
- * The record as it leaves this client. It is not shortened here: the reader redacts the MCP
- * credentials this process handed the CLI, and a value cut in half by a bound applied first is a
- * value that redactor no longer recognises. `shortenDiagnostic` is applied there instead.
+ * Keep the app server's opaque token shapes, then apply shared rules for registered values and
+ * structured credentials. The shared redactor cannot classify every `sess` or `token` value by
+ * shape alone.
  */
-function redactDiagnostic(message: string): string {
-  return message
-    .replace(/(?:sk|sess|Bearer|token)[-_a-zA-Z0-9.=]{8,}/gi, "[redacted]")
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]");
+export function redactAppServerDiagnostic(message: string): string {
+  const withKnownTokenShapes = message.replace(/(?:sk|sess|Bearer|token)[-_a-zA-Z0-9.=]{8,}/gi, "[redacted]");
+  return redactText(withKnownTokenShapes);
 }
 
 /** Kept inside the adapter; public callers still receive the native protocol error. */

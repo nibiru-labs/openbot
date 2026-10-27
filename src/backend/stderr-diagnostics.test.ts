@@ -1,7 +1,8 @@
 // @vitest-environment node
 
-import { redactText } from "@openbot/logging";
+import { redactText, registerSecretValue } from "@openbot/logging";
 import { describe, expect, it } from "vitest";
+import { redactAppServerDiagnostic } from "./app-server-client";
 import { createDiagnosticStream } from "./stderr-diagnostics";
 
 function collect(limit?: number) {
@@ -20,6 +21,15 @@ function collect(limit?: number) {
  * string, and half a record reads as prose that happens to hold a credential.
  */
 describe("stderr diagnostics", () => {
+  it("keeps opaque app-server token masking and applies shared redaction", () => {
+    const registered = "custom-provider-secret-273cbf91";
+    registerSecretValue(registered);
+
+    expect(redactAppServerDiagnostic(`sess-opaque-session-273cbf91 token-opaque-token-273cbf91 ${registered}`)).toBe(
+      "[redacted] [redacted] [redacted]",
+    );
+  });
+
   it("redacts a record that arrives in two chunks", () => {
     const { messages, stream } = collect();
     stream.push('ERROR request failed: {"headers":{"X-Tenant":"');
