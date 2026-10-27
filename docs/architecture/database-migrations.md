@@ -35,7 +35,11 @@ The OpenBot fork and the upstream release number their last migrations different
 | `browser_profiles` table | 45 | 46 |
 | Workflow tables | 46 | 47 |
 | Side thread table | 47 | 48 |
-| `routine_backoff` table | 48 | 45, and 49 for an imported history |
+| `routine_backoff` table | none | 45, and 49 for an imported history |
+
+No inspected upstream release runs a routine backoff operation. The upstream history that was
+inspected ends at version 47. A later upstream release can add the operation. It then gets its own
+upstream version and its own fork version.
 
 The fork keeps its own version 45. A database that comes from the upstream release already has a
 marker 45, and that marker means the browser profile table there. The runner cannot use one number
@@ -69,17 +73,22 @@ the database already has.
 | 49 | Creates `routine_backoff`. | The table is already there. |
 
 Version 45 uses `CREATE TABLE IF NOT EXISTS`, so a database that already has a routine backoff table
-keeps its rows. Version 49 gives that table to a database that comes from the upstream release,
-where the backoff operation ran at version 48. Version 48 does not copy a task row whose
-conversation is gone, because that row has no thread to move to.
+keeps its rows. Version 49 gives that table to a database that comes from the upstream release. No
+inspected upstream release runs a routine backoff operation, so such a database has no backoff
+table. Version 48 does not copy a task row whose conversation is gone, because that row has no
+thread to move to.
 
 ## The schema evidence
 
 The runner does not trust a table name. Before it writes, it builds an empty database in memory and
 executes the five reserved schema parts in it. It then compares each declaration of that reference
-with the declaration in the database of the user. The comparison uses the whole `CREATE` text of
-`sqlite_master`, with the white space and the spaces around `(`, `)` and `,` removed. A table that
-matches in name but not in columns, checks, keys or indexes does not match.
+with the declaration in the database of the user. The comparison uses the token sequence of the
+`CREATE` text of `sqlite_master`, not the text itself. White space and comments are dropped. A
+word and a quoted name become upper case, so the case of a name or a keyword does not matter. A
+string literal keeps its case, because it is data. `IF NOT EXISTS` is dropped, because only one
+path writes it. The lookup of a name uses `COLLATE NOCASE`, so a table that was written in another
+case is still found. A table that matches in name but not in columns, checks, keys or indexes does
+not match.
 
 The five reserved parts are:
 
@@ -105,7 +114,9 @@ because no other process can write while the lock is held.
 
 ## The states the runner accepts
 
-The shape of the reserved tables must match the marker. The runner accepts these states:
+The shape of the reserved tables must match the marker. The `fork` label means a database of the
+OpenBot fork. The `imported` label means a database that came from the upstream release. The runner
+accepts these states:
 
 | Marker | Shape |
 | --- | --- |
