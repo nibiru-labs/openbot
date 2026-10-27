@@ -34,6 +34,8 @@ import type { AgentWaits } from "../agent-waits/agent-waits";
 import { OPENBOT_BROWSER_NAMESPACE } from "../browser-tools";
 import type { ChannelService } from "../channel-service";
 import type { ProviderSession } from "../database/provider-sessions";
+import type { DispatchService } from "../dispatch/dispatch-service";
+import { handleDispatchTool } from "../dispatch/dispatch-tools";
 import type { MailboxStore } from "../mailbox-store";
 import { agentMcpServers } from "../mcp-provider-shapes";
 import type { MessagingThreads } from "../messaging/messaging-threads";
@@ -152,6 +154,7 @@ export interface BusyRecipientOutcome {
 }
 
 export interface OpenBotToolRouterOptions {
+  dispatch?: DispatchService;
   capturedSteps?: (session: ProviderSession) => Effect.Effect<Map<string, string> | null, ToolOperationFailed>;
   store: AgentStore;
   mailbox: MailboxStore;
@@ -189,6 +192,7 @@ export interface OpenBotToolRouterOptions {
  * It never imports the agent service facade.
  */
 export class OpenBotToolRouter {
+  readonly #dispatch: DispatchService | undefined;
   readonly #history: HistoryTools;
   readonly #store: AgentStore;
   readonly #mailbox: MailboxStore;
@@ -217,6 +221,7 @@ export class OpenBotToolRouter {
   readonly #interruptTool: AgentInterruptTool;
 
   constructor(options: OpenBotToolRouterOptions) {
+    this.#dispatch = options.dispatch;
     this.#history = new HistoryTools({
       store: options.store,
       redact: options.hooks.redactMcp,
@@ -425,7 +430,7 @@ export class OpenBotToolRouter {
                 return openBotToolFailure(message);
               });
             const correctable = PROFILE_TOOL_NAMES.has(tool) || tool === "attach_files_to_response";
-            const response = this.#handleOpenBotTool(toolRequest.params).pipe(
+            const response = this.#handleOpenBotTool(toolRequest.params, client, toolRequest).pipe(
               Effect.catch((failure) => (correctable ? correctableFailure(failure.cause) : Effect.fail(failure))),
               Effect.catchDefect((defect) => (correctable ? correctableFailure(defect) : Effect.die(defect))),
               Effect.tap((result) => Effect.sync(() => client.respond(toolRequest.id, result))),
@@ -558,6 +563,8 @@ export class OpenBotToolRouter {
   readonly #handleOpenBotTool = Effect.fn("OpenBotToolRouter.handleOpenBotTool")(function* (
     this: OpenBotToolRouter,
     params: DynamicToolCallParams,
+    client: AgentClient,
+    request: AppServerRequest,
   ) {
     const senderAgentId = this.#conversation.agentForThread(params.threadId);
     if (!senderAgentId) throw new Error("The sending OpenBot agent is unknown.");
@@ -778,6 +785,44 @@ export class OpenBotToolRouter {
         this.#conversation.publicThreadId(senderAgentId, params.threadId),
       ),
     };
+    if (this.#dispatch) {
+      const dispatchAgent = this.#requireAgent(senderAgentId);
+      const dispatchResult = yield* handleDispatchTool(
+        params.tool,
+        params.arguments,
+        {
+          ...caller,
+          workspaceOnly: workspaceAccessEnforced(dispatchAgent),
+          threadId: executionThreadId,
+          workspacePath: dispatchAgent.workspacePath,
+          idempotencyKey: toolCallIdempotencyKey(params),
+        },
+        this.#dispatch,
+        (input) =>
+          this.#attention
+            .awaitToolApproval(
+              client,
+              request,
+              {
+                requestId: request.id,
+                agentId: senderAgentId,
+                threadId: executionThreadId,
+                turnId: params.turnId,
+                kind: "command",
+                command: this.#hooks.redactMcp(
+                  redactText(JSON.stringify({ tool: "dispatch_work", ...input }, null, 2)),
+                ),
+                cwd: dispatchAgent.workspacePath,
+                reason: sourceText("status.agent.dispatchApproval"),
+                grantRoot: null,
+                permissions: null,
+              },
+              true,
+            )
+            .pipe(Effect.map((decision) => (request.signal?.aborted || !client.running ? "cancel" : decision))),
+      );
+      if (dispatchResult) return dispatchResult;
+    }
     const waitResult = this.#waits.handleTool(params, caller);
     if (waitResult) return waitResult;
 
@@ -1265,7 +1310,7 @@ export class OpenBotToolRouter {
       }
       const delivery = this.#mailbox
         .findDeliveriesByTurn(senderAgentId, params.turnId)
-        .find((candidate) => candidate.delivery.sender.kind === "user");
+        .find((candidate) => candidate.delivery.sender.kind === "user" && !candidate.dispatch);
       if (!delivery) throw new Error("Only the current user message can receive an agent reaction.");
       const emoji = args.emoji;
       yield* this.#mailbox

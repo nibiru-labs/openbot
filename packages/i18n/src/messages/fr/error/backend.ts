@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/backend";
 
 export const messages = {
+  "error.backend.dispatchSpawnFailed": "Impossible de démarrer openswarm.",
+  "error.backend.dispatchExitCode": "La commande openswarm s’est terminée avec le code {code}.",
+  "error.backend.dispatchExited": "La commande openswarm s’est arrêtée avant de renvoyer un résultat.",
+  "error.backend.dispatchTimeout": "openswarm n’a pas répondu avant la fin du délai.",
+  "error.backend.dispatchOutputUnreadable": "La sortie d’openswarm n’a pas pu être lue.",
+  "error.backend.dispatchSaveFailed": "La demande openswarm n’a pas pu être enregistrée.",
   "error.backend.eventsUnavailable": "Les événements ne sont pas disponibles sur cet hôte.",
   "error.backend.databaseIntegrity": "La base de données OpenBot a échoué à la vérification d’intégrité.",
   "error.backend.webhookRouteLimit": "Un hôte peut avoir au plus {limit} routines webhook.",

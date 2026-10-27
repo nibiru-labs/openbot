@@ -1,6 +1,12 @@
 import { defineMessages } from "../../message";
 
 export const messages = defineMessages("customProvider", {
+  "customProvider.dispatch.title": "Coding executors",
+  "customProvider.dispatch.description":
+    "Agents can send coding work to openswarm. Task cards and code go to the executor host and its model provider. Leave the lane blank for a detached run.",
+  "customProvider.dispatch.binary": "openswarm command or path",
+  "customProvider.dispatch.host": "Default fleet host",
+  "customProvider.dispatch.lane": "Default lane (optional)",
   "customProvider.registry.title": "ACP registry",
   "customProvider.registry.description":
     "Install agents on this server. Remove runtime keeps agent settings, credentials, and conversations.",

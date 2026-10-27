@@ -142,16 +142,19 @@ function promptMessage(
   row: Pick<ConversationMessage, "id" | "turnId" | "text" | "createdAt">,
 ): ConversationMessage {
   const delivery = context?.delivery;
+  const dispatch = context?.dispatch !== undefined;
   return {
     id: delivery?.id ?? row.id,
     turnId: row.turnId,
-    author: delivery?.sender.kind === "agent" ? "agent" : "user",
-    source: delivery?.sender.kind === "agent" ? "agent" : "user",
+    author: dispatch ? "system" : delivery?.sender.kind === "agent" ? "agent" : "user",
+    source: dispatch ? "system" : delivery?.sender.kind === "agent" ? "agent" : "user",
     senderAgentId: delivery?.sender.kind === "agent" ? delivery.sender.agentId : undefined,
     replyToMessageId: delivery?.replyToMessageId,
     attachments: delivery?.attachments,
     delivery: delivery ? { id: delivery.id, status: delivery.status, position: delivery.position } : undefined,
-    text: delivery?.text ?? row.text,
+    ...(dispatch ? { itemType: "dispatch" } : {}),
+    // Provider history has the dispatch wrapper. Do not replace it with the raw mailbox JSON.
+    text: dispatch ? row.text : (delivery?.text ?? row.text),
     createdAt: delivery?.createdAt ?? row.createdAt,
     status: "completed",
   };

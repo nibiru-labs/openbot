@@ -405,7 +405,7 @@ export class MessagingThreads {
       this.store
         .links(agentId)
         .flatMap((candidate) => this.#mailbox.unresolvedMessagingDeliveries(candidate.linkId))
-        .filter((context) => context.delivery.sender.kind === "user"),
+        .filter((context) => context.delivery.sender.kind === "user" && !context.dispatch),
     );
     const byAuthor = pending.filter(
       (context) => this.#mailbox.messagingOrigin(context.delivery.id)?.authorId === input.origin.authorId,

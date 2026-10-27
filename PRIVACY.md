@@ -89,6 +89,14 @@ A script can send the data elsewhere under its own configuration.
 
 ## Agent and host usage
 
+When an agent dispatches coding work, OpenBot sends the task card and the local repository path to
+the selected openswarm executor host. A local run uses this computer. A remote run uses the named
+fleet host over its configured transport. The executor can read and change files in its worktree,
+and its selected model provider receives the task and the code context that it needs. The run id,
+host, status, branch, commit, summary, and verify result stay in the local OpenBot app data and chat.
+OpenBot does not send this data to the account service or product analytics. Do not put secrets in a
+task card. Review the returned branch and verify evidence before reporting success.
+
 The Usage view stores numeric token counts, activity counts, provider and model identifiers,
 internal session and turn identifiers, timestamps, and cost estimates in the host's local SQLite
 database. Collection starts when this feature is installed. It does not import old provider

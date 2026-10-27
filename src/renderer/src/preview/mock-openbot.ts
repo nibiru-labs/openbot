@@ -388,7 +388,10 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   const usage = clone(options.usage ?? STORY_USAGE);
   let agentCounter = agents.length;
   let hostedSites = clone(STORY_HOSTED_SITES);
-  let detectionSettings: ProviderDetectionSettings = clone(DEFAULT_PROVIDER_DETECTION_SETTINGS);
+  let detectionSettings: ProviderDetectionSettings = {
+    ...clone(DEFAULT_PROVIDER_DETECTION_SETTINGS),
+    openswarm: { binaryPath: "openswarm", defaultLane: "", defaultHost: "local" },
+  };
   let customAgents: CustomAgentSummary[] = [];
   const registryEntry: AcpRegistryEntry = {
     id: "example-acp",

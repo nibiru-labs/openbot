@@ -556,9 +556,14 @@ export class AttentionRegistry {
     client: AgentClient,
     request: AppServerRequest,
     approval: AgentApproval,
+    requireExplicitGrant = false,
   ) {
     if (request.signal?.aborted) return "cancel" as const;
-    if (this.#answersForAgent(approval.agentId)) return "accept" as const;
+    if (
+      this.#answersForAgent(approval.agentId) &&
+      (!requireExplicitGrant || this.#approvalAutomation.explicitlyAutoApproves?.(approval.agentId) === true)
+    )
+      return "accept" as const;
     const decision = Deferred.makeUnsafe<ToolApprovalDecision>();
     this.#approvals.set(request.id, {
       client,
@@ -570,7 +575,20 @@ export class AttentionRegistry {
     });
     this.#routines.markNeedsAttention(approval.turnId);
     this.#emit({ type: "approval", approval });
-    return yield* Deferred.await(decision);
+    const cancel = () => Deferred.doneUnsafe(decision, Effect.succeed("cancel"));
+    request.signal?.addEventListener("abort", cancel, { once: true });
+    if (request.signal?.aborted) cancel();
+    return yield* Deferred.await(decision).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          request.signal?.removeEventListener("abort", cancel);
+          if (this.#approvals.get(request.id)?.approval !== approval) return;
+          this.#approvals.delete(request.id);
+          this.#emitInputResolved("approval", request.id, approval.agentId);
+          this.#emitRuntimeSnapshot();
+        }),
+      ),
+    );
   }).bind(this);
 
   readonly surfaceHostedSiteApproval = Effect.fn("AttentionRegistry.surfaceHostedSiteApproval")(function* (

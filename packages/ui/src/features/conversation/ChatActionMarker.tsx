@@ -825,6 +825,7 @@ function markerLabel(
   if (marker.kind === "model-switch" || marker.kind === "agent-pause") return sourceText(marker.text);
   if (marker.kind === "context-reset") return t("chat.marker.contextReset");
   if (marker.kind === "marketplace-suggestion") return t("chat.marker.marketplaceSuggestion");
+  if (marker.kind === "dispatch") return sourceText(marker.text);
   if (marker.kind === "skill-lifecycle") return t(SKILL_ACTION_LABELS[marker.action]);
   if (marker.kind === "agent-message") {
     if (marker.expectsReply)
@@ -896,7 +897,8 @@ function markerAccessibleLabel(
     marker.kind === "context-reset" ||
     marker.kind === "marketplace-suggestion" ||
     marker.kind === "model-switch" ||
-    marker.kind === "agent-pause"
+    marker.kind === "agent-pause" ||
+    marker.kind === "dispatch"
   )
     return label;
   if (marker.kind === "skill-lifecycle") return t("chat.marker.accessible.named", { label, name: marker.skillName });
