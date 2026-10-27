@@ -32,6 +32,7 @@ import {
   type RoutineResultDestination,
 } from "@openbot/contracts/ipc";
 import { TEAM_API_ROUTES } from "@openbot/contracts/team-api-routes";
+import { AGENT_ACCESS_CAPABILITY, AGENT_ACCESS_ROUTES } from "@openbot/contracts/team-protocol/agent-access-v1";
 import {
   AGENT_BACKUP_MODELS_CAPABILITY,
   AGENT_BACKUP_MODELS_ROUTES,
@@ -88,6 +89,7 @@ import { runCauseEffect } from "../src/backend/effect-boundary";
 import { OpenBotDatabase } from "../src/backend/openbot-database";
 import { RoutineResultError } from "../src/backend/routine-results/routine-results";
 import { TeamChatStore } from "../src/backend/team-chat-store";
+import { AGENT_ACCESS_FILE, AgentAccessStore } from "../src/main/agent-access-store";
 import { createAgentHostSettings } from "../src/main/agent-host-settings";
 import { type BitwardenCliRunner, BitwardenConnectorService } from "../src/main/bitwarden-connector-service";
 import { BitwardenConnectorStore } from "../src/main/bitwarden-connector-store";
@@ -368,7 +370,18 @@ const fakeAgents: TeamApiAgents = {
       );
     return Effect.succeed(`Answer to ${input.question}`);
   },
-  saveProfile: unused("saveProfile"),
+  saveProfile: (input, sidebarLayout, sender) =>
+    Effect.sync(() => {
+      record("saveProfile", input, sender);
+      const target = agents.find((item) => item.id === input.agentId);
+      if (!target) throw new Error("Agent not found.");
+      target.name = input.draft.name;
+      target.title = input.draft.title;
+      target.description = input.draft.description;
+      target.avatarSeed = input.draft.avatarSeed;
+      target.avatarHue = input.draft.avatarHue;
+      return { agent: { ...target }, layout: sidebarLayout.getSnapshot() };
+    }),
   createAgent: unused("createAgent"),
   committedAgentDuplication: unused("committedAgentDuplication"),
   duplicateAgent: unused("duplicateAgent"),
@@ -614,9 +627,13 @@ try {
     },
   });
 
+  const agentAccess = new AgentAccessStore(join(root, AGENT_ACCESS_FILE));
+  assert.equal(await runCauseEffect(agentAccess.load()), true, "The roles file did not load.");
+
   server = new TeamApiServer({
     appVersion: APP_VERSION,
     store,
+    agentAccess,
     agents: fakeAgents,
     mailbox,
     browser,
@@ -2685,6 +2702,79 @@ try {
       "side questions do not reach the chat, the queue or a turn",
       calls.slice(callsBefore).every((entry) => entry.method === "askSideQuestion"),
       calls.slice(callsBefore).map((entry) => entry.method),
+    );
+  }
+
+  // ---- Profile save: existing agents need manage ----
+  {
+    const profileCapabilities = [
+      AGENT_HIDDEN_CAPABILITY,
+      TEAM_QUEUE_EDIT_CAPABILITY,
+      AGENT_ACCESS_CAPABILITY,
+      "agent-profile-generation",
+    ];
+    const profileDraft = (name: string) => ({
+      name,
+      title: "Saved title",
+      description: "Saved description for the agent profile.",
+      avatarSeed: "saved-seed",
+      avatarHue: 150,
+      sectionId: null,
+    });
+    const saveExisting = (agentId: string, name: string, operationId: string) =>
+      call("POST", TEAM_API_ROUTES.agents.saveProfile, {
+        token: bobToken,
+        json: { operationId, agentId, draft: profileDraft(name) },
+        capabilities: profileCapabilities,
+      });
+    const accessSaved = await call("POST", AGENT_ACCESS_ROUTES.set, {
+      token: owner.sessionToken,
+      json: { revision: 0, everyone: { "agent-ada": "view", "agent-oc": "chat" }, roles: [] },
+      capabilities: profileCapabilities,
+    });
+    check(
+      "profile save setup: the owner sets view and chat on two agents",
+      accessSaved.status === 200 && field(accessSaved.body, "revision") === 1,
+      summary(accessSaved),
+    );
+    const saveCallsBefore = callsOf("saveProfile").length;
+    const adaBefore = agents.find((item) => item.id === "agent-ada")?.name;
+    const ocBefore = agents.find((item) => item.id === "agent-oc")?.name;
+    const viewDenied = await saveExisting("agent-ada", "Ada denied", "22222222-2222-4222-8222-222222222222");
+    const chatDenied = await saveExisting("agent-oc", "Oscar denied", "33333333-3333-4333-8333-333333333333");
+    check(
+      "profile save: view and chat members get 403 agentManageDenied and the service is not called",
+      errorIs(viewDenied, 403, sourceText("error.team.agentManageDenied")) &&
+        errorIs(chatDenied, 403, sourceText("error.team.agentManageDenied")) &&
+        callsOf("saveProfile").length === saveCallsBefore,
+      [summary(viewDenied), summary(chatDenied)],
+    );
+    check(
+      "profile save: refused view and chat attempts leave the agents unchanged",
+      agents.find((item) => item.id === "agent-ada")?.name === adaBefore &&
+        agents.find((item) => item.id === "agent-oc")?.name === ocBefore,
+      {
+        ada: agents.find((item) => item.id === "agent-ada")?.name,
+        oc: agents.find((item) => item.id === "agent-oc")?.name,
+      },
+    );
+    const manageSaved = await saveExisting("agent-pi", "Pia saved", "44444444-4444-4444-8444-444444444444");
+    check(
+      "profile save: a manage member saves an existing profile",
+      manageSaved.status === 200 &&
+        field(manageSaved.body, "agent", "name") === "Pia saved" &&
+        callsOf("saveProfile").length === saveCallsBefore + 1,
+      summary(manageSaved),
+    );
+    const accessReset = await call("POST", AGENT_ACCESS_ROUTES.set, {
+      token: owner.sessionToken,
+      json: { revision: 1, everyone: {}, roles: [] },
+      capabilities: profileCapabilities,
+    });
+    check(
+      "profile save teardown: access levels reset so later checks keep manage on every agent",
+      accessReset.status === 200 && field(accessReset.body, "revision") === 2,
+      summary(accessReset),
     );
   }
 

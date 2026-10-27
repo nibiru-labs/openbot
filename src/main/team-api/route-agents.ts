@@ -152,6 +152,7 @@ export async function routeAgents(
         ),
       );
     }
+    if (typeof body.agentId === "string") requireAgentLevel(context, body.agentId, "manage");
     return json(
       200,
       await runCauseEffect(agents.saveProfile(parseSaveAgentProfile(body), sidebarLayout, memberSender(member))),
