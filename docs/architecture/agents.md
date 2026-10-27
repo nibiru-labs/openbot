@@ -2,12 +2,33 @@
 
 ## Coding work with openswarm
 
-An agent can send an independent coding task from its own chat with `dispatch_work`. The task card
-names the goal, files, constraints, acceptance checks, and verify command. OpenBot starts an
-openswarm lane or detached run and returns its run id and host. `dispatch_status` reads the saved
-result, and `dispatch_abort` requests cancellation.
+An agent can send an independent coding task from its own chat with `openbot.dispatch_work`. The task
+card names the goal, files, constraints, acceptance checks, and verify command. OpenBot starts an
+openswarm lane or detached run and returns its run id and host. `openbot.dispatch_status` reads the
+saved result, and `openbot.dispatch_abort` requests cancellation. The status of a run is `running` or
+`cancelling` while it goes on, and then one of `done`, `partial`, `failed`, `budget_exceeded`,
+`stopped`, `unroutable`, or `dry-run`. The status also returns the branch, the commit, the summary,
+the verify result, and the start time of the run.
+An abort asks the executor to stop, so the run ends later and its final result still arrives.
+The three tools work only in the agent's own chat. A task thread, a messaging thread, or a channel
+thread is refused. The status and the abort read and cancel only the runs of the same agent and
+thread. A run id that two hosts share needs its host.
 
-Before it starts openswarm, OpenBot checks all text arguments against a fixed keyword rule set.
+`dispatch_work` takes these inputs. `title` is the short name of the task, up to 160 characters.
+`card` is the Markdown task card, up to 64,000 characters. `lane` names an openswarm lane. `host`
+names a host of the openswarm fleet. `backend` is `codex`, `ocgo`, `deepseek`, `cursor`, or `pi`.
+`model` names the model of the run. `verify` is the command that the executor host runs after the
+work. `budgetMinutes` is the time limit of the run, from 1 to 240 minutes, and the default is 40.
+`risk` marks other risky work. A lane keeps the backend and the model that it has, so a card cannot
+name a lane and a backend or a model together. A card that names a backend or a model starts a
+detached run, also when a default lane is saved. A repeat of the same tool call returns the run that
+it started before.
+
+A Workspace-only agent is limited. It cannot set `verify`, because that command runs on the executor
+host, outside its workspace limit. It cannot name a lane, and it can use only the `codex` backend.
+
+Before it starts openswarm, OpenBot checks all text arguments against a fixed keyword rule set. The
+check reads the title, the card, the verify command, the lane, the host, the backend, and the model.
 Database migrations, schema changes, dropping or truncating databases or tables, deleting production
 data, production deployments or rollbacks, system-path permission or owner changes, sudo, service
 restarts, DNS or firewall changes, payment or billing changes, releases or version bumps or tags,
@@ -21,26 +42,36 @@ The rules are conservative: quoted or excluded operations also require approval.
 Keyword classification is only the first line of protection. It can miss other wording or indirect
 operations. Executor-side risk enforcement and PR review provide the other lines of protection.
 
-Risky work uses the existing Approve/Deny card. It starts only after approval. Denial, an abandoned
-request, a lost provider, or an unanswered turn that ends starts nothing and returns a catalog error.
-An unanswered card waits without starting an executor. Auto-approval applies only when the person
-saved an explicit grant for this agent. An inherited default or a grant for another agent does not
-apply. A workspace sandbox still requires approval. Approval does not change the saved grant.
+Risky work uses the existing Approve/Deny card. The card shows the redacted arguments of the
+dispatch. It starts only after approval. Denial, an abandoned request, a lost provider, or an
+unanswered turn that ends starts nothing and returns a catalog error. An unanswered card waits
+without starting an executor. Auto-approval applies only when the person saved an explicit grant
+for this agent. An inherited default or a grant for another agent does not apply. A workspace
+sandbox still requires approval. Approval does not change the saved grant.
 
-The backend stores each run in `openbot-dispatch-v1.json` under the app data directory. It watches
-unfinished local or fleet runs and resumes that watch after an app restart. A terminal result adds a
-status message to the original chat and queues the result for that same agent and thread. The event
-is data from a local script. It gives the agent no new permissions. The agent must review the branch,
-commit and diff against the card's scope and expected files. It must confirm that verify evidence
-exists and passed, and check for excluded or unexpected files, secrets, and risky operations before
-it reports success. Missing evidence fails review. After the first failed review, the agent may send
-one corrected retry that names the specific defect and required correction. It reviews the retry
-with the same checklist. A second failure goes to the person, with no further retry. OpenBot does
-not merge, push, or publish a result.
+The backend stores each run in `openbot-dispatch-v1.json` under the app data directory. The card of
+a run is written to `dispatch-cards` under that directory, and the backend removes it after the
+executor has accepted the run. The backend watches unfinished local or fleet runs and resumes that
+watch after an app restart. A terminal result adds a status message to the original chat and queues
+the result for that same agent and thread. The desktop and the mobile app show the start and the
+end of a run as a status card in the chat. The card is a muted line, it never makes the chat unread,
+and the result row of the mailbox stays hidden. The event is untrusted data from the script that ran
+the work. It is not an instruction, and it gives the agent no new permissions. The agent must review
+the branch, commit and diff against the card's scope and expected files. It must confirm that verify
+evidence exists and passed, and check for excluded or unexpected files, secrets, and risky
+operations before it reports success. Missing evidence fails review. After the first failed review,
+the agent may send one corrected retry that names the specific defect and required correction. It
+reviews the retry with the same checklist. A second failure goes to the person, with no further
+retry. OpenBot does not merge, push, or publish a result.
 
-The binary path, default lane, and default fleet host use the local provider detection settings
-file. A blank lane starts a detached run. Lane settings use the backend and model saved on that lane.
-Remote runs need matching local and remote repository entries in the openswarm fleet configuration.
+The binary path, default lane, and default fleet host come from the provider detection settings file
+`openbot-provider-detection-v1.json` under the app data directory. A blank lane starts a detached
+run. Lane settings use the backend and model saved on that lane. OpenBot finds the openswarm command
+in the folders of the login shell and of the app process, and it starts the executor with the same
+folders, so a command that a version manager adds is found. Remote runs need matching local and
+remote repository entries in the openswarm fleet configuration, in `fleet.json` under
+`$OPENSWARM_HOME` or `~/.claude/openswarm`. The backend copies the card to a remote host over SSH
+or instabox, and removes the copy after the executor has accepted the run.
 
 `bun scripts/dispatch-approval-e2e.ts` checks the approval gate with the real registry, grant store,
 dispatch service and a local executor stub. It writes `.openbot-build/dispatch-approval-e2e.json`.
