@@ -313,6 +313,7 @@
     "test:host-key-rotation": "bun scripts/host-key-rotation-e2e.ts",
     "test:cloud-authorization": "bun apps/auth-api/scripts/cloud-authorization-e2e.ts",
     "test:billing-snapshot": "bun apps/auth-api/scripts/billing-snapshot-e2e.ts",
+    "test:mobile-composer-draft": "bun scripts/mobile-composer-draft-e2e.ts",
     "test:mobile-connected-devices": "bun scripts/mobile-connected-devices-e2e.ts",
     "test:composer-lists": "bun scripts/composer-markdown-lists-e2e.ts",
     "test:reply-quote": "bun scripts/reply-quote-markdown-e2e.ts",

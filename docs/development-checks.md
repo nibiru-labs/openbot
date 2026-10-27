@@ -110,7 +110,7 @@ Its main jobs are:
 | Team API routes E2E | `ubuntu-latest` | `bun run test:team-api-routes`, when desktop code changes |
 | Team API and reverse actions E2E | `ubuntu-latest` | `test:team-legacy-clients`, `test:team-session-revoke`, `test:sign-in-relay-paste`, `test:server-mute`, `test:routine-pause-resume`, `test:agent-hide-restore`, `test:messaging-pause-resume`, `test:messaging-discord-access`, `test:turn-input`, `test:provider-update-busy`, `test:provider-update-after-app-upgrade`, `test:provider-runtime-remove`, `test:provider-exit-session`, `test:codex-hung-app-server`, `test:codex-missing-rollout`, `test:zip-attachments` and `test:mp4-attachments`, each with `bun run` in its own step, when the `desktop` lane runs |
 | Provider fakes E2E | `ubuntu-latest` | `test:custom-agents`, `test:custom-agents:login-path`, `test:acp-directories`, `test:acp-flavors`, `test:acp-turn-stall`, `test:acp-mcp-names`, `test:provider-conformance`, `test:opencode-expired-key`, `test:opencode-downgraded-session`, `test:cline-free-models` and `test:provider-transcript-replay`, each with `bun run` in its own step, when the `desktop` lane runs. The fake agents are in `scripts/provider-fakes/`; the replayed transcripts of released CLIs are in `scripts/provider-fakes/transcripts/`, and `bun scripts/record-provider-transcript.ts` records a new one |
-| Surfaces | `ubuntu-latest` | Parallel groups described below, then `bun run remote:check:compose` |
+| Surfaces | `ubuntu-latest` | Parallel groups described below, then `bun run test:mobile-composer-draft` and `bun run remote:check:compose` |
 | API | `ubuntu-latest` | `bun run check:api`, then, for a pull request from this repository, upload `apps/auth-api/dist` |
 | Storybook build | `ubuntu-latest` | `bun run build-storybook` |
 
@@ -125,8 +125,10 @@ if a step fails. The steps have separate logs. The groups run in this order:
 - `Surfaces` completes setup, then runs three groups: `mobile:typecheck` with
   `typecheck:team-client`; `typecheck:sites`, `typecheck:remote` and `typecheck:status`; and `typecheck:logging`,
   `typecheck:telemetry`, `typecheck:user-errors`, and `typecheck:i18n`. Each command uses `bun run`
-  in its own step. Mobile generation stays inside `mobile:typecheck`. Compose validation starts
-  after all groups succeed.
+  in its own step. Mobile generation stays inside `mobile:typecheck`. The mobile composer draft
+  E2E runs after the groups. It drives the real draft store of the phone, the gate of the composer
+  and the real files of the phone, so it needs no device and no simulator. The Compose validation
+  runs last.
 
 The desktop test shards keep separate runners. The API checks, artifact uploads, and production
 deployment dependencies keep their existing order. Local commands do not change. Compare job
