@@ -32,6 +32,7 @@ The default bundle identifier `run.openbot.mobile` requires official project cer
    - `./plugins/with-share-target`
    - `expo-widgets`
    - `./plugins/with-notification-service`
+   - `expo-notifications`
 4. Regenerate the iOS project so that old extension targets and entitlements do not remain. The clean prebuild deletes and recreates `apps/mobile/ios`; save any native changes first:
    ```bash
    cd apps/mobile
@@ -40,7 +41,7 @@ The default bundle identifier `run.openbot.mobile` requires official project cer
    ```
 5. Open `apps/mobile/ios/OpenBot.xcworkspace` in Xcode. Under the app target's **Signing & Capabilities**, select your personal team and remove any remaining capabilities that the team cannot sign, such as App Groups, Associated Domains, or Push Notifications.
 
-These changes disable the share extension, widgets, notification service extension, associated links, and any removed capabilities. Changing the extension identifiers alone does not remove their App Group entitlement.
+These changes disable the share extension, widgets, notification service extension, push notifications, associated links, and any removed capabilities. Changing the extension identifiers alone does not remove their App Group entitlement.
 
 ## 3. Development Build vs Release Build
 
