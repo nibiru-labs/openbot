@@ -348,6 +348,8 @@ One-time setup:
    Each extension needs the App Group `group.run.openbot.mobile`. When a release adds a
    target, set up its profile interactively once (`bunx eas-cli credentials -p ios`) before CI builds
    it. Keep the saved push key; do not let EAS make a new one.
+   For a self-build with a different App Group, follow the runtime constant and device verification
+   steps in the [iOS self-build guide](../../docs/ios-self-build.md#2-set-bundle-identifier-and-signing).
 4. Keep the OpenPanel variables in EAS `production` with `Plain text` or `Sensitive` visibility.
    `Secret` variables are unavailable to this local build. Do not copy these values into source.
 5. Ensure App Store Connect has the app `run.openbot.mobile` and the intended TestFlight group.

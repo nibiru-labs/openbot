@@ -39,7 +39,9 @@ The default bundle identifier `run.openbot.mobile` requires official project cer
    - `expo-widgets`: `bundleIdentifier` (`run.openbot.mobile.ExpoWidgetsTarget`) and `groupIdentifier` (`group.run.openbot.mobile`).
    - `./plugins/with-notification-service`: `bundleIdentifier` (`run.openbot.mobile.NotificationService`) and `groupIdentifier` (`group.run.openbot.mobile`).
 
-   Use the same team-registered App Group identifier in all three group options. Register each extension bundle identifier and enable the required capabilities for the app and extensions. Configure or remove Associated Domains and Push Notifications if your team cannot use them.
+   Use the same team-registered App Group identifier in all three group options. If you keep encrypted push notifications, also change `APP_GROUP` in `apps/mobile/src/features/push-notifications/push-notifications-native.ios.ts` to that identifier. The app uses this constant to write and remove the keys that the notification service extension reads. Changing the plugin options alone does not change the runtime constant. Verify encrypted push notifications on a physical device with your team's signing and push configuration; this guide does not establish that they work for a custom group.
+
+   Register each extension bundle identifier and enable the required capabilities for the app and extensions. Configure or remove Associated Domains and Push Notifications if your team cannot use them. The other custom plugins, `./plugins/with-rocketsim` and `./plugins/with-notification-sounds`, do not define extension identifiers or App Groups.
 4. Regenerate the iOS project so that old extension targets and entitlements do not remain. The clean prebuild deletes and recreates `apps/mobile/ios`; save any native changes first:
    ```bash
    cd apps/mobile
