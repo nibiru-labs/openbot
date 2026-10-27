@@ -19,7 +19,7 @@ type WorkspaceFrameProps = ParentProps<
     onRetryServer: (serverId: string) => Promise<void>;
     /** The rails and the sidebar, in paint order. */
     left: JSX.Element;
-    /** The page of the rail. A page other than the agents covers the middle panes, and makes them inert. */
+    /** The page of the rail. A page of another kind than the agents covers the middle panes, and makes them inert. */
     windowPage: WindowPage;
     page?: JSX.Element;
     connection?: JSX.Element;
@@ -39,7 +39,7 @@ type WorkspaceFrameProps = ParentProps<
 export function WorkspaceFrame(props: WorkspaceFrameProps) {
   const platform = usePlatform();
   const layout = useLayout();
-  const pageOpen = () => props.windowPage !== "agents";
+  const pageOpen = () => windowPageKind(props.windowPage) !== "agents";
   const rest = omit(
     props,
     "compact",

@@ -1,5 +1,5 @@
 import { isDynamicRecord, isString } from "../runtime-values";
-import { normalizeConversationUiBlock } from "../ui-blocks";
+import { normalizeConversationUiBlock, type UiBlockState } from "../ui-blocks";
 import type { TeamProtocolV7BaseJsonObject, TeamProtocolV7BaseJsonValue } from "./v7-base";
 
 /**
@@ -28,6 +28,14 @@ export const TEAM_UI_BLOCKS_CAPABILITY = "ui-blocks-v1";
  */
 const CONVERSATION_UI_BLOCKS_WIRE_BUDGET = 1_000_000;
 
+/**
+ * The state as this capability sends it. `autoAnswer` came later, so it stays off this wire: the client
+ * shows the block without the countdown, and the host still answers at its time.
+ */
+function v1State({ autoAnswer: _autoAnswer, ...state }: UiBlockState): UiBlockState {
+  return state;
+}
+
 /** `projected` with the block of each message of `source` that has one, within the wire budget. */
 export function withConversationUiBlocks(
   projected: TeamProtocolV7BaseJsonValue,
@@ -43,7 +51,7 @@ export function withConversationUiBlocks(
     if (!isDynamicRecord(message) || message.uiBlock === undefined) continue;
     const normalized = normalizeConversationUiBlock(message.uiBlock);
     if (!normalized) throw new Error("Invalid conversation UI block.");
-    const json = JSON.stringify(normalized);
+    const json = JSON.stringify({ ...normalized, state: v1State(normalized.state) });
     if (isString(message.id)) candidates.push({ id: message.id, block: JSON.parse(json), size: json.length });
   }
   if (candidates.length === 0) return projected;

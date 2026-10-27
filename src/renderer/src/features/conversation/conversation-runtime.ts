@@ -1,5 +1,6 @@
 import type {
   AgentSessionSettings,
+  AskSideQuestionInput,
   AttachmentSummary,
   FilePreview,
   OpenBotDesktopApi,
@@ -9,14 +10,17 @@ import type {
 import type { AttachmentMediaSource } from "@openbot/ui/features/conversation/AttachmentCards";
 import type { AgentSkillCalls } from "../../skills-port";
 import type { AgentTemplatePublishCalls } from "../agent-templates/agent-templates-port";
+import type { BrowserProfileCalls } from "../browser/browser-profiles-port";
 import type { SharedTableCalls } from "./conversation-port";
 import type { ConversationProps } from "./conversation-types";
 import type { EventRoutinesApi } from "./routine-webhooks-api";
+import type { AgentRoutinesApi } from "./routines-port";
 
 export interface ConversationRuntime {
   agent: Pick<
     OpenBotDesktopApi["agent"],
     | "discardDraftAttachment"
+    | "importAttachmentData"
     | "downloadAttachments"
     | "editQueuedMessage"
     | "listInstalledSkills"
@@ -60,6 +64,8 @@ export interface ConversationRuntime {
     | "onStreamTranscript"
   >;
   openUrl: OpenBotDesktopApi["openUrl"];
+  /** Asks the connected host a side question. Absent, the host does not serve `side-question-v1`. */
+  askSideQuestion?: ((input: AskSideQuestionInput) => Promise<string>) | undefined;
   previewAttachment?: (attachment: AttachmentSummary) => Promise<FilePreview>;
   /** Loads attachment images and media for a client that gets no `previewUrl`. */
   attachmentMedia?: AttachmentMediaSource;
@@ -70,6 +76,13 @@ export interface ConversationRuntime {
   visualPage?: (attachment: AttachmentSummary) => Promise<string>;
   importFiles?: (files: File[]) => Promise<void>;
   cancelImportFiles?: () => Promise<void>;
+  /**
+   * The browser profile calls of a host that serves `browser-profiles-v1`, for a client without the
+   * desktop port. Any member reads tab labels; only an owner or admin gets the other calls.
+   */
+  browserProfiles?: BrowserProfileCalls | undefined;
+  /** The agent routine calls of a client without the desktop port. */
+  routines?: AgentRoutinesApi | undefined;
   /** The host admin calls of a client without the desktop port. Absent, skills, tables and publishing are hidden. */
   admin?:
     | {

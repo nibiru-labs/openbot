@@ -150,6 +150,20 @@
   padding-inline: var(--openbot-space-6);
 }
 
+/* A Lucide icon keeps width="24" when the caller sets no size, which is too large next to button
+   text. These rules have no specificity, so a size prop or a feature rule still wins. */
+:where(.ui-button > svg[width="24"]) {
+  width: var(--openbot-icon-md);
+  height: var(--openbot-icon-md);
+  flex: 0 0 auto;
+  stroke-width: var(--openbot-icon-stroke);
+}
+
+:where(.ui-button-size-xs > svg[width="24"], .ui-button-size-sm > svg[width="24"]) {
+  width: var(--openbot-icon-sm);
+  height: var(--openbot-icon-sm);
+}
+
 :where(.ui-button-variant-default) {
   background: var(--openbot-surface-light);
   color: var(--openbot-text-on-light);
@@ -232,10 +246,6 @@
 
 :where(.ui-button-variant-destructive):focus-visible {
   border-color: var(--openbot-danger-focus);
-}
-
-:where(.ui-button-variant-destructive, .ui-button-variant-destructive-ghost):focus-visible {
-  box-shadow: 0 0 0 3px var(--openbot-danger-focus);
 }
 
 :where(.ui-button)[aria-invalid="true"] {
@@ -586,9 +596,9 @@
   color: var(--openbot-text-placeholder);
 }
 
+/* A focused field gets a neutral border and no ring. */
 :where(.ui-input, .ui-textarea, .ui-native-select):focus-visible {
   border-color: var(--openbot-border-focus);
-  box-shadow: var(--openbot-focus-ring);
 }
 
 :where(.ui-input, .ui-textarea, .ui-native-select)[aria-invalid="true"] {
@@ -645,9 +655,8 @@
 }
 
 .ui-select .ui-select-trigger:focus-visible {
-  border-color: var(--openbot-border-strong);
+  border-color: var(--openbot-border-focus);
   outline: 0;
-  box-shadow: 0 0 0 3px var(--openbot-hover);
 }
 
 .ui-select-trigger[data-disabled] {
@@ -709,6 +718,11 @@
   margin: 0;
   padding: var(--openbot-space-1);
   outline: 0;
+}
+
+.ui-select-footer {
+  border-top: 1px solid var(--openbot-border);
+  padding: var(--openbot-space-1);
 }
 
 .ui-select-item {
@@ -826,6 +840,11 @@
 
 .ui-field-description {
   color: var(--openbot-text-muted);
+}
+
+.ui-field-limit {
+  display: grid;
+  gap: var(--openbot-space-0-5);
 }
 
 .ui-switch {
@@ -1031,6 +1050,49 @@
 
 .ui-slider-thumb[data-dragging] {
   cursor: grabbing;
+}
+
+/* The seek slider draws its picture on the track; the playhead shows on hover, focus and drag. */
+.ui-seek-slider {
+  display: flex;
+  touch-action: none;
+}
+
+.ui-seek-slider-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.ui-seek-slider-picture {
+  display: flex;
+}
+
+.ui-seek-slider[data-disabled] .ui-seek-slider-track {
+  cursor: default;
+}
+
+.ui-seek-slider-thumb {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  display: block;
+  border-radius: var(--openbot-radius-pill);
+  outline: none;
+  background: var(--openbot-text-primary);
+  opacity: 0;
+}
+
+.ui-seek-slider-track:hover .ui-seek-slider-thumb,
+.ui-seek-slider-thumb:focus-visible,
+.ui-seek-slider-thumb[data-dragging] {
+  opacity: 1;
+}
+
+.ui-seek-slider-thumb:focus-visible {
+  box-shadow: var(--openbot-focus-ring);
 }
 
 .ui-slider-field[data-disabled] {
@@ -1358,7 +1420,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--openbot-space-1);
-  color: var(--openbot-ink-on-light);
+  color: var(--openbot-paper-text);
   visibility: hidden;
 }
 
@@ -1539,7 +1601,8 @@
   color: var(--openbot-text-primary);
 }
 
-.ui-toaster[data-sonner-toaster][data-sonner-theme="dark"] {
+/* Both themes: Sonner sets its own colors under `[data-sonner-theme]`, so this keeps the same weight. */
+.ui-toaster[data-sonner-toaster][data-sonner-theme] {
   z-index: var(--openbot-layer-toast);
   color: var(--openbot-text-primary);
   font-family: var(--openbot-font-sans);
@@ -2449,4 +2512,14 @@ button.ui-bubble-content {
 /* Keep notification actions usable while a Kobalte modal blocks the page. */
 .ui-toast-layer {
   pointer-events: auto;
+}
+
+/* The toasts float over areas that move the window: the window headers, and the full window on the
+ * sign-in, setup, onboarding and loading screens. The window swallows mouse events over a
+ * `-webkit-app-region: drag` area, so a pointer on a toast left the stack and collapsed it, and only its
+ * buttons, which are `no-drag`, could be reached. The `::after` is the strip Sonner puts in the gap
+ * between expanded toasts, so the pointer can cross it. */
+.ui-toaster [data-sonner-toast],
+.ui-toaster [data-sonner-toast]::after {
+  -webkit-app-region: no-drag;
 }

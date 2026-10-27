@@ -17,6 +17,7 @@ import { isDynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-
 import { afterEach, describe, expect, it } from "vitest";
 import { migrateOpenBotDatabase } from "./openbot-database-schema";
 import recordedSchemaHistory from "./openbot-database-schema-history.json";
+import upstreamSchemaHistory from "./openbot-database-upstream-schema-history.json";
 
 const appliedAt = "2026-09-03T10:00:00.000Z";
 
@@ -57,6 +58,14 @@ describe("OpenBot database build paths", () => {
 // entries only grow. A change to a recorded entry is allowed only for a version that has not shipped.
 // Data-only statements, such as an UPDATE, leave no trace in the schema, so review still covers them.
 describe("OpenBot database migration history", () => {
+  it("keeps the released upstream operations at appended fork versions", async () => {
+    const actual = await schemaChangesByVersion();
+    for (const [version, recorded] of Object.entries(upstreamSchemaHistory)) {
+      expect(actual[String(Number(version) + 1)]).toEqual(recorded);
+    }
+    expect(actual["49"]).toEqual({});
+  });
+
   it("keeps the schema change of every recorded migration", async () => {
     const actual = await schemaChangesByVersion();
 

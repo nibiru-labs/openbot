@@ -3,6 +3,8 @@ import type { messages as source } from "../../en/mobile/app";
 
 export const messages = {
   "mobile.app.route.scanQrCode": "Zeskanuj kod QR",
+  "mobile.app.route.actionsNeeded": "Wymagane działania",
+  "mobile.app.route.newChannel": "Nowy kanał",
   "mobile.app.route.createAgent": "Utwórz agenta",
   "mobile.app.route.addSharedAgent": "Dodaj udostępnionego agenta",
   "mobile.app.route.newSection": "Nowa sekcja",
@@ -13,6 +15,7 @@ export const messages = {
   "mobile.app.route.support": "Pomoc",
   "mobile.app.route.hiddenChats": "Ukryte czaty",
   "mobile.app.route.share": "Udostępnij",
+  "mobile.app.route.deletedChannels": "Usunięte kanały",
   "mobile.app.route.cropPhoto": "Przesuń i skaluj",
   "mobile.app.route.queuedMessages": "Wiadomości w kolejce",
   "mobile.app.route.messageOptions": "Opcje wiadomości",
@@ -22,8 +25,14 @@ export const messages = {
   "mobile.app.route.hostedServerPlans": "Serwer w chmurze",
   "mobile.app.route.hostedServerSetup": "Konfiguracja",
   "mobile.app.route.routines": "Rutyny",
+  "mobile.app.route.workflows": "Przepływy",
+  "mobile.app.route.workflow": "Przepływ",
+  "mobile.app.route.workflowRun": "Uruchomienie",
   "mobile.app.route.routine": "Rutyna",
+  "mobile.app.route.tasks": "Zadania",
+  "mobile.app.route.task": "Zadanie",
   "mobile.app.route.usage": "Użycie",
+  "mobile.app.route.marketplace": "Marketplace",
   "mobile.app.quickAction.routines": "Rutyny",
   "mobile.app.quickAction.search": "Szukaj",
 } as const satisfies PartialTranslation<typeof source>;

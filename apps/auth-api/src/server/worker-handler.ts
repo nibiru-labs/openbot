@@ -147,7 +147,8 @@ const checkoutReturnResponse = Effect.fn("BillingSales.returnResponse")(function
 ) {
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
-  let destination = "/billing/return";
+  // Only a server plan Checkout has a return token, so the fallback page names that kind.
+  let destination = "/billing/return?kind=plan";
   if (token && bindings.DB && bindings.OPENPANEL_CLIENT_ID && bindings.OPENPANEL_CLIENT_SECRET) {
     const sales = new BillingSales({
       database: bindings.DB,
@@ -202,7 +203,7 @@ function tickHostedServers(
       authEvents = delivery;
     },
   });
-  // The cron waits for the analytics sends itself. They never reject.
+  // The cron waits for the analytics sends and server start commands itself. They never reject.
   const sends: Effect.Effect<void>[] = [];
   return Effect.gen(function* () {
     const result = yield* createHostedBilling(bindings, {

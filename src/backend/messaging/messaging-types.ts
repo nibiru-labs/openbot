@@ -63,7 +63,7 @@ export interface InboundMessage {
    * say: a connection with a role list then ignores the message.
    */
   authorRoleIds?: readonly string[] | null;
-  /** The message this one replies to, when a person wrote it and the platform gave its text. */
+  /** The message this one replies to, when a person wrote it and the platform gave its text or files. */
   replyTo?: InboundQuote | null;
 }
 
@@ -115,8 +115,11 @@ export interface ConnectionIdentity {
 export interface ContextEntry {
   id: string;
   authorName: string;
+  /** Names the message's files too, when it has any. */
   text: string;
   sentAt: string;
+  /** The message's files, which the agent gets with the message that it answers. */
+  files?: InboundFile[];
 }
 
 /** A failure the connection cannot recover from alone. The user must act. */

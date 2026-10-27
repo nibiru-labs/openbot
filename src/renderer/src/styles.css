@@ -24,7 +24,9 @@
 @import "./features/account/account-update-island.css";
 @import "@openbot/ui/features/servers/join-server-dialog.css";
 @import "@openbot/ui/features/servers/add-server-dialog.css";
+@import "@openbot/ui/features/servers/hosted-server-upsell.css";
 @import "@openbot/ui/features/servers/restart-server-dialog.css";
+@import "@openbot/ui/features/servers/server-roles.css";
 @import "@openbot/ui/features/servers/server-update-dialog.css";
 @import "@openbot/ui/styles/settings-panel.css";
 @import "@openbot/ui/styles/provider-code-login.css";
@@ -33,10 +35,11 @@
 @import "./features/channels/channels.css";
 @import "@openbot/ui/features/channels/channel-activity.css";
 @import "@openbot/ui/features/diagrams/diagrams.css";
+@import "@openbot/ui/features/workflows/workflow-nodes.css";
+@import "@openbot/ui/features/workflows/workflows.css";
 @import "@openbot/ui/features/usage/agent-usage-report.css";
 @import "./features/usage/usage.css";
 @import "./features/schedule/schedule.css";
-@import "@openbot/ui/features/tasks/tasks.css";
 @import "@openbot/ui/styles/chart.css";
 @import "@openbot/ui/features/files/files.css";
 @import "@openbot/ui/features/import/agent-import.css";
@@ -49,6 +52,7 @@
 @import "./features/settings/settings-mobile-connect.css";
 @import "@openbot/ui/features/settings/settings-hosted-sites.css";
 @import "@openbot/ui/features/settings/integration-layout.css";
+@import "@openbot/ui/features/settings/provider-settings-page.css";
 @import "@openbot/ui/features/settings/github-connector.css";
 @import "@openbot/ui/features/settings/onepassword-connector.css";
 @import "@openbot/ui/features/settings/slack-integration.css";
@@ -63,6 +67,8 @@
 @import "@openbot/ui/features/settings/mcp-connect-dialog.css";
 @import "./features/provider-updates/provider-updates.css";
 @import "@openbot/ui/features/custom-providers/custom-providers.css";
+@import "@openbot/ui/features/browser/browser-profiles.css";
+@import "@openbot/ui/features/vault/vault.css";
 @import "@openbot/ui/features/agents/agent-template.css";
 @import "@openbot/ui/features/agents/agent-delete-undo-toast.css";
 @import "@openbot/ui/features/updates/whats-new.css";
@@ -70,6 +76,8 @@
 @import "@openbot/ui/styles/reference-chip.css";
 @import "@openbot/ui/skill-preview.css";
 @import "./styles/light-restyle.css";
+/* After the page styles: the transparent window replaces their backgrounds. */
+@import "./styles/window-glass.css";
 
 @source "../../../packages/ui/src";
 

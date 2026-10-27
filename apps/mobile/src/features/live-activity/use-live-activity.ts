@@ -24,6 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "react-native";
 import { getBloubAvatarColor } from "@/features/agents/model/bloub-activity";
 import { showFailureAlert } from "@/features/analytics/failure-reports";
+import { mobileAnalytics } from "@/features/analytics/mobile-analytics";
 import { useLiveActivitiesPreference } from "@/features/settings/model/live-activities";
 import {
   mutedUntil,
@@ -163,11 +164,15 @@ export function useLiveActivity({
   }, []);
 
   const syncFor = useCallback((native: AgentLiveActivityNative) => {
-    sync.current ??= new LiveActivitySync(native.starter, (token, startedAt) => {
-      if (disposed.current) return;
-      setPushToken(token);
-      setActivityStartedAt(startedAt);
-    });
+    sync.current ??= new LiveActivitySync(
+      native.starter,
+      (token, startedAt) => {
+        if (disposed.current) return;
+        setPushToken(token);
+        setActivityStartedAt(startedAt);
+      },
+      (action) => mobileAnalytics.track("live_activity_action", { action }),
+    );
     return sync.current;
   }, []);
 

@@ -7,97 +7,18 @@
 // cannot be read gives the last good one, then the bundled one, and that an empty free tier is kept.
 // `bun scripts/cline-free-models-e2e.ts`. Writes .openbot-build/cline-free-models-e2e/report.json.
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { AgentClient } from "../src/backend/agent-client";
 import type { AgentCliInfo } from "../src/backend/cli";
 import { CLINE_RECOMMENDED_MODELS_URL } from "../src/backend/cline-free-models";
 import { runCauseEffect } from "../src/backend/effect-boundary";
-import {
-  type AppServerNotification,
-  decodeModelListResponse,
-  getString,
-  type ModelListResponse,
-} from "../src/backend/protocol";
+import { decodeModelListResponse, type ModelListResponse } from "../src/backend/protocol";
 import { NO_PROVIDER_CREDENTIALS, requireProviderDriver } from "../src/backend/provider-drivers";
+import { installFakeAgent, readJsonl, runTurn, startThread, stopClients } from "./provider-fakes/host";
 
 const OUT = resolve(import.meta.dirname, "../.openbot-build/cline-free-models-e2e");
-
-const FAKE_CLINE = `#!/usr/bin/env node
-const fs = require("node:fs");
-const NL = String.fromCharCode(10);
-const LISTED = [
-  { modelId: "anthropic/claude-sonnet-5.5", name: "Claude Sonnet 5.5" },
-  { modelId: "openai/gpt-6-astra", name: "GPT-6 Astra" },
-];
-const PROVIDERS = ["cline", "cline-pass", "openai-codex"];
-const sessions = new Map();
-let count = 0;
-const log = (entry) => fs.appendFileSync(process.env.FAKE_CLINE_LOG, JSON.stringify(entry) + NL);
-const write = (message) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + NL);
-function configOptions(session) {
-  return [
-    { id: "provider", name: "Provider", category: "model", type: "select", currentValue: session.provider,
-      options: PROVIDERS.map((value) => ({ value, name: value })) },
-    { id: "model", name: "Model", category: "model", type: "select", currentValue: session.model,
-      options: LISTED.map((entry) => ({ value: entry.modelId, name: entry.name })) },
-    { id: "mode", name: "Mode", category: "mode", type: "select", currentValue: "act",
-      options: [{ value: "act", name: "Act" }, { value: "plan", name: "Plan" }] },
-  ];
-}
-function handle(message) {
-  if (message.id === undefined) return;
-  const params = message.params ?? {};
-  if (message.method === "initialize") {
-    write({ id: message.id, result: { protocolVersion: 1, agentCapabilities: {}, authMethods: [] } });
-    return;
-  }
-  if (message.method === "session/new") {
-    count += 1;
-    const sessionId = "s-" + count;
-    const session = { provider: "cline-pass", model: LISTED[0].modelId };
-    sessions.set(sessionId, session);
-    write({ id: message.id, result: { sessionId, configOptions: configOptions(session),
-      models: { availableModels: LISTED, currentModelId: session.model } } });
-    return;
-  }
-  if (message.method === "session/set_config_option") {
-    const session = sessions.get(params.sessionId);
-    log({ event: "set", sessionId: params.sessionId, configId: params.configId, value: params.value });
-    // As Cline's acpAgent.ts: a provider must be one it knows, and a model is taken as it is.
-    if (params.configId === "provider" && !PROVIDERS.includes(params.value)) {
-      write({ id: message.id, error: { code: -32602, message: "Invalid provider " + params.value } });
-      return;
-    }
-    if (params.configId === "provider") session.provider = params.value;
-    if (params.configId === "model") session.model = params.value;
-    write({ id: message.id, result: { configOptions: configOptions(session) } });
-    return;
-  }
-  if (message.method === "session/prompt") {
-    const session = sessions.get(params.sessionId);
-    log({ event: "prompt", sessionId: params.sessionId, provider: session.provider, model: session.model });
-    write({ method: "session/update", params: { sessionId: params.sessionId, update: {
-      sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } } } });
-    write({ id: message.id, result: { stopReason: "end_turn" } });
-    return;
-  }
-  write({ id: message.id, result: {} });
-}
-let buffer = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
-  buffer += chunk;
-  let index;
-  while ((index = buffer.indexOf(NL)) >= 0) {
-    const line = buffer.slice(0, index);
-    buffer = buffer.slice(index + 1);
-    if (line.trim()) handle(JSON.parse(line));
-  }
-});
-setInterval(() => {}, 1000);
-`;
 
 // The shape of Cline's answer on 2026-10-19, with one id that `isAgentModel` refuses.
 const RECOMMENDED = {
@@ -133,7 +54,7 @@ const root = await mkdtemp(join(tmpdir(), "openbot-cline-free-models-e2e-"));
 const log = join(root, "cline.jsonl");
 const report: Report = { passed: false };
 const clients: AgentClient[] = [];
-process.env.FAKE_CLINE_LOG = log;
+process.env.FAKE_LOG = log;
 
 // Cline's endpoint, answered here: `status` 200 with `RECOMMENDED`, or the error status set below.
 let status = 200;
@@ -157,14 +78,6 @@ globalThis.fetch = Object.assign(
   { preconnect: realFetch.preconnect },
 );
 
-async function readLog(): Promise<LogEntry[]> {
-  const text = await readFile(log, "utf8").catch(() => "");
-  return text
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
-}
-
 function open(cli: AgentCliInfo): AgentClient {
   const client = requireProviderDriver("cline").createClient(cli, 10_000, NO_PROVIDER_CREDENTIALS);
   clients.push(client);
@@ -177,37 +90,11 @@ async function listModels(client: AgentClient): Promise<ModelListResponse["data"
   return response.data;
 }
 
-/** Starts a turn and waits for its completion. */
-async function runTurn(client: AgentClient, thread: string, model: string): Promise<void> {
-  // `AgentClient` has no `off`, so a finished turn's listener stays and ignores what follows.
-  let finished = false;
-  const done = new Promise<void>((finish, fail) => {
-    client.on("notification", (notification: AppServerNotification) => {
-      if (finished || getString(notification.params, "threadId") !== thread) return;
-      if (notification.method === "error") fail(new Error(getString(notification.params, "message") ?? "error"));
-      if (notification.method === "turn/completed") {
-        finished = true;
-        finish();
-      }
-    });
-  });
-  await runCauseEffect(
-    client.request(
-      "turn/start",
-      { threadId: thread, model, input: [{ type: "text", text: "hello", text_elements: [] }] },
-      (value) => value,
-    ),
-  );
-  await done;
-}
-
 try {
   const executable = join(root, "cline", "bin", "cline");
   const workspace = join(root, "workspace");
-  await mkdir(join(root, "cline", "bin"), { recursive: true });
   await mkdir(workspace);
-  await writeFile(executable, FAKE_CLINE);
-  await chmod(executable, 0o755);
+  await installFakeAgent(executable, "cline");
   const cli: AgentCliInfo = { executable, version: "3.0.73", source: "managed" };
 
   // 1. The picker gets the CLI's models, then Cline's free ones with a "(free)" name.
@@ -234,11 +121,7 @@ try {
   // 2. A listed and a free model each reach the session through the `model` option, not `provider`.
   // The session starts on `cline-pass`: a listed model keeps it, and a free one moves it to `cline`.
   await rm(log, { force: true });
-  const started = await runCauseEffect(
-    client.request("thread/start", { model: "openai/gpt-6-astra", cwd: workspace }, (value) => value),
-  );
-  const thread = JSON.stringify(started).match(/"id":"([^"]+)"/)?.[1];
-  assert.ok(thread, "thread/start answers a thread id.");
+  const thread = await startThread(client, { model: "openai/gpt-6-astra", cwd: workspace });
   report.turns = [];
   // A listed model after the free one sets the session's own provider back.
   for (const [model, provider, providerChange] of [
@@ -247,8 +130,8 @@ try {
     ["openai/gpt-6-astra", "cline-pass", true],
   ] as const) {
     await rm(log, { force: true });
-    await runTurn(client, thread, model);
-    const entries: LogEntry[] = (await readLog()).filter((entry) => entry.sessionId === thread);
+    assert.equal((await runTurn(client, thread, { model })).error, null, `The turn on ${model} succeeds.`);
+    const entries: LogEntry[] = (await readJsonl<LogEntry>(log)).filter((entry) => entry.sessionId === thread);
     const set = entries.filter((entry) => entry.event === "set");
     const prompt = entries.filter((entry) => entry.event === "prompt").at(-1);
     const modelSet = set.findIndex((entry) => entry.configId === "model" && entry.value === model);
@@ -306,7 +189,7 @@ try {
   report.passed = true;
 } finally {
   globalThis.fetch = realFetch;
-  await Promise.all(clients.map((client) => runCauseEffect(client.stop()).catch(() => undefined)));
+  await stopClients(clients);
   await mkdir(OUT, { recursive: true });
   await writeFile(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
   await rm(root, { recursive: true, force: true });

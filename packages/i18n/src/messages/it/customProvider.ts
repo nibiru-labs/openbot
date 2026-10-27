@@ -50,18 +50,17 @@ export const messages = {
   "customProvider.error.baseUrlProtocol": "Usa un URL http:// o https://.",
   "customProvider.error.baseUrlCredential": "Metti la credenziale in un header, non nell'URL.",
   "customProvider.saved.restarted": "Salvato. OpenBot sta caricando i modelli.",
-  "customProvider.saved.skippedBusy":
-    "Salvato. OpenCode legge l'elenco dopo la fine dell'attività in corso. Poi premi «Connetti».",
+  "customProvider.saved.skippedBusy": "Salvato. OpenCode legge l'elenco dopo la fine dell'attività in corso.",
   "customProvider.saved.notRunning": "Salvato. OpenCode legge l'elenco al prossimo avvio.",
   "customProvider.removed.restarted": "Rimosso. OpenBot sta caricando i modelli.",
-  "customProvider.removed.skippedBusy":
-    "Rimosso. OpenCode legge l'elenco dopo la fine dell'attività in corso. Poi premi «Connetti».",
+  "customProvider.removed.skippedBusy": "Rimosso. OpenCode legge l'elenco dopo la fine dell'attività in corso.",
   "customProvider.removed.notRunning": "Rimosso. OpenCode legge l'elenco al prossimo avvio.",
   "customProvider.saveFailed": "OpenBot non è riuscito a salvare questo endpoint.",
   "customProvider.removeFailed": "OpenBot non è riuscito a rimuovere {name}.",
   "customProvider.saveUnavailable": "Questa versione non può salvare un endpoint.",
   "customProvider.removeUnavailable": "Questa versione non può rimuovere un endpoint.",
   "customProvider.form.title": "Aggiungi un provider personalizzato",
+  "customProvider.form.editTitle": "Modifica un provider personalizzato",
   "customProvider.form.description": "Descrivi un endpoint compatibile con OpenAI e i modelli che offre.",
   "customProvider.form.heading": "Provider personalizzato",
   "customProvider.form.subtitle": "Qualsiasi endpoint compatibile con OpenAI.",
@@ -72,8 +71,7 @@ export const messages = {
   "customProvider.field.baseUrl": "URL di base",
   "customProvider.field.apiKey": "Chiave API",
   "customProvider.field.apiKeyHint": "Facoltativa. Lasciala vuota se gestisci l'autenticazione con gli header.",
-  "customProvider.field.apiKeyKeptHint":
-    "Una chiave è già salvata. Lascia vuoto per mantenerla insieme agli header salvati.",
+  "customProvider.field.apiKeyKeptHint": "Una chiave è già salvata. Lascia vuoto per mantenerla.",
   "customProvider.models": "Modelli",
   "customProvider.model.id": "ID del modello {number}",
   "customProvider.model.name": "Nome visualizzato del modello {number}",
@@ -84,6 +82,7 @@ export const messages = {
   "customProvider.header.name": "Nome dell'header {number}",
   "customProvider.header.value": "Valore dell'header {number}",
   "customProvider.header.valuePlaceholder": "valore",
+  "customProvider.header.keptPlaceholder": "Salvato. Lascia vuoto per mantenerlo.",
   "customProvider.header.remove": "Rimuovi l'header {number}",
   "customProvider.header.add": "Aggiungi header",
   "customProvider.submit": "Invia",
@@ -157,6 +156,9 @@ export const messages = {
   "customProvider.acp.args": "Argomenti",
   "customProvider.acp.argsHint":
     "Separa gli argomenti con spazi. Metti tra virgolette un argomento che contiene spazi.",
+  "customProvider.acp.usagePrompt": "Comando di utilizzo",
+  "customProvider.acp.usagePromptHint":
+    "OpenBot lo invia al massimo ogni 5 minuti e mostra l'ultima risposta. Usa un comando a cui l'agente risponde da solo, come /usage.",
   "customProvider.acp.env": "Variabili d'ambiente",
   "customProvider.acp.env.name": "Nome della variabile {number}",
   "customProvider.acp.env.value": "Valore della variabile {number}",
@@ -169,6 +171,10 @@ export const messages = {
   "customProvider.acp.checkOk": "{name} ha risposto",
   "customProvider.acp.checkOkVersion": "{name} {version} ha risposto",
   "customProvider.acp.checkProtocol": "Versione ACP {version}",
+  "customProvider.acp.checkModels": {
+    one: "{count} modello: {models}",
+    other: "{count} modelli: {models}",
+  },
   "customProvider.acp.checkFailed": "L'agente non ha risposto",
   "customProvider.acp.trustTitle": "Questo comando viene eseguito sul tuo computer",
   "customProvider.acp.trustDescription":
@@ -184,6 +190,7 @@ export const messages = {
   "customProvider.acp.error.envDuplicate": "Questo agente imposta già {name}.",
   "customProvider.acp.error.envValueRequired": "Inserisci un valore per questa variabile.",
   "customProvider.acp.error.envValueLength": "Il valore deve avere meno di {max} caratteri.",
+  "customProvider.acp.error.usagePromptInvalid": "Usa una sola riga di massimo {max} caratteri.",
   "customProvider.acp.error.agentIdPattern":
     "Usa lettere minuscole, numeri o trattini, iniziando con una lettera o un numero. Al massimo 40 caratteri.",
   "customProvider.agents.title": "Agenti personalizzati",
@@ -215,6 +222,7 @@ export const messages = {
   "customProvider.list.empty": "Ancora nessun endpoint personalizzato.",
   "customProvider.list.label": "Endpoint personalizzati",
   "customProvider.list.apiKeySaved": "Chiave API salvata",
+  "customProvider.list.editLabel": "Modifica {name}",
   "customProvider.list.deleteLabel": "Elimina {name}",
   "customProvider.list.confirmTitle": "Rimuovere {name}?",
   "customProvider.list.confirmDescription":

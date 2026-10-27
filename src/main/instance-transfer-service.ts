@@ -1043,7 +1043,7 @@ const SECRET_NAME = /token|secret|password|passwd|api[-_]?key|apikey|auth|creden
  * Removes values that can hold a secret from MCP and custom agent arguments and from URLs, and
  * records whose values it removed, so the import can ask for them again.
  */
-function createRedaction() {
+export function createRedaction() {
   const names = new Set<string>();
   const url = (owner: string, value: string): string => {
     if (!value) return value;

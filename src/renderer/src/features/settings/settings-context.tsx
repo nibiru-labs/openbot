@@ -1,13 +1,16 @@
 import {
+  AGENT_DEFAULT_KEYS,
   type ApprovalAutomationPreference,
   agentAutoApprovalEnabled,
   type DynamicIslandGeometry,
+  type ExternalLinkTarget,
 } from "@openbot/contracts/ipc";
 import { DEFAULT_GENERAL_SETTINGS, type GeneralSettingsValue } from "@openbot/ui/features/settings/app-settings";
 import { currentText } from "@openbot/ui/text";
 import { createEffect, createSignal, onSettled } from "solid-js";
 import { isActionSoundEnabled, readActionSoundTheme, setActionSoundChoice } from "../../action-sounds";
 import { actionToast } from "../../action-toast";
+import { readShowAgentSteps, setShowAgentSteps, useShowAgentSteps } from "../../agent-steps-preference";
 import { desktopAnalytics } from "../../analytics";
 import { isCompletionSoundEnabled, setCompletionSoundEnabled } from "../../completion-sound";
 import { usePlatform } from "../../platform";
@@ -20,6 +23,10 @@ import { isOpenSettingsShortcut } from "./settings-shortcut";
 import type { SettingsTab } from "./settings-tabs";
 
 const ANALYTICS_APP_VERSION_STORAGE_KEY = "openbot:analytics-app-version";
+
+function sameExternalLinkTarget(left: ExternalLinkTarget, right: ExternalLinkTarget): boolean {
+  return left.kind === right.kind && (left.kind !== "app" || right.kind !== "app" || left.path === right.path);
+}
 
 /** Tells the user why a switch went back to its previous value. */
 function showSaveFailure(error: unknown): void {
@@ -95,6 +102,7 @@ const Settings = createSimpleContext({
       ...DEFAULT_GENERAL_SETTINGS,
       taskCompletionSound: isCompletionSoundEnabled(),
       sendShortcut: readSendShortcutMode(),
+      showAgentSteps: readShowAgentSteps(),
       soundFeedback: isActionSoundEnabled(),
       soundTheme: readActionSoundTheme(),
     });
@@ -106,6 +114,15 @@ const Settings = createSimpleContext({
       () => sendShortcutMode(),
       (mode) => {
         setGeneralSettings((current) => (current.sendShortcut === mode ? current : { ...current, sendShortcut: mode }));
+      },
+    );
+    const showAgentSteps = useShowAgentSteps();
+    createEffect(
+      () => showAgentSteps(),
+      (show) => {
+        setGeneralSettings((current) =>
+          current.showAgentSteps === show ? current : { ...current, showAgentSteps: show },
+        );
       },
     );
     const [approvalAutomation, setApprovalAutomation] = createSignal<ApprovalAutomationPreference>({
@@ -120,9 +137,15 @@ const Settings = createSimpleContext({
     let autoInstallUpdatesChanged = false;
     let notificationPreferenceChanged = false;
     let busyMessageModeChanged = false;
+    let agentDefaultsChanged = false;
     let agentMemoryLimitChanged = false;
     let tokenBudgetChanged = false;
     let keepRemoteSessionsChanged = false;
+    let externalLinkTargetChanged = false;
+    let launchAtLoginChanged = false;
+    let keepRunningInBackgroundChanged = false;
+    let keepAwakeChanged = false;
+    let keepAwakeOnBatteryChanged = false;
 
     createEffect(
       () => ({
@@ -150,7 +173,8 @@ const Settings = createSimpleContext({
             // Version attribution is optional and must not block startup.
           }
         }
-        if (analyticsOpened) return;
+        // A chat window is not another start of the app.
+        if (analyticsOpened || platform.chatWindow) return;
         analyticsOpened = true;
         desktopAnalytics.track("desktop_app_opened", {
           setup_completed: setup.completed,
@@ -183,11 +207,14 @@ const Settings = createSimpleContext({
       if (previous.sendShortcut !== value.sendShortcut) {
         setSendShortcutMode(value.sendShortcut);
       }
+      if (previous.showAgentSteps !== value.showAgentSteps) {
+        setShowAgentSteps(value.showAgentSteps);
+      }
       if (previous.soundFeedback !== value.soundFeedback || previous.soundTheme !== value.soundTheme) {
         setActionSoundChoice(value.soundFeedback ? value.soundTheme : "off");
       }
       if (previous.productAnalytics !== value.productAnalytics) {
-        desktopAnalytics.setTrackingEnabled(value.productAnalytics);
+        desktopAnalytics.setTrackingEnabled(value.productAnalytics, { recordOptOut: true });
         setAnalyticsPreferenceLoaded(value.productAnalytics);
         void settingsPort()
           .setAnalyticsPreference({ enabled: value.productAnalytics })
@@ -251,12 +278,52 @@ const Settings = createSimpleContext({
           (preference) => preference.mode,
         );
       }
-      if (previous.agentMemoryLimit !== value.agentMemoryLimit) {
-        agentMemoryLimitChanged = true;
+      if (AGENT_DEFAULT_KEYS.some((key) => previous.agentDefaults[key] !== value.agentDefaults[key])) {
+        agentDefaultsChanged = true;
+        persistField("agentDefaults", settingsPort().setAgentDefaults({ ...value.agentDefaults }), (saved) => saved);
+      }
+      // A hidden switch is null and cannot change.
+      if (value.launchAtLogin !== null && previous.launchAtLogin !== value.launchAtLogin) {
+        launchAtLoginChanged = true;
         persistField(
-          "agentMemoryLimit",
-          settingsPort().setAgentMemoryLimitPreference({ limit: value.agentMemoryLimit }),
-          (preference) => preference.limit,
+          "launchAtLogin",
+          settingsPort().setAppBehaviorPreference({ launchAtLogin: value.launchAtLogin }),
+          (preference) => preference.launchAtLogin,
+        );
+      }
+      if (
+        value.keepRunningInBackground !== null &&
+        previous.keepRunningInBackground !== value.keepRunningInBackground
+      ) {
+        keepRunningInBackgroundChanged = true;
+        persistField(
+          "keepRunningInBackground",
+          settingsPort().setAppBehaviorPreference({ keepRunningInBackground: value.keepRunningInBackground }),
+          (preference) => preference.keepRunningInBackground,
+        );
+      }
+      if (value.keepAwake !== null && previous.keepAwake !== value.keepAwake) {
+        keepAwakeChanged = true;
+        persistField(
+          "keepAwake",
+          settingsPort().setAppBehaviorPreference({ keepAwake: value.keepAwake }),
+          (preference) => preference.keepAwake,
+        );
+      }
+      if (value.keepAwakeOnBattery !== null && previous.keepAwakeOnBattery !== value.keepAwakeOnBattery) {
+        keepAwakeOnBatteryChanged = true;
+        persistField(
+          "keepAwakeOnBattery",
+          settingsPort().setAppBehaviorPreference({ keepAwakeOnBattery: value.keepAwakeOnBattery }),
+          (preference) => preference.keepAwakeOnBattery,
+        );
+      }
+      if (!sameExternalLinkTarget(previous.externalLinkTarget, value.externalLinkTarget)) {
+        externalLinkTargetChanged = true;
+        persistField(
+          "externalLinkTarget",
+          settingsPort().setExternalLinkPreference({ target: value.externalLinkTarget }),
+          (preference) => preference.target,
         );
       }
       if (
@@ -385,8 +452,17 @@ const Settings = createSimpleContext({
           autoInstallUpdates: preference.autoInstall,
         }));
       });
+      // A page can open from main with no click here, such as a sign-in page, so main sends the notice.
+      const unsubscribeLinkFallback = settingsPort().onExternalLinkFallback(({ name }) => {
+        const { t } = currentText();
+        actionToast.warning(t("settings.externalLinks.fallback.title", { name }), {
+          id: "external-link-fallback",
+          description: t("settings.externalLinks.fallback.description"),
+        });
+      });
       return () => {
         window.removeEventListener("keydown", handleSettingsShortcut);
+        unsubscribeLinkFallback();
         unsubscribe();
         unsubscribeApprovals();
         unsubscribeMemoryLimit();
@@ -439,6 +515,12 @@ const Settings = createSimpleContext({
             setGeneralSettings((current) => ({ ...current, busyMessageMode: preference.mode }));
           }),
         settingsPort()
+          .getAgentDefaults()
+          .then((defaults) => {
+            if (agentDefaultsChanged) return;
+            setGeneralSettings((current) => ({ ...current, agentDefaults: defaults }));
+          }),
+        settingsPort()
           .getAgentMemoryLimitPreference()
           .then((preference) => {
             if (agentMemoryLimitChanged) return;
@@ -453,6 +535,27 @@ const Settings = createSimpleContext({
               tokenBudgetPerHour: preference.perHour,
               tokenBudgetPerTurn: preference.perTurn,
             }));
+          }),
+        settingsPort()
+          .getAppBehaviorPreference()
+          .then((preference) => {
+            setGeneralSettings((current) => ({
+              ...current,
+              launchAtLogin: launchAtLoginChanged ? current.launchAtLogin : preference.launchAtLogin,
+              keepRunningInBackground: keepRunningInBackgroundChanged
+                ? current.keepRunningInBackground
+                : preference.keepRunningInBackground,
+              keepAwake: keepAwakeChanged ? current.keepAwake : preference.keepAwake,
+              keepAwakeOnBattery: keepAwakeOnBatteryChanged
+                ? current.keepAwakeOnBattery
+                : preference.keepAwakeOnBattery,
+            }));
+          }),
+        settingsPort()
+          .getExternalLinkPreference()
+          .then((preference) => {
+            if (externalLinkTargetChanged) return;
+            setGeneralSettings((current) => ({ ...current, externalLinkTarget: preference.target }));
           }),
         settingsPort()
           .getRemoteSessionReusePreference()
@@ -470,21 +573,24 @@ const Settings = createSimpleContext({
               notificationPreview: preference.messagePreview,
             }));
           }),
-        settingsPort()
-          .dynamicIsland.getPreference()
-          .then((preference) =>
-            setGeneralSettings((current) => ({
-              ...current,
-              macBookNotch: preference.enabled,
-              macBookNotchHaptics: preference.hapticsEnabled,
-              macBookNotchIdle: preference.idleVisible,
-              macBookNotchAdditionalDisplays: preference.additionalDisplaysEnabled,
-              macBookNotchWidthPercent: preference.widthPercent,
-              macBookNotchHeightPercent: preference.heightPercent,
-              macBookNotchServers: preference.serverVisibility,
-              macBookNotchNewServers: preference.newServersVisible,
-            })),
-          ),
+        // Main accepts island calls only from the main window, which owns the island.
+        platform.chatWindow
+          ? Promise.resolve()
+          : settingsPort()
+              .dynamicIsland.getPreference()
+              .then((preference) =>
+                setGeneralSettings((current) => ({
+                  ...current,
+                  macBookNotch: preference.enabled,
+                  macBookNotchHaptics: preference.hapticsEnabled,
+                  macBookNotchIdle: preference.idleVisible,
+                  macBookNotchAdditionalDisplays: preference.additionalDisplaysEnabled,
+                  macBookNotchWidthPercent: preference.widthPercent,
+                  macBookNotchHeightPercent: preference.heightPercent,
+                  macBookNotchServers: preference.serverVisibility,
+                  macBookNotchNewServers: preference.newServersVisible,
+                })),
+              ),
       ]).then((results) => {
         setPreferencesLoad(results.some((result) => result.status === "rejected") ? "failed" : "loaded");
       });
@@ -496,6 +602,7 @@ const Settings = createSimpleContext({
         .getApprovalAutomation()
         .then(setApprovalAutomation)
         .catch(() => undefined);
+      if (platform.chatWindow) return;
       void settingsPort()
         .dynamicIsland.getBuiltInDisplayGeometry()
         .then((geometry) => setBuiltInDisplayGeometry(geometry))

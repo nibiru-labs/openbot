@@ -58,15 +58,37 @@ function json(response: ServerResponse, status: number, value: unknown): void {
   response.end(JSON.stringify(value));
 }
 
-async function fakeServer(publishMetadata: boolean): Promise<FakeServer> {
+/** What the server publishes about its sign-in. */
+type Metadata = "published" | "absent" | "refused" | "unreadable" | "busy" | "unanswered";
+
+async function fakeServer(metadata: Metadata): Promise<FakeServer> {
   const state: Omit<FakeServer, "url" | "close"> = { toolLists: [], tokenRequests: 0 };
   let base = "";
   const server: Server = createServer((request, response) => {
     void (async () => {
       const path = new URL(request.url ?? "/", base).pathname;
-      if (request.method === "GET" && path === "/.well-known/oauth-protected-resource/mcp" && publishMetadata)
-        return json(response, 200, { resource: `${base}/mcp`, authorization_servers: [`${base}/`] });
-      if (request.method === "GET" && path === "/.well-known/oauth-authorization-server" && publishMetadata)
+      // A refusal at the path and at the root is an answer: the server takes no sign-in.
+      if (
+        request.method === "GET" &&
+        path.startsWith("/.well-known/oauth-protected-resource") &&
+        metadata === "refused"
+      )
+        return json(response, 403, { error: "forbidden" });
+      if (request.method === "GET" && path.startsWith("/.well-known/oauth-protected-resource") && metadata === "busy")
+        return json(response, 429, { error: "too many requests" });
+      // The path is not found, and the root gives no answer: the 404 must not count for the root.
+      if (request.method === "GET" && path === "/.well-known/oauth-protected-resource" && metadata === "unanswered") {
+        request.socket.destroy();
+        return;
+      }
+      if (request.method === "GET" && path === "/.well-known/oauth-protected-resource/mcp") {
+        // A read that fails says nothing about the server. The sign-in must not end as if the server
+        // asked for none.
+        if (metadata === "unreadable") return json(response, 500, { error: "server error" });
+        if (metadata === "published")
+          return json(response, 200, { resource: `${base}/mcp`, authorization_servers: [`${base}/`] });
+      }
+      if (request.method === "GET" && path === "/.well-known/oauth-authorization-server" && metadata === "published")
         return json(response, 200, {
           issuer: `${base}/`,
           authorization_endpoint: `${base}/authorize`,
@@ -147,8 +169,8 @@ function httpConfig(url: string): McpServerConfig {
   };
 }
 
-async function runCase(name: string, publishMetadata: boolean, signIn: boolean): Promise<Case> {
-  const server = await fakeServer(publishMetadata);
+async function runCase(name: string, metadata: Metadata, signIn: boolean): Promise<Case> {
+  const server = await fakeServer(metadata);
   const records = new Map<string, McpOAuthRecord>();
   // A saved sign-in app, as in the issue: the server offers no client registration.
   records.set(server.url, { app: { clientId: CLIENT_ID, clientSecret: "e2e-secret" } });
@@ -203,7 +225,7 @@ function check(entry: Case, condition: boolean, text: string): void {
 async function main(): Promise<void> {
   await mkdir(out, { recursive: true });
   try {
-    const signIn = await runCase("sign-in-public-tools", true, true);
+    const signIn = await runCase("sign-in-public-tools", "published", true);
     check(signIn, signIn.result.error === null, `the sign-in failed: ${signIn.result.error}`);
     check(signIn, signIn.result.toolCount === 4, "the sign-in did not count 4 tools");
     check(signIn, signIn.pagesOpened === 1, "the sign-in did not open one authorization page");
@@ -212,14 +234,44 @@ async function main(): Promise<void> {
     check(signIn, signIn.toolLists.join() === "false,true", "the second connection did not send the token");
     report.cases.push(signIn);
 
-    const noMetadata = await runCase("sign-in-no-oauth-metadata", false, true);
+    const noMetadata = await runCase("sign-in-no-oauth-metadata", "absent", true);
     check(noMetadata, noMetadata.result.error === null, `the connection failed: ${noMetadata.result.error}`);
     check(noMetadata, noMetadata.result.toolCount === 4, "the connection did not count 4 tools");
     check(noMetadata, noMetadata.pagesOpened === 0, "a server with no OAuth metadata opened a page");
     check(noMetadata, noMetadata.tokenRequests === 0, "a server with no OAuth metadata got a token request");
     report.cases.push(noMetadata);
 
-    const test = await runCase("test-public-tools", true, false);
+    const refused = await runCase("sign-in-metadata-refused", "refused", true);
+    check(refused, refused.result.error === null, `the connection failed: ${refused.result.error}`);
+    check(refused, refused.result.toolCount === 4, "the connection did not count 4 tools");
+    check(refused, refused.pagesOpened === 0, "a server that refused the metadata read opened a page");
+    check(refused, refused.tokenRequests === 0, "a server that refused the metadata read got a token request");
+    report.cases.push(refused);
+
+    // A server error, a busy server, and no answer say nothing about the sign-in.
+    for (const metadata of ["unreadable", "busy", "unanswered"] as const) {
+      const unreadable = await runCase(`sign-in-metadata-${metadata}`, metadata, true);
+      check(
+        unreadable,
+        unreadable.result.error ===
+          "OpenBot could not read the sign-in information of this server. Check the server address and try again.",
+        `a sign-in with an unreadable metadata document reported: ${unreadable.result.error}`,
+      );
+      check(unreadable, unreadable.pagesOpened === 0, "a sign-in with an unreadable metadata document opened a page");
+      check(
+        unreadable,
+        unreadable.tokenRequests === 0,
+        "a sign-in with an unreadable metadata document asked for a token",
+      );
+      check(
+        unreadable,
+        unreadable.result.toolCount === 0,
+        "a sign-in with an unreadable metadata document counted tools",
+      );
+      report.cases.push(unreadable);
+    }
+
+    const test = await runCase("test-public-tools", "published", false);
     check(test, test.result.error === null, `the test failed: ${test.result.error}`);
     check(test, test.pagesOpened === 0, "a test opened a page");
     check(test, !test.signedIn, "a test stored a token");

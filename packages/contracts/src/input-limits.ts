@@ -18,6 +18,8 @@ export const INPUT_LIMITS = {
   // adapter already accepts 160 — so the agent-name limit would reject a model list a shipped peer
   // is entitled to send.
   modelName: 160,
+  // A provider service tier id, such as Codex `priority`.
+  serviceTier: 64,
   agentTitle: 120,
   agentDescription: 2_000,
   // The default of the app setting `AGENT_MEMORY_LIMITS`; a user can raise it.
@@ -38,6 +40,25 @@ export const INPUT_LIMITS = {
   routineRunsPage: 100,
   // Handoffs inside one routine. A flow wider than this is no longer readable on one canvas.
   routineFlowLinks: 50,
+  // One workflow graph. Far more than one canvas shows at a readable zoom; the wire codec keeps its
+  // own copies of these numbers.
+  workflowNodes: 200,
+  workflowEdges: 400,
+  workflowNodeFields: 32,
+  workflowNodeText: 20_000,
+  workflowStrokes: 500,
+  workflowStrokePoints: 2_000,
+  workflowTitle: 160,
+  // The JSON of one saved graph. A workflow and its triggers must fit one WebRTC frame (1.5 MiB of
+  // body) when a member reads it.
+  workflowGraphBytes: 1024 * 1024,
+  workflowRunsPage: 50,
+  // The input of one step: the outputs of the steps before it, joined.
+  workflowStepInput: 32_000,
+  // The body of a webhook that starts a workflow, as the first step reads it.
+  workflowWebhookPayload: 64_000,
+  // The reason an agent gives when it reports that its routine run failed.
+  routineFailureReason: 500,
   // Open waits of one agent. A wait is a request the agent has not finished, and more than this many
   // at once is a loop that opens waits, not work.
   agentWaits: 20,
@@ -58,6 +79,8 @@ export const INPUT_LIMITS = {
   // A side question carries its earlier questions and answers, because nothing on the host keeps them.
   sideQuestionTurns: 20,
   sideQuestionAnswer: 32_000,
+  /** The start of each earlier side question and answer that the prompt reads. */
+  sideQuestionEarlierText: 4_000,
   promptQuestions: 32,
   promptOptions: 5,
   promptHeader: 120,

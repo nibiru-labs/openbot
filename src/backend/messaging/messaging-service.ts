@@ -51,6 +51,7 @@ import {
   type ConnectionIdentity,
   DiscordApiError,
   type InboundAction,
+  type InboundFile,
   type InboundMessage,
   type IngressAnswer,
   type IngressDelivery,
@@ -176,6 +177,8 @@ const SETTLE_RETRY_MS = 60_000;
 const FINAL_POST_ATTEMPTS = 5;
 /** How long a new message waits for the name of its author and its place. */
 const RECEIVE_NAME_DEADLINE_MS = 5_000;
+/** How long a new message waits for the files of the earlier messages; past it, it runs without them. */
+const RECEIVE_CONTEXT_DEADLINE_MS = 5_000;
 /** The marker `mention` uses. Text that did not come from the host has it taken out. */
 const MENTION_MARKERS = /[\uE000-\uE001]/g;
 
@@ -329,12 +332,12 @@ export class MessagingService {
     for (const live of this.#live.values()) live.transport?.reconnect();
   }
 
-  /** The Slack workspaces of this computer, for Server settings > Connectors. A disconnected one is left out. */
+  /** The Slack workspaces of this computer, for Marketplace > Apps > Slack. A disconnected one is left out. */
   slackOverview(): MessagingOverview {
     return this.#overview("slack");
   }
 
-  /** The Discord guilds of this computer, for Server settings > Connectors. A disconnected one is left out. */
+  /** The Discord guilds of this computer, for Marketplace > Apps > Discord. A disconnected one is left out. */
   discordOverview(): MessagingOverview {
     return this.#overview("discord");
   }
@@ -1171,7 +1174,7 @@ export class MessagingService {
     }
     const { adapter } = live;
     // A slow lookup must not hold the message: past the deadline, the id stands for the name.
-    const [authorName, mentioned, place] = yield* Effect.all(
+    const [authorName, mentioned, place, earlier] = yield* Effect.all(
       [
         adapter.authorName(message.authorId).pipe(
           toMessagingOperationFailed,
@@ -1192,6 +1195,22 @@ export class MessagingService {
                 orElse: () => Effect.succeed(message.platformChannelId),
               }),
             ),
+        // Only Discord's earlier messages have files, such as an image that a person posted without a
+        // mention just before this message. The agent gets them with this message. Slack is not asked:
+        // before Marketplace approval it allows one thread read a minute, which the prompt needs.
+        adapter.platform === "discord" && !message.isDirect
+          ? adapter
+              .history(
+                message.platformChannelId,
+                message.threadKey,
+                existing?.historyCursor ?? null,
+                message.platformMessageId,
+              )
+              .pipe(
+                Effect.timeoutOrElse({ duration: RECEIVE_CONTEXT_DEADLINE_MS, orElse: () => Effect.succeed([]) }),
+                Effect.catch(() => Effect.succeed([])),
+              )
+          : Effect.succeed([]),
       ],
       { concurrency: "unbounded" },
     );
@@ -1225,8 +1244,34 @@ export class MessagingService {
       Effect.succeed(staging),
       () =>
         Effect.gen({ self: this }, function* () {
-          const { paths, skipped } = yield* this.#download(adapter, message, staging);
-          const text = skipped.length ? `${named}\n\n(Files that did not arrive: ${skipped.join(", ")})` : named;
+          // The message's own files first, then the newest earlier ones, within the attachment limits.
+          // An earlier message of this conversation that reached OpenBot gave its files with itself.
+          const earlierFiles = earlier
+            .filter(
+              (entry) =>
+                !existing ||
+                !this.#threads.received(
+                  `messaging:${live.record.connectionId}:${message.platformChannelId}:${entry.id}`,
+                ),
+            )
+            .toReversed()
+            .flatMap((entry) =>
+              (entry.files ?? []).map((file) => ({ file, label: `${entry.authorName}: ${file.name}` })),
+            );
+          const { paths, skipped } = yield* this.#download(
+            adapter,
+            [...message.files, ...earlierFiles.map((item) => item.file)],
+            staging,
+          );
+          const given = earlierFiles.filter((item) => !skipped.includes(item.file)).map((item) => item.label);
+          const notGiven = earlierFiles.filter((item) => skipped.includes(item.file)).map((item) => item.label);
+          const missing = skipped.filter((file) => message.files.includes(file));
+          const notes = [
+            given.length ? `(Files of earlier messages, given with this one: ${given.join(", ")})` : "",
+            notGiven.length ? `(Files of earlier messages that were not given: ${notGiven.join(", ")})` : "",
+            missing.length ? `(Files that did not arrive: ${missing.map((file) => file.name).join(", ")})` : "",
+          ].filter(Boolean);
+          const text = notes.length ? `${named}\n\n${notes.join("\n")}` : named;
           const result = yield* this.#threads
             .receive({
               connectionId: live.record.connectionId,
@@ -1298,23 +1343,23 @@ export class MessagingService {
     return id && this.#agents.listAgents().some((agent) => agent.id === id) ? id : null;
   }
 
-  /** Downloads the files of a message into `staging`, within the attachment limits. */
+  /** Downloads files into `staging`, in their order, within the attachment limits. */
   readonly #download = Effect.fn("MessagingService.download")(function* (
     this: MessagingService,
     adapter: MessagingAdapter,
-    message: InboundMessage,
+    files: readonly InboundFile[],
     staging: string,
   ) {
     const paths: string[] = [];
-    const skipped: string[] = [];
+    const skipped: InboundFile[] = [];
     let total = 0;
-    for (const [index, file] of message.files.entries()) {
+    for (const [index, file] of files.entries()) {
       if (
         paths.length >= INPUT_LIMITS.attachments ||
         file.size > ATTACHMENT_LIMITS.fileBytes ||
         total + file.size > ATTACHMENT_LIMITS.totalBytes
       ) {
-        skipped.push(file.name);
+        skipped.push(file);
         continue;
       }
       const downloaded = yield* Effect.result(
@@ -1328,7 +1373,7 @@ export class MessagingService {
           return destination;
         }),
       );
-      if (Result.isFailure(downloaded)) skipped.push(file.name);
+      if (Result.isFailure(downloaded)) skipped.push(file);
       else {
         total += file.size;
         paths.push(downloaded.success);

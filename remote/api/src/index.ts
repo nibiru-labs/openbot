@@ -11,6 +11,7 @@ import { TelegramBotApi } from "./telegram";
 import {
   RemoteTokenError,
   RemoteTokenService,
+  RemoteTokenUnavailableError,
   signServiceRequest,
   type TelegramChatLink,
   TelegramFileTokens,
@@ -108,6 +109,9 @@ class ControlPlane extends Context.Service<
           ask("/v2/remote/resume/validate", claims),
           (response) =>
             Effect.gen(function* () {
+              // A failed service is not an inactive session: the session can still be active.
+              if (response.status >= 500 || response.status === 429)
+                return yield* new ControlPlaneError({ message: "The account service is unavailable." });
               if (!response.ok) return false;
               const result = yield* readJson(response).pipe(
                 Effect.flatMap(Schema.decodeUnknownEffect(ResumeValidation)),
@@ -267,9 +271,18 @@ const controlPlaneService = await controlPlane.runPromise(ControlPlane);
 const tokens = new RemoteTokenService(
   config,
   (claims) =>
-    controlPlaneService
-      .validateResume(claims)
-      .pipe(Effect.mapError((error) => new RemoteTokenError({ message: error.message }))),
+    controlPlaneService.validateResume(claims).pipe(
+      Effect.mapError(
+        (error) =>
+          new RemoteTokenUnavailableError({
+            message: error.message,
+            hostId: claims.hostId,
+            sessionId: claims.sessionId,
+            role: claims.role,
+            authEpoch: claims.authEpoch,
+          }),
+      ),
+    ),
   {
     validateSlackRoute: (hostId, teams) =>
       controlPlaneService

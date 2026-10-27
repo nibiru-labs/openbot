@@ -10,6 +10,7 @@ import {
   type AgentRuntimeSnapshot,
   type AgentSummary,
   CONVERSATION_PLAN_ITEM_TYPE,
+  CONVERSATION_SUBAGENTS_ITEM_TYPE,
   ROUTINE_QUIET_ANSWER_ITEM_TYPE,
 } from "@openbot/contracts/ipc";
 import type { MailboxStore } from "../mailbox-store";
@@ -32,6 +33,7 @@ export function compactRuntimeQuestion(
         label: option.label,
         description: option.description.slice(0, AGENT_RUNTIME_QUESTION_DESCRIPTION_LIMIT),
       })) ?? null,
+    ...(question.multiSelect ? { multiSelect: true } : {}),
   };
 }
 
@@ -181,6 +183,7 @@ export function buildRuntimeSnapshot({
         message.itemType !== "agent_attachment" &&
         !message.itemType?.startsWith(CHAT_VISUAL_ITEM_TYPE_PREFIX) &&
         message.itemType !== CONVERSATION_PLAN_ITEM_TYPE &&
+        message.itemType !== CONVERSATION_SUBAGENTS_ITEM_TYPE &&
         message.itemType !== ROUTINE_QUIET_ANSWER_ITEM_TYPE,
     );
     const persisted =

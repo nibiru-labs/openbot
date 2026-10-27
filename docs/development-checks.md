@@ -17,10 +17,18 @@ and was omitted. It now has `typecheck:mobile`; the old name remains an alias fo
 `@openbot/brand`, `@openbot/contracts`, and `@openbot/team-client`. Its Expo and Uniwind generation
 writes ignored files before TypeScript runs.
 
-Each `typecheck` script starts TypeScript through `node_modules/typescript/bin/tsc`, not a bare
-`tsc`. `storybook-solidjs-vite` installs typescript@6 as `@typescript/old`, and bun links that
-package's `tsc` into `node_modules/.bin` in place of the TypeScript 7 one. A bare `tsc` therefore
-checks with TypeScript 6 without a warning.
+Each `typecheck` script starts `scripts/type-checker.ts`, not a bare `tsc`. The script runs tsrs, the
+Rust port of TypeScript, when tsrs has a binary for the computer: macOS arm64 and Linux, so CI too.
+On Windows and Intel Macs it runs `node_modules/typescript/bin/tsc`. tsrs checked the 14 projects in
+about 2.6 seconds and 1 GB per large project; `tsc` took about 13 seconds and 2.5 GB (M4 Pro,
+2026-10-20). tsrs follows a TypeScript 7.1 build and the catalog `typescript` is 7.0, so the two can
+report different errors. CI uses tsrs; for this reason the Windows release job does not check types.
+Editors still use the catalog `typescript`. The script calls
+`tsc` by path because `storybook-solidjs-vite` installs typescript@6 as `@typescript/old`, and bun
+links that package's `tsc` into `node_modules/.bin` in place of the TypeScript 7 one. A bare `tsc`
+therefore checks with TypeScript 6 without a warning.
+
+The `tsrs` version is exact and must be older than `minimumReleaseAge` in `bunfig.toml` (3 days).
 
 Signal had a similar gap: `remote:check` was its only entry point and also required Compose
 validation. `typecheck:remote` now runs in CI. `remote:check:compose` validates both
@@ -95,12 +103,13 @@ Its main jobs are:
 | Job | Runner | Commands |
 | --- | --- | --- |
 | Check | `ubuntu-latest` | `bun run knip:check`, `bun run check:assets`, `bun run check:doc-links`, `bun run check:desktop:static`, then `bun run i18n:check` and `bun run types:ratchet` in parallel |
-| Browser smoke | `ubuntu-latest` | `xvfb-run -a bun run test:browser` |
+| Browser smoke | `ubuntu-latest` | `xvfb-run -a bun run test:browser`, then `xvfb-run -a bun run test:browser-agent-session` |
 | Tests (desktop 1/2, 2/2) | `ubuntu-latest` | `bun run test:desktop -- --shard=<n>/2` |
 | Signal E2E | `ubuntu-latest` | `bun run test:signal`, when `remote/` or `scripts/` changes |
 | Local scripts CLI E2E | `ubuntu-latest` | `bun run test:automation-cli`, then `bun scripts/dispatch-approval-e2e.ts` |
 | Team API routes E2E | `ubuntu-latest` | `bun run test:team-api-routes`, when desktop code changes |
-| Team API and reverse actions E2E | `ubuntu-latest` | `test:team-legacy-clients`, `test:team-session-revoke`, `test:server-mute`, `test:routine-pause-resume`, `test:agent-hide-restore`, `test:messaging-pause-resume`, `test:messaging-discord-access` and `test:provider-update-busy`, each with `bun run` in its own step, when the `desktop` lane runs |
+| Team API and reverse actions E2E | `ubuntu-latest` | `test:team-legacy-clients`, `test:team-session-revoke`, `test:sign-in-relay-paste`, `test:server-mute`, `test:routine-pause-resume`, `test:agent-hide-restore`, `test:messaging-pause-resume`, `test:messaging-discord-access`, `test:turn-input`, `test:provider-update-busy`, `test:provider-update-after-app-upgrade`, `test:provider-runtime-remove`, `test:provider-exit-session`, `test:codex-hung-app-server`, `test:codex-missing-rollout`, `test:zip-attachments` and `test:mp4-attachments`, each with `bun run` in its own step, when the `desktop` lane runs |
+| Provider fakes E2E | `ubuntu-latest` | `test:custom-agents`, `test:custom-agents:login-path`, `test:acp-directories`, `test:acp-flavors`, `test:acp-turn-stall`, `test:acp-mcp-names`, `test:provider-conformance`, `test:opencode-expired-key`, `test:opencode-downgraded-session`, `test:cline-free-models` and `test:provider-transcript-replay`, each with `bun run` in its own step, when the `desktop` lane runs. The fake agents are in `scripts/provider-fakes/`; the replayed transcripts of released CLIs are in `scripts/provider-fakes/transcripts/`, and `bun scripts/record-provider-transcript.ts` records a new one |
 | Surfaces | `ubuntu-latest` | Parallel groups described below, then `bun run remote:check:compose` |
 | API | `ubuntu-latest` | `bun run check:api`, then, for a pull request from this repository, upload `apps/auth-api/dist` |
 | Storybook build | `ubuntu-latest` | `bun run build-storybook` |
@@ -122,6 +131,10 @@ if a step fails. The steps have separate logs. The groups run in this order:
 The desktop test shards keep separate runners. The API checks, artifact uploads, and production
 deployment dependencies keep their existing order. Local commands do not change. Compare job
 times on GitHub before claiming a time reduction; parallel steps share the runner's resources.
+
+The `Provider CLI canary` workflow is not a pull request check. It runs every six hours on the newest
+upstream provider CLIs, which reach users without an OpenBot release; see
+[Provider CLI updates](architecture/providers.md#provider-cli-updates).
 
 `check:api` ends with `api:build:check`, which is the preview build of the Worker, so the API job
 uploads that build as the `cloudflare-preview` artifact. The job has no secrets. After the CI run completes, the trusted
@@ -352,16 +365,37 @@ with `[<name>]`. A new GritQL rule must start with no findings.
 ### Type debt ratchet
 
 `bun run types:ratchet` holds TypeScript options that are not on yet to a baseline. For each option
-in `tools/typescript/type-baseline.json`, it runs `tsc` with the option on for every project that
-extends `tsconfig.base.json` (listed in `scripts/type-ratchet.ts`), and compares the errors of each
-file to the baseline. An error that two projects report counts once. `apps/mobile` extends the Expo
-base config, so the ratchet does not check it. A higher count fails, so an option stops new debt
-before the old debt is fixed. A lower count also fails until `--write` lowers the baseline: this
-keeps the baseline tight. The script never raises a count; a higher count is a hand edit that a
-reviewer sees. `--add=<option>` starts an option at its current counts. `scripts/debt-ratchet.ts`
-holds these rules. The run takes about 4 seconds. When an option has no errors left, turn it on in
-`tsconfig.base.json` and remove it from the baseline. Do not name the script `typecheck:*`:
+in `tools/typescript/type-baseline.json`, it runs `scripts/type-checker.ts` with the option on for
+every project that extends `tsconfig.base.json` (listed in `scripts/type-ratchet.ts`), and compares
+the errors of each file to the baseline. An error that two projects report counts once.
+`apps/mobile` extends the Expo base config, so the ratchet does not check it. A higher count fails,
+so an option stops new debt before the old debt is fixed. A lower count also fails until `--write`
+lowers the baseline: this keeps the baseline tight. The script never raises a count; a higher count
+is a hand edit that a reviewer sees. `--add=<option>` starts an option at its current counts.
+`scripts/debt-ratchet.ts` holds these rules. The run takes about 2 seconds with tsrs and 4 with
+`tsc`. When an option has no errors left, turn it on in `tsconfig.base.json` and remove it from the
+baseline. Do not name the script `typecheck:*`:
 `bun run typecheck` runs every script that matches that pattern.
+
+### Agent context budget
+
+`bun run check:agent-context` holds the text that OpenBot adds to an agent's context to the byte
+counts in `tools/agent-context/budget.json`. It uses the same rules as the type debt ratchet
+(`scripts/debt-ratchet.ts`): more bytes fail, and fewer bytes fail until `--write` lowers the
+baseline. A raise is a hand edit that a reviewer sees. The fixture agent has no memories, teammates,
+skills, or connected vault, so the counts measure only OpenBot's own text:
+
+- `instructions.claude` and `instructions.codex`: `developerInstructions()` with the options of each
+  provider.
+- `visible-tools`: the visible tool definitions that Codex and the local MCP bridge receive.
+- `catalog.schemas` and `catalog.descriptions`: all built-in catalog tools, which `tool_search` and
+  `tool_describe` return.
+- `guidance`: the distinct `agent/tool-guidance.ts` texts.
+- `list-models.fixture`: the `list_models` result for a synthetic catalog of 200 models.
+
+The script writes the counts to `.openbot-build/agent-context-budget/report.json`. It does not
+measure the schemas that the Claude Agent SDK makes from the Zod shapes of Claude's visible tools.
+CI runs it in the `check` job.
 
 ### Plugin cost
 

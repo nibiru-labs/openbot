@@ -33,6 +33,14 @@ const DIRECT_REPLY_INTERVAL_MILLISECONDS = 60 * 60_000;
 const MAXIMUM_DIRECT_REPLIES = 10_000;
 const ATTACHMENT_HOSTS = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
 
+type DiscordAttachmentData = {
+  id: string;
+  filename: string;
+  content_type?: string | undefined;
+  size: number;
+  url: string;
+};
+
 /** The fields of a Gateway or REST message that Signal reads. */
 export interface DiscordMessageData {
   id: string;
@@ -51,8 +59,9 @@ export interface DiscordMessageData {
     timestamp?: string;
     author: { id: string; username?: string; global_name?: string | null };
     message_reference?: { message_id?: string };
+    attachments?: DiscordAttachmentData[];
   } | null;
-  attachments: { id: string; filename: string; content_type?: string; size: number; url: string }[];
+  attachments: DiscordAttachmentData[];
 }
 
 /** What the Gateway adapter does for one event. */
@@ -104,8 +113,23 @@ function normalizeGuildMessage(message: DiscordMessageData, botUserId: string): 
       quote: authorIsBot || !referenced ? null : quoteOf(referenced, botUserId),
     };
   }
+  return {
+    id: message.id,
+    channelId: message.channel_id,
+    authorId: message.author.id,
+    authorName: discordAuthorName(message),
+    authorRoleIds: message.member?.roles?.slice(0, DISCORD_ROLES_LIMIT) ?? null,
+    content: stripBotMention(message.content, botUserId),
+    replyTo,
+    attachments: attachmentsOf(message.attachments),
+    sentAt: message.timestamp,
+  };
+}
+
+/** The attachments on Discord's CDN, up to Discord's limit. */
+export function attachmentsOf(list: DiscordAttachmentData[]): DiscordInboundAttachment[] {
   const attachments: DiscordInboundAttachment[] = [];
-  for (const attachment of message.attachments) {
+  for (const attachment of list) {
     if (attachments.length >= DISCORD_ATTACHMENTS_LIMIT) break;
     if (!isDiscordCdnUrl(attachment.url)) continue;
     attachments.push({
@@ -116,34 +140,26 @@ function normalizeGuildMessage(message: DiscordMessageData, botUserId: string): 
       url: attachment.url,
     });
   }
-  return {
-    id: message.id,
-    channelId: message.channel_id,
-    authorId: message.author.id,
-    authorName: discordAuthorName(message),
-    authorRoleIds: message.member?.roles?.slice(0, DISCORD_ROLES_LIMIT) ?? null,
-    content: stripBotMention(message.content, botUserId),
-    replyTo,
-    attachments,
-    sentAt: message.timestamp,
-  };
+  return attachments;
 }
 
 /**
- * The replied-to message of a person, or null when Discord gave no text: without the Message
- * Content intent, Discord gives the text only of a message that mentions the bot.
+ * The replied-to message of a person, or null when Discord gave neither text nor attachments:
+ * without the Message Content intent, Discord gives them only for a message that mentions the bot.
  */
 function quoteOf(
   referenced: NonNullable<DiscordMessageData["referenced_message"]>,
   botUserId: string,
 ): DiscordInboundQuote | null {
   const content = stripBotMention(referenced.content ?? "", botUserId);
-  if (!content || !referenced.timestamp) return null;
+  const attachments = attachmentsOf(referenced.attachments ?? []);
+  if ((!content && attachments.length === 0) || !referenced.timestamp) return null;
   return {
     authorId: referenced.author.id,
     authorName: referenced.author.global_name ?? referenced.author.username ?? referenced.author.id,
     content: content.slice(0, DISCORD_QUOTE_TEXT_LIMIT),
     sentAt: referenced.timestamp,
+    attachments,
   };
 }
 

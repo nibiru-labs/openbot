@@ -20,7 +20,7 @@ import type { McpOperationError } from "../mcp-effects";
 import { McpHandoffLog } from "../mcp-handoff-log";
 import { type McpOAuthAuthority, type McpSignInOpener, normalizeResource } from "../mcp-oauth-provider";
 import { McpOAuthProxy, type McpOAuthProxyTarget, mcpOAuthProxyRoute } from "../mcp-oauth-proxy";
-import { type McpSignInPlace, testMcpServer } from "../mcp-probe";
+import { inspectMcpServer, type McpSignInPlace, testMcpServer } from "../mcp-probe";
 import {
   type McpEndpoint,
   type McpEndpointRefusal,
@@ -349,6 +349,24 @@ export class McpGateway {
         : (stored ?? undefined);
     const oauth = options.interactive ? opened : silent;
     return yield* testMcpServer(config, undefined, this.#toolRuntimes(), oauth, options.signInPlace ?? null).pipe(
+      toMcpGatewayFailed,
+    );
+  });
+
+  /**
+   * The test an agent asks for. Silent like the Test button: it spends the sign-ins this computer
+   * holds and never opens a browser, because the user hands a sign-in over from the conversation.
+   */
+  readonly inspect = Effect.fnUntraced(function* (this: McpGateway, config: McpServerConfig) {
+    const normalized = normalizeMcpConfig(config);
+    const errors = mcpConfigErrors(normalized);
+    const firstError = errors.name ?? errors.command ?? errors.url;
+    if (firstError) return yield* new McpGatewayFailed({ cause: new Error(firstError) });
+    const stored = this.#oauth;
+    const silent: Pick<McpOAuthAuthority, "accessToken" | "signIn"> | undefined = stored
+      ? { accessToken: (url) => stored.accessToken(url), signIn: () => null }
+      : undefined;
+    return yield* inspectMcpServer(normalized, undefined, this.#toolRuntimes(), silent, "here").pipe(
       toMcpGatewayFailed,
     );
   });

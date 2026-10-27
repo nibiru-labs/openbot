@@ -1,6 +1,6 @@
 import type { AvatarImageInput, CentralAuthUser, MobileConnectedDevice, UpdateStatus } from "@openbot/contracts/ipc";
 import { Button, Toaster, toast } from "@openbot/ui";
-import { DEFAULT_GENERAL_SETTINGS } from "@openbot/ui/features/settings/app-settings";
+import { DEFAULT_GENERAL_SETTINGS, type GeneralSettingsValue } from "@openbot/ui/features/settings/app-settings";
 import { createSignal, onCleanup } from "solid-js";
 import { fn } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
@@ -12,6 +12,15 @@ import type { MockVoiceOptions } from "../src/preview/mock-voice";
 import { createMockOpenBot } from "./mock-openbot";
 import { SettingsPageStory } from "./settings-page-story";
 import { previewStorySoundSettings } from "./sound-feedback-fixture";
+
+/** A packaged Windows run, which offers every switch that the defaults hide. */
+const storyGeneralSettings: GeneralSettingsValue = {
+  ...DEFAULT_GENERAL_SETTINGS,
+  launchAtLogin: true,
+  keepRunningInBackground: false,
+  keepAwake: false,
+  keepAwakeOnBattery: false,
+};
 
 const storyAppInfo = { name: "OpenBot", version: "0.2.1", platform: "darwin", variant: "dev" } as const;
 const storyAccount: CentralAuthUser = {
@@ -60,7 +69,7 @@ function SettingsModalStory(props: {
     },
   };
   const [open, setOpen] = createSignal(props.initialOpen);
-  const [value, setValue] = createSignal({ ...DEFAULT_GENERAL_SETTINGS });
+  const [value, setValue] = createSignal({ ...storyGeneralSettings });
   const [updateStatus, setUpdateStatus] = createSignal<UpdateStatus>(
     props.scheduledRestart
       ? { ...storyUpdateStatus, phase: "ready", availableVersion: "0.3.0", scheduledRestart: props.scheduledRestart }
@@ -152,6 +161,8 @@ function SettingsModalStory(props: {
             onRevokeMobileConnectedDevice={async (sessionId) => {
               setMobileDevices((current) => current.filter((device) => device.sessionId !== sessionId));
             }}
+            onGetRemoteNetworkRoute={mock.api.getRemoteNetworkRoute}
+            onSetRemoteNetworkRoute={(route) => mock.api.setRemoteNetworkRoute({ route })}
             onUpdateAction={runUpdateAction}
             billingApi={billingApi}
             hostedServersApi={props.hostedServers ? hostedServersApi : undefined}
@@ -169,7 +180,7 @@ const meta = {
   component: SettingsModal,
   args: {
     open: false,
-    value: DEFAULT_GENERAL_SETTINGS,
+    value: storyGeneralSettings,
     onValueChange: fn(),
     appInfo: storyAppInfo,
     updateStatus: storyUpdateStatus,
@@ -238,6 +249,17 @@ export const VoiceWhisperHungarian: Story = {
         voiceModelsReady: ["parakeet-tdt-0.6b-v3", "whisper-turbo"],
         voiceSettings: { modelId: "whisper-turbo", language: "hu" },
       }}
+    />
+  ),
+};
+
+/** Downloaded models, and the speech model, each with Remove. */
+export const VoiceModelsDownloaded: Story = {
+  render: () => (
+    <SettingsModalStory
+      initialOpen
+      initialTab="voice"
+      voice={{ voiceModelsReady: ["parakeet-tdt-0.6b-v3", "bark-3.0-plus"], speechModelReady: true }}
     />
   ),
 };

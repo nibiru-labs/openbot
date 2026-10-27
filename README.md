@@ -55,6 +55,9 @@ or arm64 Linux as an AppImage.
 1. Download the latest `OpenBot-*-x86_64.AppImage` (or `OpenBot-*-arm64.AppImage` on arm64) from [GitHub Releases](https://github.com/nightly-labs/openbot/releases).
 2. Make it executable with `chmod +x OpenBot-*.AppImage`, then run it.
 
+The AppImage does not need libfuse2, so it also runs on Arch Linux and Omarchy. It mounts itself
+with `fusermount3` from the `fuse3` package.
+
 On Ubuntu 23.10 or newer and on Debian 13, unprivileged user namespaces are restricted by AppArmor
 and OpenBot exits during launch until you install an AppArmor profile:
 
@@ -71,7 +74,7 @@ On the first start from an AppImage, OpenBot writes `~/.local/share/applications
 and `~/.local/share/icons/openbot.png`, which is what lets an `openbot://` link - an invitation, or
 a plugin listing - open the app and gives the launcher an icon that stays after the app exits. Delete the two files to undo it.
 
-Voice prompts are not available on Linux. Remote desktop works on Linux x64 in an X11 session,
+Remote desktop works on Linux x64 in an X11 session,
 such as Xorg or Xvfb. It does not work under Wayland, and the arm64 AppImage does not include it.
 
 For Gemini sign-in, install a desktop browser and `xdg-utils`. Open the sign-in page in a
@@ -81,8 +84,8 @@ desktop session on the same host or VM. Google sends the callback to that host t
 
 #### Linux server with no screen
 
-To run OpenBot as an always-on server of your account on a VPS or home server (Ubuntu 24.04 with
-systemd), install it from a terminal and sign in with an email code:
+To run OpenBot as an always-on server of your account on a VPS or home server (Ubuntu 24.04 or
+26.04 with systemd), install it from a terminal and sign in with an email code:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nightly-labs/openbot/main/scripts/install-server.sh | sudo bash
@@ -108,6 +111,21 @@ docker exec -it openbot openbot login
 
 See [Docker](docs/docker.md) for Compose, the data volume, upgrades and the security limits. For Amazon ECS,
 see [AWS ECS](docs/aws-ecs.md).
+
+### Nix
+
+The flake installs the desktop app from the latest release on x64 or arm64 Linux and on Apple silicon:
+
+```bash
+nix run github:nightly-labs/openbot
+nix profile install github:nightly-labs/openbot
+```
+
+`overlays.default` adds `pkgs.openbot`. OpenBot is not free software, so your nixpkgs must allow it,
+for example with `nixpkgs.config.allowUnfreePredicate = pkg: lib.getName pkg == "openbot";`.
+Nix installs OpenBot updates. OpenBot does not update itself from the Nix store. On Linux, the Nix
+package does not include the remote desktop runtime, because nixpkgs does not have a library that it
+needs.
 
 > [!IMPORTANT]
 > Windows releases are signed by `SYNTHETIFY LABS SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ`. Older
@@ -145,7 +163,10 @@ need no account and no sign-in: select OpenCode, click Connect, and OpenBot read
 the CLI advertises. To use the paid OpenCode Go models, click Sign in on the OpenCode row and
 paste a Go key from [opencode.ai/auth](https://opencode.ai/auth). OpenBot encrypts the key on this
 computer and gives it only to the local CLI. OpenBot supports OpenCode Go only: the Zen models a
-Go key does not buy stay out of the picker. If you installed OpenCode yourself, OpenBot
+Go key does not buy stay out of the picker. Models with the Free label in the model picker need no
+sign-in. Other models need a sign-in with their provider: a Go key for the `opencode-go/` models, or
+`opencode auth login` in a terminal for OpenCode Zen and third-party providers. Without it, the turn
+fails with an error that names the provider. If you installed OpenCode yourself, OpenBot
 keeps that install and offers no download. Set `OPENBOT_OPENCODE_PATH` to select an executable
 outside your shell's search path. Remote OpenCode agents require Team API v4; older clients do not
 show these agents.
@@ -226,8 +247,8 @@ lists from the main checkout when they are missing, installs dependencies, migra
 and seeds the isolated profile. Set it as the worktree setup command of your agent harness.
 
 On macOS, a worktree's `node_modules` uses almost no new disk space. Bun clones packages from its
-cache, and the root `postinstall` clones Electron from `~/Library/Caches/OpenBot/electron-dist` and
-the React Native Skia libraries from their packages. `du` still shows the full size of each clone.
+cache, and the root `postinstall` clones Electron from `~/Library/Caches/OpenBot/electron-dist`.
+`du` still shows the full size of each clone.
 The first install of an Electron version extracts it once and saves it there. Delete the directory
 to clear the cache; an entry that nobody used for 30 days is removed by the next save.
 
@@ -353,6 +374,8 @@ See [web client delivery](docs/web-client.md) for the release gate and focused c
 | `bun run test:backend` | Run backend tests only. |
 | `bun run test:changed` | Run, on one worker, only the desktop and mobile test files that import a file changed since `origin/main`, including staged, unstaged and untracked files. It stops with an error when `origin/main` is missing. A change to a vitest config, a setup file or `package.json` selects no test. See [docs/development-checks.md](docs/development-checks.md#focused-tests). |
 | `bun run test:related -- <source>...` | Run, on one worker, only the test files that import the named source files. |
+| `bun run test:browser-agent-session` | Check that an agent with its own browser session, and the agents of a named browser profile, keep their cookies and storage apart, across popups, a restart, a deleted profile, and a clear. |
+| `bun run test:browser-profile-agents` | Check that the shared profile, an agent's own session, a named profile, and the delete of a named profile change the stored browser profile of an agent, and that the choice stays after a restart. |
 | `bun run test:browser` | Run the complete local embedded-browser smoke test, including cross-process persistence. Use `--scenario=controls`, `--scenario=tool-boundary`, `--scenario=evaluation`, `--scenario=wait-deadlines`, or `--scenario=popups` for one isolated scenario. |
 | `bun run test:codex` | Probe the real CLI handshake and account without starting a paid turn. |
 | `bun run test:durations` | Re-record how long each desktop test file takes. CI splits its shards by this table, so run it when the two shards stop finishing together. |
@@ -376,7 +399,7 @@ See [web client delivery](docs/web-client.md) for the release gate and focused c
 | `bun run mobile:release:patch` | Move the iPhone app notes from `apps/mobile/changelog.d` into `apps/mobile/CHANGELOG.md` and set the next patch version in `app.json`. Also `mobile:release:minor` and `mobile:release:major`. |
 | `bun run mobile:release:published <ios\|android\|both>` | Write today's date for a store that made the mobile build available. `/changelog` shows each store, and a store that still reviews the build as "In review". Add `--version x.y.z` for a version that is not in `app.json`. |
 | `bun run test:acp-directories` | Run three fake ACP agents through the `acp` provider driver: new, load and resume requests carry the workspace roots as `additionalDirectories` only when the agent advertises them. Offline; writes `.openbot-build/acp-additional-directories-e2e/report.json`. |
-| `bun run test:custom-agents` | Run two fake ACP agents through the agent store, Check agent and the `acp` provider router: equal session ids, restart and resume, switch, and delete. Offline; writes `.openbot-build/custom-acp-agent-e2e/report.json`. |
+| `bun run test:custom-agents` | Run two fake ACP agents through the agent store, Check agent (with its model list) and the `acp` provider router: equal session ids, restart and resume, switch, and delete. Offline; writes `.openbot-build/custom-acp-agent-e2e/report.json`. |
 | `bun run test:mcp-tool-consent` | Run the real Codex app-server with a fake model, a real MCP server and the real attention registry: tool consent at Ask first and Full access, Always allow and a restart, refusals, and the requests that stay with the user (forms, sign-in, look-alikes). Needs a Codex CLI; offline; writes `.openbot-build/mcp-tool-consent-e2e/report.json`. |
 | `bun run test:ui-blocks` | Run the real attention registry and Team API codecs on `ask_ui` blocks: answers from the owner, an admin, a member and a released client, the member refusal for privileged actions, a secret form value that is never stored, skip and expiry, and the `ui-blocks-v1` wire on protocols 6 and 7. Offline; writes `.openbot-build/ui-blocks-e2e/report.json`. |
 | `bun run test:filesystem` | **Online/manual:** run real full-access Codex and Claude filesystem turns across private and shared workspaces. |
@@ -496,8 +519,17 @@ Attach MP3 audio and MOV video through the file picker or drag and drop. The lim
 file, 250 MB per message, and 10 files per message. OpenBot gives the agent the original file; it does
 not play, decode, transcribe, or validate the recording during import. Damaged recordings can be
 attached for inspection. Analysis depends on the tools available to the agent. For other audio or
-video formats, export as MP3 or MOV, or attach a text transcript. Remote hosts must advertise the
+video formats, export as MP3, MOV, or MP4, or attach a text transcript. Remote hosts must advertise the
 `media-attachments` capability; update the host if this feature is unavailable.
+
+MP4 video uses the same limits and rules as MOV. Remote hosts must also advertise the
+`mp4-attachments` capability.
+
+ZIP archives use the same limits. OpenBot does not extract or inspect an archive: the agent gets the
+original file and extracts it with its own tools. An agent sends a ZIP archive back with
+`openbot.attach_files_to_response`, and the user downloads it from the chat. Open shows a ZIP
+archive in the file manager instead of opening it. Remote hosts must advertise the `zip-attachments`
+capability.
 
 ## Local data and network boundaries
 

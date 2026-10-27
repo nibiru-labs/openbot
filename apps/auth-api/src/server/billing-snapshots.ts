@@ -1,3 +1,4 @@
+import { licenseAmount } from "@openbot/contracts/license";
 import { Effect, Schema } from "effect";
 import { readBillingCohortCounts } from "./billing-cohorts";
 import { BillingUsd } from "./billing-usd";
@@ -91,24 +92,32 @@ export interface BillingSnapshotBindings {
 export type BillingSnapshotFetch = (input: string, init: RequestInit) => Promise<Response>;
 
 interface BillingSnapshotMetrics {
+  /** Server plans only. The name and meaning are older than the license, so they stay the same. */
   mrr: number;
   arr: number;
   overdueMrr: number;
   payingAccounts: number;
   paidServers: number;
   cancellationsScheduled: number;
+  licenseMrr: number;
+  licenseAccounts: number;
+  licensedUsers: number;
 }
 
 interface StoredSubscription {
   stripe_subscription_id: string;
   user_id: string;
   server_id: string | null;
+  product: "server" | "license";
 }
 
 interface SubscriptionSample {
   id: string;
   userId: string;
   serverId: string | null;
+  product: "server" | "license";
+  /** The sum of the item quantities. For a license, this is the number of users that the account pays for. */
+  quantity: number;
   status: "active" | "past_due";
   amountMinor: number;
   currency: "eur" | "usd" | "pln";
@@ -198,9 +207,13 @@ export const captureBillingSnapshot = Effect.fn("captureBillingSnapshot")(functi
     payingAccounts: 0,
     paidServers: 0,
     cancellationsScheduled: 0,
+    licenseMrr: 0,
+    licenseAccounts: 0,
+    licensedUsers: 0,
   };
   const users = new Set<string>();
   const servers = new Set<string>();
+  const licenseUsers = new Set<string>();
   for (const sample of samples) {
     const converted = yield* billingUsd
       .convert(sample.amountMinor, sample.currency, timestamp)
@@ -209,22 +222,40 @@ export const captureBillingSnapshot = Effect.fn("captureBillingSnapshot")(functi
       return yield* new BillingSnapshotError({ code: "currency" });
     try {
       const monthly = sample.interval === "year" ? divideMonthly(converted.amountUsd) : converted.amountUsd;
-      metrics = {
-        ...metrics,
-        mrr: addSafe(metrics.mrr, monthly),
-        overdueMrr: addSafe(metrics.overdueMrr, sample.status === "past_due" ? monthly : 0),
-        cancellationsScheduled: addSafe(metrics.cancellationsScheduled, sample.cancelAtPeriodEnd ? 1 : 0),
-      };
+      metrics =
+        sample.product === "license"
+          ? {
+              ...metrics,
+              licenseMrr: addSafe(metrics.licenseMrr, monthly),
+              licensedUsers: addSafe(metrics.licensedUsers, sample.quantity),
+            }
+          : {
+              ...metrics,
+              mrr: addSafe(metrics.mrr, monthly),
+              overdueMrr: addSafe(metrics.overdueMrr, sample.status === "past_due" ? monthly : 0),
+              cancellationsScheduled: addSafe(metrics.cancellationsScheduled, sample.cancelAtPeriodEnd ? 1 : 0),
+            };
     } catch (error) {
       return yield* error instanceof BillingSnapshotError ? error : snapshotError("invalid_subscription");
     }
     if (sample.amountMinor > 0) {
-      users.add(sample.userId);
+      if (sample.product === "license") licenseUsers.add(sample.userId);
+      else users.add(sample.userId);
       if (sample.serverId) servers.add(sample.serverId);
     }
   }
+  let totalMrr = 0;
+  let totalArr = 0;
   try {
-    metrics = { ...metrics, arr: multiplySafe(metrics.mrr, 12), payingAccounts: users.size, paidServers: servers.size };
+    metrics = {
+      ...metrics,
+      arr: multiplySafe(metrics.mrr, 12),
+      payingAccounts: users.size,
+      paidServers: servers.size,
+      licenseAccounts: licenseUsers.size,
+    };
+    totalMrr = addSafe(metrics.mrr, metrics.licenseMrr);
+    totalArr = multiplySafe(totalMrr, 12);
   } catch (error) {
     return yield* error instanceof BillingSnapshotError ? error : snapshotError("invalid_subscription");
   }
@@ -255,6 +286,11 @@ export const captureBillingSnapshot = Effect.fn("captureBillingSnapshot")(functi
         paying_accounts: metrics.payingAccounts,
         paid_servers: metrics.paidServers,
         cancellations_scheduled: metrics.cancellationsScheduled,
+        license_mrr: metrics.licenseMrr,
+        license_accounts: metrics.licenseAccounts,
+        licensed_users: metrics.licensedUsers,
+        total_mrr: totalMrr,
+        total_arr: totalArr,
         checkout_mature_accounts: cohorts.checkout_mature_accounts,
         checkout_converted_accounts: cohorts.checkout_converted_accounts,
         checkout_pending_accounts: cohorts.checkout_pending_accounts,
@@ -299,11 +335,17 @@ function subscriptionSample(
       return yield* new BillingSnapshotError({ code: "invalid_subscription" });
     if (!subscription.interval) return yield* new BillingSnapshotError({ code: "invalid_subscription" });
     if (!isBillingUsdCurrency(subscription.currency)) return yield* new BillingSnapshotError({ code: "currency" });
-    const amount = yield* subscriptionAmountAfterDiscount(subscription, timestamp);
+    const amount = yield* subscriptionAmountAfterDiscount(subscription, subscription.currency, row.product, timestamp);
+    const quantity = yield* Effect.try({
+      try: () => subscription.items.reduce((total, item) => addSafe(total, item.quantity), 0),
+      catch: () => snapshotError("invalid_subscription"),
+    });
     return {
       id: subscription.id,
       userId: row.user_id,
       serverId: row.server_id,
+      product: row.product,
+      quantity,
       status: subscription.status,
       amountMinor: amount.amountMinor,
       currency: subscription.currency,
@@ -313,20 +355,34 @@ function subscriptionSample(
   });
 }
 
-/** Stripe never moves a subscription out of these statuses, so the snapshot does not read them. */
+/**
+ * Stripe never moves a subscription out of these statuses, so the snapshot does not read them. License
+ * rows are in their own table and have no server.
+ */
 function readKnownSubscriptions(database: D1Database): Effect.Effect<StoredSubscription[], unknown> {
   return Effect.tryPromise({
-    try: async () =>
-      (
-        await database
-          .prepare(
-            `SELECT stripe_subscription_id, user_id, server_id
-               FROM billing_subscriptions
-              WHERE status NOT IN ('canceled', 'incomplete_expired')
-              ORDER BY stripe_subscription_id`,
-          )
-          .all<StoredSubscription>()
-      ).results,
+    try: async () => {
+      const servers = await database
+        .prepare(
+          `SELECT stripe_subscription_id, user_id, server_id
+             FROM billing_subscriptions
+            WHERE status NOT IN ('canceled', 'incomplete_expired')
+            ORDER BY stripe_subscription_id`,
+        )
+        .all<Omit<StoredSubscription, "product">>();
+      const licenses = await database
+        .prepare(
+          `SELECT stripe_subscription_id, user_id, NULL AS server_id
+             FROM licenses
+            WHERE status NOT IN ('canceled', 'incomplete_expired')
+            ORDER BY stripe_subscription_id`,
+        )
+        .all<Omit<StoredSubscription, "product">>();
+      return [
+        ...servers.results.map((row): StoredSubscription => ({ ...row, product: "server" })),
+        ...licenses.results.map((row): StoredSubscription => ({ ...row, product: "license" })),
+      ];
+    },
     catch: () => new Error("database"),
   });
 }
@@ -416,6 +472,8 @@ function inferInterval(
 
 function subscriptionAmountAfterDiscount(
   subscription: StripeSubscriptionSample,
+  currency: "eur" | "usd" | "pln",
+  product: StoredSubscription["product"],
   timestamp: number,
 ): Effect.Effect<{ amountMinor: number }, BillingSnapshotError> {
   return Effect.try({
@@ -423,7 +481,10 @@ function subscriptionAmountAfterDiscount(
       let subtotal = 0;
       const appliedDiscounts = new Set<string>();
       for (const item of subscription.items) {
-        const amount = priceAmount(item.price, subscription.currency, item.quantity);
+        const amount =
+          product === "license"
+            ? licensePriceAmount(item.quantity, currency)
+            : priceAmount(item.price, subscription.currency, item.quantity);
         const discounted = applyDiscounts(amount, item.discounts, subscription.currency, timestamp, appliedDiscounts);
         subtotal = addSafe(subtotal, discounted);
       }
@@ -439,6 +500,15 @@ function subscriptionAmountAfterDiscount(
     },
     catch: (error) => (error instanceof BillingSnapshotError ? error : snapshotError("invalid_subscription")),
   });
+}
+
+/**
+ * The license price is graduated tiers, so Stripe sends no `unit_amount` for it, and a subscription cannot
+ * expand the tiers of another currency. The license service uses the same list price.
+ */
+function licensePriceAmount(quantity: number, currency: "eur" | "usd" | "pln"): number {
+  if (!Number.isSafeInteger(quantity) || quantity < 0) throw new BillingSnapshotError({ code: "invalid_subscription" });
+  return licenseAmount(quantity, currency);
 }
 
 function priceAmount(price: StripePrice, currency: string, quantity: number): number {

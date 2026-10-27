@@ -1,6 +1,6 @@
 import { installPointerFocusGuard } from "@openbot/ui/pointer-focus";
 import { render } from "@solidjs/web";
-import { syncAppearance } from "./appearance";
+import { syncAppearance } from "./appearance-choice";
 import { BrowserDockSurface } from "./features/browser/BrowserDockSurface";
 import { ComputerUseHighlightSurface } from "./features/computer-use/ComputerUseHighlightSurface";
 import { ComputerUsePermissionHelp, permissionFromQuery } from "./features/computer-use/ComputerUsePermissionHelp";
@@ -19,13 +19,12 @@ if (!root) {
 }
 
 installPointerFocusGuard();
-syncLogoColor();
 
 const query = new URLSearchParams(window.location.search);
 const surface = query.get("surface");
-// The Dynamic Island sits in the black notch and the highlight rim is drawn over other apps, so both
-// stay dark. The windows a user reads follow the app appearance.
+// The notch and highlight rim stay dark; readable helper windows follow the app theme.
 if (surface === "browser-dock" || surface === "computer-use-permission-help") syncAppearance();
+syncLogoColor();
 // The helper windows are not inside `App`, so each gets the language setting of its own. They use
 // the same preload and the same trusted-origin IPC gate as the main window, and main already sends
 // every language change to every window.

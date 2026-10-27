@@ -3,7 +3,14 @@ import emojiRegex from "emoji-regex";
 import { INPUT_LIMITS } from "./input-limits";
 import { type AttachmentSummary, isAttachmentSummary } from "./ipc-attachments";
 import { isBoundedString, isIdentifier, isRequestId } from "./ipc-bounded-values";
+import { type ConversationMemoryChange, isConversationMemoryChanges } from "./ipc-conversation-memory-changes";
 import { CONVERSATION_PLAN_ITEM_TYPE, type ConversationPlan, isConversationPlan } from "./ipc-conversation-plan";
+import {
+  CONVERSATION_SUBAGENTS_ITEM_TYPE,
+  type ConversationSubagent,
+  isConversationSubagents,
+} from "./ipc-conversation-subagents";
+import { type ConversationTurnTrace, isConversationTurnTrace } from "./ipc-conversation-trace";
 import { QUEUE_DELIVERY_STATUSES, type QueueDelivery } from "./ipc-queue";
 import { type ConversationPause, isConversationPause } from "./ipc-token-budget";
 import { isBoolean, isDynamicRecord, isNumber, isOneOf, isString } from "./runtime-values";
@@ -41,6 +48,8 @@ export interface AgentPromptQuestion {
   question: string;
   isSecret: boolean;
   options: Array<{ label: string; description: string }> | null;
+  /** The user can pick more than one option. Set only when true. */
+  multiSelect?: boolean;
 }
 
 export function isAgentPromptQuestion(value: unknown): value is AgentPromptQuestion {
@@ -50,6 +59,7 @@ export function isAgentPromptQuestion(value: unknown): value is AgentPromptQuest
     isBoundedString(value.header, INPUT_LIMITS.promptHeader) &&
     isBoundedString(value.question, INPUT_LIMITS.promptQuestion) &&
     isBoolean(value.isSecret) &&
+    (value.multiSelect === undefined || isBoolean(value.multiSelect)) &&
     (value.options === null ||
       (Array.isArray(value.options) &&
         value.options.length <= INPUT_LIMITS.promptOptions &&
@@ -195,6 +205,8 @@ export interface ConversationMessage {
   senderMember?: ConversationMessageSender | undefined;
   replyToMessageId?: string | null | undefined;
   attachments?: AttachmentSummary[] | undefined;
+  /** What the user said, on a message that a voice turn sent. The agent got only the text. */
+  voiceRecording?: AttachmentSummary | undefined;
   imageGeneration?: ImageGenerationInfo | undefined;
   delivery?: Pick<QueueDelivery, "id" | "status" | "position"> | undefined;
   exchange?: AgentExchangeSummary | undefined;
@@ -211,6 +223,10 @@ export interface ConversationMessage {
   questionPrompt?: ConversationQuestionPrompt | undefined;
   /** Set on the one `plan` message of a turn. The text holds the same plan as a checklist. */
   plan?: ConversationPlan | undefined;
+  /** Set on the one `subagents` message of a turn. The text lists the same subagents by title. */
+  subagents?: ConversationSubagent[] | undefined;
+  /** Set on the one `memory-changes` message of a turn. The text counts the same changes. */
+  memoryChanges?: ConversationMemoryChange[] | undefined;
   /**
    * An interactive block from `ask_ui` (see `ui-blocks.ts`). It rides on a `question_prompt` message
    * beside `questionPrompt`. Absent on a message from an older host.
@@ -218,6 +234,11 @@ export interface ConversationMessage {
   uiBlock?: ConversationUiBlock | undefined;
   /** Set on an `agent-pause` marker: the agent stopped or waits for the user, or for its plan. */
   pause?: ConversationPause | undefined;
+  /**
+   * The timing, tokens and cost of the turn, on one message of a finished turn (see
+   * `ipc-conversation-trace.ts`). It stays on this computer: the Team API projections drop it.
+   */
+  trace?: ConversationTurnTrace | undefined;
 }
 
 export function isConversationMessage(value: unknown): value is ConversationMessage {
@@ -245,6 +266,7 @@ export function isConversationMessage(value: unknown): value is ConversationMess
       (Array.isArray(value.attachments) &&
         value.attachments.length <= INPUT_LIMITS.attachments &&
         value.attachments.every(isAttachmentSummary))) &&
+    (value.voiceRecording === undefined || isAttachmentSummary(value.voiceRecording)) &&
     (value.delivery === undefined || isConversationDelivery(value.delivery)) &&
     (value.exchange === undefined || isAgentExchangeSummary(value.exchange)) &&
     (value.reaction === undefined || value.reaction === null || isMessageReaction(value.reaction)) &&
@@ -261,8 +283,11 @@ export function isConversationMessage(value: unknown): value is ConversationMess
     (value.imageGeneration === undefined || isImageGenerationInfo(value.imageGeneration)) &&
     (value.questionPrompt === undefined || isConversationQuestionPrompt(value.questionPrompt)) &&
     (value.plan === undefined || isConversationPlan(value.plan)) &&
+    (value.subagents === undefined || isConversationSubagents(value.subagents)) &&
+    (value.memoryChanges === undefined || isConversationMemoryChanges(value.memoryChanges)) &&
     (value.uiBlock === undefined || isConversationUiBlock(value.uiBlock)) &&
-    (value.pause === undefined || isConversationPause(value.pause))
+    (value.pause === undefined || isConversationPause(value.pause)) &&
+    (value.trace === undefined || isConversationTurnTrace(value.trace))
   );
 }
 
@@ -284,7 +309,7 @@ export const ROUTINE_QUIET_ANSWER_ITEM_TYPE = "routine_quiet_answer";
 
 /**
  * The answer an agent gave in one turn: its last message of that turn that says something to the
- * reader. Commentary, a question prompt, a plan and a quiet routine answer are not the answer.
+ * reader. Commentary, a question prompt, a plan, the subagents and a quiet routine answer are not the answer.
  */
 export function latestTurnAnswer(
   messages: readonly ConversationMessage[],
@@ -299,6 +324,7 @@ export function latestTurnAnswer(
         message.itemType !== "commentary" &&
         message.itemType !== "question_prompt" &&
         message.itemType !== CONVERSATION_PLAN_ITEM_TYPE &&
+        message.itemType !== CONVERSATION_SUBAGENTS_ITEM_TYPE &&
         message.itemType !== ROUTINE_QUIET_ANSWER_ITEM_TYPE &&
         message.text.trim(),
     );

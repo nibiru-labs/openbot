@@ -1,7 +1,10 @@
 // @vitest-environment node
 import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
+import { AGENT_THREAD_MIGRATION_SQL } from "./agent-threads/agent-thread-schema";
+import { BROWSER_PROFILE_SCHEMA_SQL } from "./browser-profiles/browser-profile-schema";
 import { migrateOpenBotDatabase } from "./openbot-database-schema";
+import { WORKFLOW_SCHEMA_SQL } from "./workflows/workflow-schema";
 
 // Failure modes: an upgrade loses or changes an agent routine or its trigger; the new table is missing
 // on an upgraded database; a backoff row survives its deleted routine; a row with a zero streak or a
@@ -41,7 +44,7 @@ function seedRoutine(db: DatabaseSync): void {
 type TableRow = Record<string, SQLOutputValue>;
 
 function rows(db: DatabaseSync, table: string): TableRow[] {
-  return db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
+  return db.prepare(`SELECT * FROM ${table}`).all();
 }
 
 function pick(list: TableRow[], columns: string[]): TableRow[] {
@@ -49,7 +52,7 @@ function pick(list: TableRow[], columns: string[]): TableRow[] {
 }
 
 /** The released versions whose routines the upgrade reads: the baseline, and each later table change. */
-const RELEASED_VERSIONS = [8, 19, 37, 44];
+const RELEASED_VERSIONS = Array.from({ length: 41 }, (_, index) => index + 8);
 
 describe("routine backoff migration", () => {
   for (const version of RELEASED_VERSIONS) {
@@ -83,7 +86,7 @@ describe("routine backoff migration", () => {
         before.triggers,
       );
       expect(rows(db, "routine_backoff")).toEqual([]);
-      expect(db.prepare("SELECT MAX(version) AS latest FROM schema_migrations").get()).toEqual({ latest: 45 });
+      expect(db.prepare("SELECT MAX(version) AS latest FROM schema_migrations").get()).toEqual({ latest: 49 });
     });
   }
 
@@ -119,5 +122,139 @@ describe("routine backoff migration", () => {
 
     expect(() => migrateOpenBotDatabase(db)).not.toThrow();
     expect(rows(db, "projection_agent_routines")).toHaveLength(1);
+  });
+});
+
+/** Upstream markers retain their original timestamps and meaning. */
+function importedAt(version: number): DatabaseSync {
+  const db = databaseAt(44);
+  seedRoutine(db);
+  db.exec(BROWSER_PROFILE_SCHEMA_SQL);
+  db.exec("INSERT INTO browser_profiles VALUES ('0123456789abcdef0123456789abcdef', 'Imported', 30, 'old', 'old')");
+  if (version >= 46) {
+    db.exec(WORKFLOW_SCHEMA_SQL);
+    db.exec("INSERT INTO workflows (workflow_id,title,created_at,updated_at) VALUES ('kept','Imported','old','old')");
+  }
+  if (version >= 47) db.exec(AGENT_THREAD_MIGRATION_SQL);
+  for (let marker = 45; marker <= version; marker += 1) {
+    db.prepare("INSERT INTO schema_migrations VALUES (?, 'upstream')").run(marker);
+  }
+  return db;
+}
+
+interface MigrationSnapshot {
+  schema: TableRow[];
+  data: (string | TableRow[])[][];
+}
+
+function snapshot(db: DatabaseSync): MigrationSnapshot {
+  return {
+    schema: db.prepare("SELECT * FROM sqlite_master ORDER BY name").all(),
+    data: db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+      .all()
+      .map((row) => [String(row.name), rows(db, String(row.name))]),
+  };
+}
+
+describe("fork and imported migration registry", () => {
+  it.each([46, 47, 48, 49])("keeps fork backoff rows and marker 45 after marker %i fails", (failure) => {
+    const db = databaseAt(45);
+    seedRoutine(db);
+    db.exec("INSERT INTO routine_backoff VALUES ('routine-1', 'kept', 3, 2, 'later', 'old')");
+    const backoff = rows(db, "routine_backoff");
+    const marker = db.prepare("SELECT * FROM schema_migrations WHERE version=45").get();
+    db.exec(`CREATE TEMP TRIGGER fail_marker BEFORE INSERT ON schema_migrations WHEN new.version=${failure}
+      BEGIN SELECT RAISE(ABORT, 'late failure'); END;`);
+    expect(() => migrateOpenBotDatabase(db)).toThrow(`migration to version ${failure} failed`);
+    expect(rows(db, "routine_backoff")).toEqual(backoff);
+    expect(db.prepare("SELECT * FROM schema_migrations WHERE version=45").get()).toEqual(marker);
+    expect(db.prepare("SELECT * FROM schema_migrations WHERE version >= ?").all(failure)).toEqual([]);
+    db.exec("DROP TRIGGER fail_marker");
+    migrateOpenBotDatabase(db);
+    expect(rows(db, "routine_backoff")).toEqual(backoff);
+    expect(db.prepare("SELECT * FROM schema_migrations WHERE version=45").get()).toEqual(marker);
+    expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
+    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+  });
+
+  for (const source of [45, 46, 47]) {
+    for (const failure of [46, 47, 48, 49].filter((version) => version > source)) {
+      it(`retries imported ${source} after marker ${failure} fails without changing source data`, () => {
+        const db = importedAt(source);
+        const markers = rows(db, "schema_migrations");
+        const routine = rows(db, "projection_agent_routines");
+        const profiles = rows(db, "browser_profiles");
+        const workflows = source >= 46 ? rows(db, "workflows") : [];
+        db.exec(`CREATE TEMP TRIGGER fail_marker BEFORE INSERT ON schema_migrations WHEN new.version=${failure}
+          BEGIN SELECT RAISE(ABORT, 'late failure'); END;`);
+        expect(() => migrateOpenBotDatabase(db)).toThrow(`migration to version ${failure} failed`);
+        expect(db.prepare("SELECT * FROM schema_migrations WHERE version <= ? ORDER BY version").all(source)).toEqual(
+          markers,
+        );
+        expect(db.prepare("SELECT * FROM schema_migrations WHERE version >= ?").all(failure)).toEqual([]);
+        if (failure === 49)
+          expect(db.prepare("SELECT name FROM sqlite_master WHERE name='routine_backoff'").all()).toEqual([]);
+        expect(rows(db, "projection_agent_routines")).toEqual(routine);
+        expect(rows(db, "browser_profiles")).toEqual(profiles);
+        expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
+        db.exec("DROP TRIGGER fail_marker");
+        migrateOpenBotDatabase(db);
+        expect(rows(db, "projection_agent_routines")).toEqual(routine);
+        expect(rows(db, "browser_profiles")).toEqual(profiles);
+        expect(rows(db, "workflows")).toEqual(workflows);
+        expect(rows(db, "routine_backoff")).toEqual([]);
+        expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+        expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+        expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 49 });
+        const beforeRetry = snapshot(db);
+        migrateOpenBotDatabase(db);
+        expect(snapshot(db)).toEqual(beforeRetry);
+      });
+    }
+  }
+
+  it.each([45, 46, 47])("rejects missing and newer imported %i histories without writes", (version) => {
+    const db = importedAt(version);
+    db.exec("INSERT INTO schema_migrations VALUES (50, 'future')");
+    let before = snapshot(db);
+    expect(() => migrateOpenBotDatabase(db)).toThrow("newer than this application supports");
+    expect(snapshot(db)).toEqual(before);
+    db.exec("DELETE FROM schema_migrations WHERE version=50; DELETE FROM schema_migrations WHERE version=20");
+    before = snapshot(db);
+    expect(() => migrateOpenBotDatabase(db)).toThrow("missing version 20");
+    expect(snapshot(db)).toEqual(before);
+  });
+
+  it("rejects a backoff table without its released marker", () => {
+    const db = databaseAt(45);
+    db.exec("DELETE FROM schema_migrations WHERE version=45");
+    const before = snapshot(db);
+    expect(() => migrateOpenBotDatabase(db)).toThrow(/contradictory reserved schema/);
+    expect(snapshot(db)).toEqual(before);
+  });
+
+  it.each([
+    "CREATE TABLE browser_profiles (profile_id TEXT)",
+    "CREATE TABLE workflow_unknown (payload TEXT)",
+    WORKFLOW_SCHEMA_SQL,
+    AGENT_THREAD_MIGRATION_SQL,
+    "DROP INDEX agent_tasks_agent",
+  ])("rejects an unknown or contradictory reserved structure before any writes: %s", (change) => {
+    const db = databaseAt(45);
+    seedRoutine(db);
+    db.exec(change);
+    const before = snapshot(db);
+    expect(() => migrateOpenBotDatabase(db)).toThrow(/reserved schema/);
+    expect(snapshot(db)).toEqual(before);
+  });
+
+  it("rejects a malformed imported workflow index before any writes", () => {
+    const db = importedAt(46);
+    db.exec("DROP INDEX workflow_nodes_agent; CREATE INDEX workflow_nodes_agent ON workflow_nodes(node_id)");
+    const before = snapshot(db);
+    expect(() => migrateOpenBotDatabase(db)).toThrow(/unknown reserved schema/);
+    expect(snapshot(db)).toEqual(before);
   });
 });

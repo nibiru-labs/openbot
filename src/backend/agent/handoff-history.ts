@@ -9,6 +9,9 @@ const OLDER_CHARACTERS = 4_000;
 const STEPS_CHARACTERS = 2_000;
 const HEADER_CHARACTERS = 2_000;
 const RECENT_CHARACTERS = 24_000;
+/** A routine run reads the end of the agent's chat only. Its prompt names the work. */
+const ROUTINE_HANDOFF_CHARACTERS = 8_000;
+const ROUTINE_MESSAGE_CHARACTERS = 2_000;
 type HistoryRow = ReturnType<OpenBotDatabase["readAgentHistory"]>["messages"][number];
 
 /** Cuts redacted text at both ends, so a large request keeps its final instructions. */
@@ -132,4 +135,57 @@ export function renderProviderHandoff(
   ].join("\n\n");
   if (packet.length > HANDOFF_CHARACTERS) throw new Error("The history handoff exceeds its character budget.");
   return packet;
+}
+
+/**
+ * The start of a routine run's own provider session: the newest messages of the agent's chat, up to
+ * `ROUTINE_HANDOFF_CHARACTERS`. The run reads more through the history tools when it needs more.
+ */
+export function renderRoutineHandoff(
+  history: ReturnType<typeof readHandoffHistory>,
+  names: ReadonlyMap<string, string>,
+): string | null {
+  if (!history.recent.length) return null;
+  const header = [
+    HANDOFF_START,
+    "This routine run has its own session. These are the newest messages of your conversation. Do not repeat completed work.",
+    "Omitted details remain available: discover openbot.history_search and openbot.history_read.",
+    "--- recent messages ---",
+  ].join("\n");
+  const kept = new Map<string, string>();
+  let size = header.length + HANDOFF_END.length + 4;
+  // Newest first, so a long chat keeps its end.
+  for (const row of history.recent) {
+    const text = historyExcerpt(render(row.message, names), ROUTINE_MESSAGE_CHARACTERS);
+    if (size + text.length + 2 > ROUTINE_HANDOFF_CHARACTERS) break;
+    kept.set(row.message.id, text);
+    size += text.length + 2;
+  }
+  if (!kept.size) return null;
+  const recentText = sortConversationMessages(history.recent.map((row) => row.message))
+    .flatMap((message) => (kept.has(message.id) ? [kept.get(message.id)] : []))
+    .join("\n\n");
+  return [header, recentText, HANDOFF_END].join("\n\n");
+}
+
+const ROUTINE_DIGEST_CHARACTERS = 1_500;
+const ROUTINE_DIGESTS_CHARACTERS = 6_000;
+const ROUTINE_DIGEST_MARKER = "\n\n--- routine run in its own session (also in the conversation history) ---\n";
+
+/**
+ * Adds the answer of a routine run to the handoff that the agent's own session reads with its next
+ * turn, so that session knows what the run did. A handoff with a history packet keeps it, and the
+ * digests go before its last line. Past `ROUTINE_DIGESTS_CHARACTERS`, the oldest digests go.
+ */
+export function appendRoutineDigest(existing: string | undefined, routineName: string, answer: string): string {
+  const digest = redactText(historyExcerpt(`[routine: ${routineName}]\n${answer.trim()}`, ROUTINE_DIGEST_CHARACTERS));
+  const end = `\n${HANDOFF_END}`;
+  const packet =
+    existing?.startsWith(HANDOFF_START) && existing.endsWith(end)
+      ? existing.slice(0, -end.length).trimEnd()
+      : HANDOFF_START;
+  const [history = HANDOFF_START, ...digests] = packet.split(ROUTINE_DIGEST_MARKER);
+  digests.push(digest);
+  while (digests.length > 1 && digests.join(ROUTINE_DIGEST_MARKER).length > ROUTINE_DIGESTS_CHARACTERS) digests.shift();
+  return `${[history, ...digests].join(ROUTINE_DIGEST_MARKER)}\n${end}`;
 }

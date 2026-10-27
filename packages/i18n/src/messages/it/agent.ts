@@ -14,6 +14,9 @@ export const messages = {
   "agent.setup.name": "Nome",
   "agent.setup.purpose": "Di cosa dovrebbe occuparsi questo agente?",
   "agent.setup.purposePlaceholder": "Pianificare viaggi, confrontare opzioni o aiutare nel lavoro di tutti i giorni.",
+  "agent.instructions.length": "{length} / {limit}",
+  "agent.instructions.tooLong":
+    "Accorcia le istruzioni a {limit} caratteri. Le istruzioni più lunghe non vengono salvate.",
   "agent.setup.model": "Modello dell'agente",
   "agent.setup.creating": "Creazione dell'agente…",
   "agent.setup.create": "Crea agente",
@@ -64,6 +67,8 @@ export const messages = {
   "agent.error.codexConfigIgnored": "Avviso sulla configurazione di Codex",
   "agent.error.provider": "Errore del provider",
   "agent.description.generalPurpose": "Assistente generalista",
+  "agent.error.run": "{provider} · {model}",
+  "agent.error.providerNamed": "Errore di {provider}",
   // Avatar color names. They fill `{color}` and `{hue}` inside a sentence.
   "agent.color.red": "Rosso",
   "agent.color.orange": "Arancione",

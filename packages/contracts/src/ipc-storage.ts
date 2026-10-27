@@ -115,6 +115,12 @@ export interface StorageUsage {
   truncated: boolean;
 }
 
+/** The disk that holds the host data. Each value is null when the host cannot tell. */
+export interface StorageDisk {
+  freeBytes: number | null;
+  totalBytes: number | null;
+}
+
 export interface GetStorageUsageInput {
   scope: StorageScope;
   agentId?: string;
@@ -139,6 +145,13 @@ export interface OpenStoredFileInput {
 /** The provider CLI versions on this computer that no OpenBot app uses any more. */
 export interface OldRuntimeVersions {
   bytes: number;
+}
+
+/** The downloaded versions of one provider CLI that OpenBot can remove now. */
+export interface ProviderRuntimeDownload {
+  bytes: number;
+  /** How many versions of the CLI those bytes hold. */
+  versions: number;
 }
 
 export interface OpenStorageLocationInput {
@@ -211,6 +224,14 @@ export function parseOpenStorageLocationInput(value: unknown): OpenStorageLocati
 
 export function decodeOldRuntimeVersions(value: unknown): OldRuntimeVersions {
   return { bytes: byteCount(record(value, "old runtime versions").bytes, "old runtime versions") };
+}
+
+export function decodeProviderRuntimeDownload(value: unknown): ProviderRuntimeDownload {
+  const download = record(value, "provider runtime download");
+  return {
+    bytes: byteCount(download.bytes, "provider runtime download"),
+    versions: byteCount(download.versions, "provider runtime download"),
+  };
 }
 
 function decodeBreakdown(value: unknown): StorageBreakdown {
@@ -301,6 +322,19 @@ export function decodeStorageUsage(value: unknown): StorageUsage {
 /** A remote host without `storage-v1` answers null, and the surface says the host needs an update. */
 export function decodeOptionalStorageUsage(value: unknown): StorageUsage | null {
   return value === null ? null : decodeStorageUsage(value);
+}
+
+export function decodeStorageDisk(value: unknown): StorageDisk {
+  const disk = record(value, "disk space");
+  return {
+    freeBytes: disk.freeBytes === null ? null : byteCount(disk.freeBytes, "free space"),
+    totalBytes: disk.totalBytes === null ? null : byteCount(disk.totalBytes, "disk size"),
+  };
+}
+
+/** A remote host without `storage-disk-v1` answers null, and the sidebar shows no storage card. */
+export function decodeOptionalStorageDisk(value: unknown): StorageDisk | null {
+  return value === null ? null : decodeStorageDisk(value);
 }
 
 /** A host must answer the scope it was asked for, or a panel shows another agent's files. */

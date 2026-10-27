@@ -3,7 +3,12 @@ import { classifyFailure } from "@openbot/telemetry";
 import { currentText } from "@openbot/ui/text";
 import { createSignal, onCleanup, onSettled } from "solid-js";
 import { actionToast } from "../../action-toast";
-import { type ConnectorController, createConnectorActions, NO_WATCH } from "./connector-controller";
+import {
+  type ConnectorAnalyticsAction,
+  type ConnectorController,
+  createConnectorActions,
+  NO_WATCH,
+} from "./connector-controller";
 import { type OnePasswordConnectorPort, onePasswordConnectorPort } from "./onepassword-connector-port";
 
 /**
@@ -26,7 +31,7 @@ export function createOnePasswordConnector(
   const [read, setRead] = createSignal(false);
   /** Why the last status read failed, until a newer status comes. While it is set, the state is not known. */
   const [statusError, setStatusError] = createSignal<string | null>(null);
-  const actions = createConnectorActions("connector.onePassword.actionFailed");
+  const actions = createConnectorActions("connector.onePassword.actionFailed", "onepassword");
   /** Counts the statuses that came, so a failed read does not hide a status that came after it started. */
   let statuses = 0;
   const show = (next: OnePasswordConnectorStatus) => {
@@ -57,8 +62,8 @@ export function createOnePasswordConnector(
   onSettled(reload);
   onCleanup(unsubscribe);
 
-  const run = (action: () => Promise<OnePasswordConnectorStatus>, waits = true) =>
-    actions.run(action, { waits, done: show });
+  const run = (action: () => Promise<OnePasswordConnectorStatus>, waits = true, track?: ConnectorAnalyticsAction) =>
+    actions.run(action, { waits, done: show, ...(track ? { track } : {}) });
 
   // A failed check keeps the last status. The next focus or action checks again.
   const checkSetup = () => {
@@ -115,10 +120,10 @@ export function createOnePasswordConnector(
         onCheckSetup: checkSetup,
         onInstallCli: () => run(() => port().installCli()),
         onOpenApp: openApp,
-        onConnect: (accountId) => run(() => port().connect({ accountId })),
-        onConnectWithToken: (token) => run(() => port().connectWithToken(token)),
+        onConnect: (accountId) => run(() => port().connect({ accountId }), true, "connect_started"),
+        onConnectWithToken: (token) => run(() => port().connectWithToken(token), true, "connected"),
         onCancel: () => run(() => port().cancel(), false),
-        onDisconnect: () => run(() => port().disconnect()),
+        onDisconnect: () => run(() => port().disconnect(), true, "disconnected"),
       },
     },
   };

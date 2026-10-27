@@ -25,6 +25,8 @@ export const messages = {
   "webClient.notice.connectComputer": "Conecte um servidor",
   "webClient.connect.description":
     "Execute o OpenBot no seu computador para conversar com seus agentes neste navegador. Você também pode entrar em um servidor com um convite.",
+  "webClient.connect.descriptionHosted":
+    "Crie um servidor hospedado para conversar com seus agentes neste navegador. Você também pode executar o OpenBot no seu computador ou entrar em um servidor com um convite.",
   "webClient.connect.stepInstall": "Instale e abra o OpenBot no seu computador.",
   "webClient.connect.stepSignIn": "Entre com seu e-mail.",
   "webClient.connect.stepRemote": "Ative o acesso remoto.",

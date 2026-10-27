@@ -38,6 +38,7 @@ const voiceRuntimeFiles = [
   "onnxruntime_providers_shared.dll",
 ];
 const voiceHostPath = resolve(resourcesPath, "app.asar.unpacked/out/main/voice-transcription-host.js");
+const speechHostPath = resolve(resourcesPath, "app.asar.unpacked/out/main/voice-speech-host.js");
 
 await Promise.all([
   access(executablePath),
@@ -49,9 +50,12 @@ await Promise.all([
   access(resolve(resourcesPath, "licenses/sherpa-onnx-LICENSE")),
   access(resolve(resourcesPath, "licenses/onnxruntime-LICENSE")),
   access(resolve(resourcesPath, "licenses/NVIDIA-Parakeet-TDT-0.6B-v3-LICENSE")),
+  access(resolve(resourcesPath, "licenses/Underdog-Bark-3.0-Plus-LICENSE")),
   access(resolve(resourcesPath, "licenses/OpenAI-Whisper-LICENSE")),
+  access(resolve(resourcesPath, "licenses/Supertone-Supertonic-3-LICENSE")),
   ...voiceRuntimeFiles.map((name) => access(resolve(voiceRuntimePath, name))),
   access(voiceHostPath),
+  access(speechHostPath),
   access(resolve(resourcesPath, "remote-desktop-runtime/licenses/Sunshine-GPL-3.0.txt")),
   access(resolve(resourcesPath, "remote-desktop-runtime/licenses/moonlight-web-stream-GPL-3.0.txt")),
   access(resolve(resourcesPath, "remote-desktop-runtime/source-manifest.json")),
@@ -74,10 +78,14 @@ await Promise.all(["codex", "claude", "grok"].map((name) => assertAbsent(resolve
 await assertAbsent(resolve(resourcesPath, "cloudflared"));
 await assertAbsent(resolve(resourcesPath, "app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-win32-x64"));
 
-// The Parakeet and Whisper models are downloaded on demand.
+// The Parakeet, Bark, Whisper and Supertonic models are downloaded on demand.
 if (
-  ["voice/model", "voice/whisper-turbo-int8"].some((path) => existsSync(resolve(resourcesPath, path))) ||
-  ["encoder.int8.onnx", "turbo-encoder.int8.onnx"].some((name) => existsSync(resolve(voiceRuntimePath, name)))
+  ["voice/model", "voice/bark-3.0-plus-int8", "voice/whisper-turbo-int8", "voice/supertonic-3-int8"].some((path) =>
+    existsSync(resolve(resourcesPath, path)),
+  ) ||
+  ["encoder.int8.onnx", "turbo-encoder.int8.onnx", "vocoder.int8.onnx"].some((name) =>
+    existsSync(resolve(voiceRuntimePath, name)),
+  )
 ) {
   throw new Error("The on-demand voice models must not be in the application.");
 }

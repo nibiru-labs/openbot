@@ -8,7 +8,8 @@ import type {
 } from "@openbot/contracts/ipc";
 import { COMPUTER_USE_MCP_SERVER_NAME } from "@openbot/contracts/ipc";
 import { type DynamicRecord, isString } from "@openbot/contracts/runtime-values";
-import type { UiBlockResponse } from "@openbot/contracts/ui-blocks";
+import { normalizeUiBlockSpec, type UiBlockResponse, type UiBlockSpec } from "@openbot/contracts/ui-blocks";
+import type { SavedApiKey } from "../agent-api-keys";
 import { type DynamicToolResult, getArray, getRecord, getString, isRecord } from "../protocol";
 
 const MCP_ELICITATION_DECISION_ID = "mcp-elicitation-decision";
@@ -86,6 +87,7 @@ export function promptQuestions(params: unknown): AgentPromptQuestion[] {
             description: getString(option, "description") ?? "",
           }))
         : null,
+      ...(question.multiSelect === true ? { multiSelect: true } : {}),
     }));
 }
 
@@ -149,10 +151,15 @@ export function mcpElicitationQuestions(params: unknown): AgentPromptQuestion[] 
  */
 const CODEX_MCP_TOOL_CALL_APPROVAL_KIND = "mcp_tool_call";
 
+/** The card answer "Allow once", which `mcpElicitationResult` turns into one accepted consent. */
+export const MCP_TOOL_CONSENT_ALLOW_ONCE: Record<string, string[]> = {
+  [MCP_ELICITATION_DECISION_ID]: [MCP_ELICITATION_ALLOW_ONCE],
+};
+
 /**
- * Whether the request is Codex's consent to run one MCP tool: a form with no field, the marker, and
- * the offer to remember the answer. A tool that the user set to ask every time offers no `persist`,
- * so its card stays.
+ * Whether the request is Codex's consent to run one MCP tool: a form with no field and the marker. A
+ * tool that the user set to ask every time offers no `persist`, but it is the same consent, so Full
+ * access answers it too.
  */
 export function mcpToolCallConsent(params: unknown): boolean {
   const mode = getString(params, "mode") ?? "form";
@@ -162,8 +169,7 @@ export function mcpToolCallConsent(params: unknown): boolean {
     (mode === "form" || mode === "openai/form") &&
     properties !== null &&
     Object.keys(properties).length === 0 &&
-    getString(meta, "codex_approval_kind") === CODEX_MCP_TOOL_CALL_APPROVAL_KIND &&
-    getArray(meta, "persist").includes("always")
+    getString(meta, "codex_approval_kind") === CODEX_MCP_TOOL_CALL_APPROVAL_KIND
   );
 }
 
@@ -304,7 +310,52 @@ export function uiBlockPromptResult(outcome: UiBlockPromptOutcome): DynamicToolR
   return { success: outcome.status !== "expired", contentItems: [{ type: "inputText", text: JSON.stringify(value) }] };
 }
 
-export function browserTakeoverResult(decision: RespondToBrowserTakeoverInput["decision"]): DynamicToolResult {
+/** The id of the one secret field in the form of `request_api_key`. */
+export const API_KEY_FIELD_ID = "key";
+
+/**
+ * The form of `request_api_key`: one required secret field. Its label is the variable name, because
+ * the user finds the key by that name at the service. Null when the contract refuses it.
+ */
+export function apiKeyFormSpec(input: {
+  name: string;
+  title: string;
+  placeholder?: string | undefined;
+  submit?: string | undefined;
+}): UiBlockSpec | null {
+  return normalizeUiBlockSpec({
+    type: "form",
+    title: input.title,
+    fields: [
+      {
+        id: API_KEY_FIELD_ID,
+        kind: "text",
+        label: input.name,
+        required: true,
+        secret: true,
+        ...(input.placeholder ? { placeholder: input.placeholder } : {}),
+      },
+    ],
+    ...(input.submit ? { submit: input.submit } : {}),
+  });
+}
+
+/**
+ * The `request_api_key` result: the file of the saved key, or a skip. It never holds a form value, so
+ * the key stays out of the provider transcript.
+ */
+export function apiKeyPromptResult(blockId: string, saved: SavedApiKey | null): DynamicToolResult {
+  const value = saved
+    ? { status: "saved", blockId, name: saved.name, path: saved.path }
+    : { status: "skipped", blockId };
+  return { success: true, contentItems: [{ type: "inputText", text: JSON.stringify(value) }] };
+}
+
+/** `vault` says what happened to a password that the user asked to keep in the Vault. */
+export function browserTakeoverResult(
+  decision: RespondToBrowserTakeoverInput["decision"],
+  vault?: string,
+): DynamicToolResult {
   return {
     success: true,
     contentItems: [
@@ -312,6 +363,7 @@ export function browserTakeoverResult(decision: RespondToBrowserTakeoverInput["d
         type: "inputText",
         text: JSON.stringify({
           status: decision === "complete" ? "completed" : "cancelled",
+          ...(vault ? { vault } : {}),
           ...(decision === "complete" ? { next: "Take a fresh snapshot and continue the task." } : {}),
         }),
       },

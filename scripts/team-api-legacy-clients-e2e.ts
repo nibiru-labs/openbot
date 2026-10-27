@@ -5,6 +5,8 @@
 // - v1: compatibility, the protocol gate, join, login, `bot`/`botId` wire keys and the event socket.
 // - v2: the WebRTC frames of a real `TeamWebRtcHostPeer`, from the signed handshake to an RPC.
 // - v3: agent duplication, its idempotent retry, and the refused request shapes.
+// - v7 and v8: a v7 client on this host gets no v8 field; the v8 decoder reads the released v4-v7
+//   fixtures; the v7 decoder still refuses a provider that it does not know.
 // Run: `bun scripts/team-api-legacy-clients-e2e.ts`.
 // Writes .openbot-build/team-api-legacy-clients-e2e/report.json.
 import assert from "node:assert/strict";
@@ -23,6 +25,8 @@ import {
   decodeTeamProtocolV2RpcFrame,
   decodeTeamProtocolV3HttpRequest,
   decodeTeamProtocolV3HttpResponse,
+  decodeTeamProtocolV7HttpResponse,
+  decodeTeamProtocolV8HttpResponse,
   encodeTeamProtocolV2Frame,
   highestCommonTeamProtocol,
   TEAM_APP_VERSION_HEADER,
@@ -32,6 +36,7 @@ import {
   TEAM_PROTOCOL_V1_WEBSOCKET,
   TEAM_PROTOCOL_V3,
   TEAM_PROTOCOL_V3_CAPABILITIES,
+  TEAM_PROTOCOL_V7,
   TEAM_PROTOCOL_VERSION_HEADER,
   teamProtocolV2AuthenticationTranscript,
 } from "@openbot/contracts/team-protocol";
@@ -164,6 +169,7 @@ const agentBrowser: AgentBrowserHost = {
   clearControls: () => {},
   endControl: () => {},
   close: () => Effect.void,
+  clearAgentSession: () => Effect.void,
 };
 const teamBrowser: TeamApiBrowser = {
   listTabs: () => [],
@@ -185,6 +191,7 @@ const teamBrowser: TeamApiBrowser = {
   startView: unused,
   dispatchViewInput: unused,
   copyViewSelection: unused,
+  importSignIn: unused,
 };
 
 interface WireResponse {
@@ -535,6 +542,83 @@ try {
     return { extraKeyStatus: extra.status, badOperationIdStatus: notUuid.status };
   });
 
+  // --- v7 and v8: open provider ids ---
+
+  await step("v8 decoder: reads the released v4-v7 fixtures; v7 still refuses an unknown provider", async () => {
+    const read: string[] = [];
+    for (const version of [4, 5, 6, 7, 8]) {
+      decodeTeamProtocolV8HttpResponse("GET", "/v1/agents", 200, fixture(`v${version}/host-http-response.json`));
+      read.push(`v${version}/host-http-response.json`);
+      if (version < 5) continue;
+      decodeTeamProtocolV8HttpResponse(
+        "GET",
+        "/v1/agents/status",
+        200,
+        fixture(`v${version}/host-status-response.json`),
+      );
+      decodeTeamProtocolV8HttpResponse(
+        "GET",
+        "/v1/agents/models",
+        200,
+        fixture(`v${version}/host-models-response.json`),
+      );
+      read.push(`v${version}/host-status-response.json`, `v${version}/host-models-response.json`);
+    }
+    // The v8 fixtures carry a provider that no released protocol knows.
+    for (const [path, name] of [
+      ["/v1/agents", "host-http-response.json"],
+      ["/v1/agents/status", "host-status-response.json"],
+      ["/v1/agents/models", "host-models-response.json"],
+    ] as const) {
+      assert.throws(
+        () => decodeTeamProtocolV7HttpResponse("GET", path, 200, fixture(`v8/${name}`)),
+        `The v7 decoder read v8/${name}.`,
+      );
+    }
+    return { read };
+  });
+
+  await step("v7 client: this host serves protocol 7 without the v8 `displayName`", async () => {
+    const compatibility = await wire(port, { protocol: null, method: "GET", path: "/v1/compatibility" });
+    const host = record(record(compatibility.body, "compatibility").protocol, "protocol");
+    assert.ok(Number(host.maximum) >= 8, `The host maximum is ${String(host.maximum)}.`);
+    assert.equal(
+      highestCommonTeamProtocol(
+        { minimum: 1, maximum: TEAM_PROTOCOL_V7 },
+        {
+          minimum: Number(host.minimum),
+          maximum: Number(host.maximum),
+        },
+      ),
+      TEAM_PROTOCOL_V7,
+    );
+    const path = "/v1/agents/status";
+    const v7 = await wire(port, { protocol: TEAM_PROTOCOL_V7, method: "GET", path, token: member.token });
+    const v8 = await wire(port, { protocol: 8, method: "GET", path, token: member.token });
+    assert.equal(v7.status, 200, `v7 status: ${v7.status}`);
+    assert.equal(v8.status, 200, `v8 status: ${v8.status}`);
+    const rows = (body: unknown) => {
+      const providers = record(body, "status").providers;
+      return Array.isArray(providers) ? providers.map((row) => record(row, "provider row")) : [];
+    };
+    const v7Rows = rows(decodeTeamProtocolV7HttpResponse("GET", path, 200, v7.body));
+    const v8Rows = rows(decodeTeamProtocolV8HttpResponse("GET", path, 200, v8.body));
+    assert.ok(
+      v7Rows.every((row) => !Object.hasOwn(row, "displayName")),
+      "A v7 row has a displayName.",
+    );
+    assert.ok(
+      v8Rows.every((row) => typeof row.displayName === "string" && row.displayName.length > 0),
+      "A v8 row has no displayName.",
+    );
+    assert.deepEqual(
+      v8Rows.map((row) => row.id),
+      v7Rows.map((row) => row.id),
+      "v7 and v8 list different providers.",
+    );
+    return { providers: v8Rows.map((row) => `${String(row.id)}: ${String(row.displayName)}`) };
+  });
+
   // --- v2 over WebRTC frames ---
 
   const clientKeys = generateKeyPairSync("ed25519", {
@@ -794,4 +878,4 @@ try {
   await rm(root, { recursive: true, force: true });
 }
 
-process.stdout.write(`Team API v1-v3 legacy clients passed. Report: ${join(OUT, "report.json")}\n`);
+process.stdout.write(`Team API v1-v3, v7 and v8 clients passed. Report: ${join(OUT, "report.json")}\n`);
