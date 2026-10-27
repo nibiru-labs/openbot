@@ -693,7 +693,6 @@ export class TurnLifecycle {
         return;
       }
       case "thread/tokenUsage/updated": {
-        console.log("DEBUG tokenUsage", threadId, agentId, "loaded", this.#conversation.loadedClientFor(threadId) === source, "same", this.#conversation.loadedClientFor(threadId) === source);
         if (!threadId || !agentId) return;
         if (this.#conversation.loadedClientFor(threadId) !== source) return;
         this.#compaction.updateBudget(threadId, params);

@@ -26,13 +26,15 @@ const accountsRoot = join(root, "provider-accounts");
 const logPath = join(root, "protocol.jsonl");
 const controlPath = join(root, "control.json");
 const exitedPath = join(root, "exited");
-const fakeCodex = join(root, "codex");
+/** The `.cjs` name keeps the fake a CommonJS script, also when the temp folder sits in a package
+ * whose package.json sets "type": "module". */
+const fakeCodex = join(root, "codex.cjs");
 /** The home folder of the provider's own sign-in. An account of its own reads another folder. */
 const sharedCodexHome = join(home, ".codex");
 /** The message that makes the fake call a browser tool and keep the turn open. */
 const BROWSER_MARK = "KEEP-THE-BROWSER-CONTROL-OPEN";
-/** The message that makes the fake report no context usage, so the next turn does not compact. */
-const NO_USAGE_MARK = "REPORT-NO-CONTEXT-USAGE";
+/** The message that makes the fake report context usage, so the turn that ends compacts. */
+const USAGE_MARK = "REPORT-CONTEXT-USAGE";
 
 // Before the service modules load: the Codex process and the stores read the home folder.
 process.env.HOME = home;
@@ -103,7 +105,11 @@ const answer = (message) => {
         write({ id: "call-" + turnId, method: "item/tool/call", params: { threadId: params.threadId, turnId, callId: "call-" + turnId, namespace: "openbot_browser", tool: "list_tabs", arguments: {} } });
         return;
       }
-      if (!text.includes(${JSON.stringify(NO_USAGE_MARK)})) {
+      // Only a marked turn reports context usage. A turn without the mark leaves the context of its
+      // thread unknown, so no turn of that thread compacts. The mark must not be a word of the
+      // message alone: a turn that continues a conversation quotes the earlier messages, so the
+      // mark of an earlier message would reach the later turn as well.
+      if (text.includes(${JSON.stringify(USAGE_MARK)})) {
         write({ method: "thread/tokenUsage/updated", params: { threadId: params.threadId, turnId, tokenUsage: { total: { totalTokens: 90000 }, last: { totalTokens: 90000 }, modelContextWindow: 100000 } } });
       }
       setTimeout(() => {
@@ -164,7 +170,7 @@ process.stdin.on("data", (chunk) => {
     buffer = buffer.slice(newline + 1);
     if (line) {
       const message = JSON.parse(line);
-      log({ pid: process.pid, method: message.method ?? null, id: message.id ?? null, params: message.params ?? null });
+      log({ pid: process.pid, method: message.method ?? null, id: message.id ?? null, params: message.params ?? null, home: process.env.CODEX_HOME });
       if (message.method && message.id !== undefined) answer(message);
     }
     newline = buffer.indexOf("\\n");
@@ -180,10 +186,12 @@ const report: { passed: boolean; checks: typeof checks; error?: string; log?: un
 
 /** The control sessions the browser host holds, by thread and turn. */
 const controlSessions = new Map<string, { threadId: string; turnId: string }>();
+/** The control sessions that ended, by thread and turn. */
+const endedControls: { threadId: string; turnId: string }[] = [];
 const calls = {
   clearControls: 0,
   browserTools: 0,
-  endControl: [] as { threadId: string; turnId: string }[],
+  endControl: endedControls,
 };
 const unused = () => Effect.die(new Error("Not used by this check."));
 const browser: AgentBrowserHost = {
@@ -220,10 +228,10 @@ const browser: AgentBrowserHost = {
 
 interface LogEntry {
   pid: number;
-  event?: string;
+  event: string | null;
   method: string | null;
   threadId: string | null;
-  home?: string;
+  home: string | null;
   profileGeneration?: boolean;
 }
 
@@ -334,10 +342,10 @@ try {
     );
 
   // The agent with an account of its own, and the agent whose turn keeps a browser control session
-  // open. Their first turns report no context usage, so the next turn of each one compacts on the
-  // process of its own account.
-  const confinedAgent = await create("Confined", `${NO_USAGE_MARK} First message.`);
-  const browserAgent = await create("Browser", `${NO_USAGE_MARK} First message.`);
+  // open. Their first turns report no context usage, so the second turn of the first one compacts
+  // on the process of its own account.
+  const confinedAgent = await create("Confined", "First message.");
+  const browserAgent = await create("Browser", "First message.");
   await waitFor("the first turns to end", () => idle(confinedAgent.id) && idle(browserAgent.id));
 
   // An agent with an account of its own runs on a process of its own.
@@ -345,7 +353,9 @@ try {
   await runCauseEffect(agents.updateAgent({ agentId: browserAgent.id, providerAccountId: second.id }));
 
   // The compaction of the agent on its own process runs on the process of its account.
-  const confinedReceipt = await runCauseEffect(agents.sendMessage({ agentId: confinedAgent.id, text: "Second message." }));
+  const confinedReceipt = await runCauseEffect(
+    agents.sendMessage({ agentId: confinedAgent.id, text: `${USAGE_MARK} Second message.` }),
+  );
   const confinedDeliveryId = confinedReceipt.deliveries[0]?.id;
   if (!confinedDeliveryId) throw new Error("The second message of the confined agent has no delivery.");
   await waitFor("the compaction of the agent on its own process", () =>
@@ -371,7 +381,7 @@ try {
 
   // The agent on the provider's own sign-in comes last, so its compaction is the one that the loss
   // ends. Its first turn reports 90% of the context window, so the compaction starts with it.
-  const sharedAgent = await create("Shared", "First message.");
+  const sharedAgent = await create("Shared", `${USAGE_MARK} First message.`);
   const threadId = await waitFor("the first turn to end", () => {
     const session = store.activeProviderSession(sharedAgent.id)?.externalSessionId;
     const started = protocol().some((line) => line.method === "turn/start" && line.threadId === session);
@@ -418,9 +428,13 @@ try {
 
   // The agents of the other processes keep their work.
   const confinedState = agents.getRuntimeSnapshot().contextStates?.find((state) => state.agentId === confinedAgent.id);
-  check("the compaction of the agent on its own process survives the loss", confinedState?.compaction?.status === "running", {
-    compaction: confinedState?.compaction ?? null,
-  });
+  check(
+    "the compaction of the agent on its own process survives the loss",
+    confinedState?.compaction?.status === "running",
+    {
+      compaction: confinedState?.compaction ?? null,
+    },
+  );
   const browserThreadId = store.list().find((agent) => agent.id === browserAgent.id)?.threadId ?? null;
   const session = [...controlSessions.values()].find((entry) => entry.threadId === browserThreadId);
   check("the browser control session of the agent on its own process survives the loss", Boolean(session), {
