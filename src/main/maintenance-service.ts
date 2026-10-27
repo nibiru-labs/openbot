@@ -1,9 +1,7 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { arch, release as osRelease, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { promisify } from "node:util";
 import type { AgentSummary, ExportResult } from "@openbot/contracts/ipc";
 import type { AppTranslate } from "@openbot/i18n";
 import { Effect } from "effect";
@@ -12,11 +10,10 @@ import type { AgentService } from "../backend/agent-service";
 import type { BrowserHost } from "../backend/browser-host";
 import type { MailboxStore } from "../backend/mailbox-store";
 import { type ArchiveOperationError, archiveCall, archiveFailure, archiveSync } from "./archive-effects";
+import { createBackupArchive } from "./backup-archive";
 import type { ResourceMonitor } from "./resource-monitor";
 import type { TraceFile } from "./trace-file";
 import type { UpdateService } from "./update-service";
-
-const execFileAsync = promisify(execFile);
 
 interface MaintenanceContext {
   service: AgentService;
@@ -99,20 +96,7 @@ export const exportOpenBotData = Effect.fn("Archive.exportOpenBotData")(function
           );
           yield* archiveCall(() => copyFile(attachment.sourcePath, target)).pipe(Effect.uninterruptible);
         }
-        if (process.platform === "win32") {
-          yield* archiveCall(() =>
-            execFileAsync("powershell.exe", [
-              "-NoProfile",
-              "-NonInteractive",
-              "-Command",
-              `Compress-Archive -LiteralPath '${powerShellLiteral(exportRoot)}' -DestinationPath '${powerShellLiteral(archiveCandidate)}' -Force`,
-            ]),
-          ).pipe(Effect.uninterruptible);
-        } else {
-          yield* archiveCall(() =>
-            execFileAsync("/usr/bin/ditto", ["-c", "-k", "--keepParent", exportRoot, archiveCandidate]),
-          ).pipe(Effect.uninterruptible);
-        }
+        yield* createBackupArchive(process.platform, exportRoot, archiveCandidate);
         yield* archiveCall(() => rename(archiveCandidate, destination)).pipe(Effect.uninterruptible);
         return { saved: true };
       }),
@@ -125,9 +109,6 @@ export const exportOpenBotData = Effect.fn("Archive.exportOpenBotData")(function
   );
 });
 
-function powerShellLiteral(value: string): string {
-  return value.replaceAll("'", "''");
-}
 export const exportDiagnostics = Effect.fn("Archive.exportDiagnostics")(function* (
   context: Pick<
     MaintenanceContext,
