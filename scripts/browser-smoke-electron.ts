@@ -348,6 +348,28 @@ const server = createServer((request, response) => {
     } else setTimeout(finish, 250);
     return;
   }
+  // The page starts a second main-frame navigation while the first load is still open, as a sign-in
+  // or consent redirect does. `loadURL` then rejects inside Electron's `did-start-navigation` event.
+  // The slow image keeps the first load open until the redirect starts.
+  if (url.pathname === "/redirect-start") {
+    response.setHeader("content-type", "text/html; charset=utf-8");
+    response.end(
+      `<!doctype html><script>setTimeout(() => location.replace('/redirect-end${url.search}'), 0)</script><img src="/redirect-image">`,
+    );
+    return;
+  }
+  if (url.pathname === "/redirect-image") {
+    setTimeout(() => response.end(), 300);
+    return;
+  }
+  if (url.pathname === "/redirect-end") {
+    response.setHeader("content-type", "text/html; charset=utf-8");
+    if (url.search === "?slow") {
+      response.write("<!doctype html><main>loading</main>");
+      setTimeout(() => response.end("<script>document.querySelector('main').textContent='redirected'</script>"), 200);
+    } else response.end("<!doctype html><main>redirected</main>");
+    return;
+  }
   if (url.pathname === "/v2") {
     const port = request.socket.localPort;
     response.setHeader("content-type", "text/html; charset=utf-8");
@@ -362,6 +384,9 @@ const server = createServer((request, response) => {
       <button aria-label="Accessible override" onclick="document.querySelector('output').textContent='visible-text:' + event.isTrusted">Unique action text</button>
       <span style="position:relative;display:inline-block"><button aria-label="Covered">Covered</button><span style="position:absolute;inset:0;z-index:2" aria-hidden="true"></span></span>
       <span style="position:relative;display:inline-block"><button style="width:200px" aria-label="Partially covered" onclick="document.querySelector('output').textContent='partial:' + event.isTrusted">Partially covered</button><span style="position:absolute;left:70px;right:70px;top:0;bottom:0;z-index:2" aria-hidden="true"></span></span>
+      <style>.pseudo-option{position:relative;display:inline-block;width:160px;height:28px}.pseudo-option input{position:absolute;left:8px;top:6px;margin:0}.pseudo-option::after{content:'';position:absolute;inset:0}</style>
+      <label class="pseudo-option"><input type="radio" name="pay" aria-label="Pay by card" />Card</label>
+      <span class="pseudo-option"><input type="radio" name="pay" aria-label="Pay by transfer" /></span>
       <span hidden data-hidden-wait>hidden wait sentinel</span>
       <button aria-label="SPA" onclick="setTimeout(() => { history.pushState({}, '', '/v2#done'); document.querySelector('output').textContent='SPA done'; }, 20)">SPA</button>
       <button draggable="true" aria-label="Drag source">Drag source</button><button aria-label="Drop target" ondragover="event.preventDefault()" ondrop="event.preventDefault();document.querySelector('output').textContent='drag:' + event.isTrusted">Drop target</button>
@@ -409,6 +434,7 @@ const SCENARIOS = [
   "live-view",
   "secret-handoff",
   "popups",
+  "redirect-navigation",
 ];
 
 void main().catch((error) => {
@@ -426,6 +452,7 @@ async function main(): Promise<void> {
   const whatsappLive = process.argv.includes("--whatsapp-live");
   const canvaLive = process.argv.includes("--canva-live");
   const framerLive = process.argv.includes("--framer-live");
+  const amazonLive = process.argv.includes("--amazon-live");
   const configuredRoot = argumentValue("--smoke-root=");
   const persistencePhase = argumentValue("--persistence-phase=");
   const persistenceOrigin = argumentValue("--persistence-origin=");
@@ -486,12 +513,15 @@ async function main(): Promise<void> {
           if (whatsappLive) await runWhatsAppLiveProbe(browser);
           if (canvaLive) await runCanvaLiveProbe(browser);
           if (framerLive) await runFramerLiveProbe(browser, { x: 0, y: 0, width: 800, height: 600 });
+          if (amazonLive) await runAmazonLiveProbe(browser);
         } else if (scenario === "popups") {
           await runPopupScenario(browser, origin);
         } else if (scenario === "secret-handoff") {
           await runSecretHandoffScenario(browser, origin);
         } else if (scenario === "tool-boundary") {
           await runToolBoundaryScenario(browser, origin);
+        } else if (scenario === "redirect-navigation") {
+          await runRedirectNavigationScenario(browser, origin);
         } else {
           const { tab, contents } = await openTabWithContents(browser, `${origin}/v2`, "smoke-thread", "smoke-bot");
           try {
@@ -580,6 +610,7 @@ async function main(): Promise<void> {
     process.stdout.write("BrowserHost: snapshot and actions passed.\n");
 
     await runDoubleClickScenario(browser, origin);
+    await runRedirectNavigationScenario(browser, origin);
     const v2Tab = await runCauseEffect(browser.open(`${origin}/v2`, "smoke-thread", "smoke-bot"));
     const v2Contents = webContents
       .getAllWebContents()
@@ -1982,6 +2013,53 @@ async function runFocusScenario(browser: BrowserHost, origin: string): Promise<v
   focusSentinel.destroy();
 }
 
+/**
+ * A page that redirects while it loads made `loadURL` reject inside Electron's `did-start-navigation`
+ * event, and the tab then called `webContents.stop()` before that event returned. Chromium stops the
+ * process when a navigation is cancelled while it starts. The process must survive and end on the
+ * redirected page.
+ */
+async function runRedirectNavigationScenario(browser: BrowserHost, origin: string): Promise<void> {
+  const tab = await runCauseEffect(browser.open(origin, "smoke-thread", "smoke-bot"));
+  const outcomes: { via: string; url: string; success: boolean; error?: string }[] = [];
+  try {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      for (const url of [`${origin}/redirect-start`, `${origin}/redirect-start?slow`]) {
+        const result = await callBrowserTool(browser, "navigate", { tabId: tab.id, url, timeoutMs: 5_000 });
+        outcomes.push({
+          via: "tool",
+          url,
+          success: result.success,
+          ...(result.success ? {} : { error: toolError(result) }),
+        });
+        const exit = await Effect.runPromiseExit(browser.loadUrl(tab.id, url));
+        outcomes.push({
+          via: "loadUrl",
+          url,
+          success: exit._tag === "Success",
+          ...(exit._tag === "Success" ? {} : { error: String(exit.cause) }),
+        });
+      }
+    }
+    await waitFor(
+      async () =>
+        browser
+          .listTabs()
+          .find((candidate) => candidate.id === tab.id)
+          ?.url.includes("/redirect-end") === true,
+      "redirected tab URL",
+    );
+  } finally {
+    await runCauseEffect(browser.close(tab.id));
+  }
+  await mkdir(".openbot-build", { recursive: true });
+  await writeFile(
+    ".openbot-build/browser-redirect-navigation-report.json",
+    JSON.stringify({ processAlive: true, attempts: outcomes.length, outcomes }, null, 2),
+  );
+  process.stdout.write(`BrowserHost: ${outcomes.length} redirecting navigations kept the process alive.\n`);
+}
+
 async function runBackgroundScenario(browser: BrowserHost, origin: string): Promise<void> {
   const tab = await runCauseEffect(browser.open(origin, "smoke-thread", "smoke-bot"));
   const other = await runCauseEffect(browser.open(`${origin}/child`, "other-thread", "other-agent"));
@@ -2601,6 +2679,25 @@ async function runControlActions(browser: BrowserHost, tabId: string, v2Contents
   if (editableValue !== "editable text appended") {
     throw new Error("V2 contenteditable target did not receive text.");
   }
+  // A styled label's ::after covers its radio, as on Stripe Checkout. The label activates the radio,
+  // so the click goes through. The same layer on an element that is not a label still blocks it.
+  const pseudoLabel = await callBrowserTool(browser, "click", {
+    tabId: tabId,
+    target: { kind: "role", role: "radio", name: "Pay by card", exact: true },
+  });
+  if (!pseudoLabel.success) throw new Error(`V2 click through a label ::after failed: ${toolError(pseudoLabel)}`);
+  const pseudoChecked = await v2Contents.executeJavaScript(
+    `document.querySelector('[aria-label="Pay by card"]').checked`,
+    true,
+  );
+  if (pseudoChecked !== true) throw new Error("V2 click through a label ::after did not select the radio.");
+  const pseudoBlocked = await callBrowserTool(browser, "click", {
+    tabId: tabId,
+    target: { kind: "role", role: "radio", name: "Pay by transfer", exact: true },
+  });
+  if (pseudoBlocked.success || !toolError(pseudoBlocked).includes("covered by")) {
+    throw new Error("V2 hit testing ignored a ::after layer that is not a label.");
+  }
 }
 
 async function runKeyboardScenario(browser: BrowserHost, origin: string, temporaryRoot: string): Promise<void> {
@@ -2937,6 +3034,46 @@ async function runEvaluationScenario(browser: BrowserHost, tabId: string, v2Cont
   });
   if (!evaluationAfterFailure.success || toolTextPayload(evaluationAfterFailure)?.queueRecovered !== true) {
     throw new Error(`V2 page evaluation left the action queue unusable: ${toolError(evaluationAfterFailure)}`);
+  }
+  await runWedgedFrameEvaluation(browser, new URL(v2Contents.getURL()).origin);
+}
+
+/**
+ * An evaluation waits for the page to become quiet in every frame. A frame that does not answer, such
+ * as an ad frame whose timers do not run (#3139), must not hold the result until the deadline. The
+ * frame host is a site of its own, so the spinning renderer is not the one of another fixture.
+ */
+async function runWedgedFrameEvaluation(browser: BrowserHost, origin: string): Promise<void> {
+  const { port } = new URL(origin);
+  const { tab, contents } = await openTabWithContents(browser, `${origin}/blocking-frame`, "smoke-thread", "smoke-bot");
+  try {
+    const frameStatus = async (status: string) =>
+      (await contents.executeJavaScript("document.querySelector('output').textContent", true)) === status;
+    await contents.executeJavaScript(
+      `(() => {
+        const frame = document.createElement('iframe');
+        frame.src = 'http://evaluate-spin.localhost:${port}/spinning-frame';
+        document.body.appendChild(frame);
+        return true;
+      })()`,
+      true,
+    );
+    await waitFor(() => frameStatus("frame ready"), "the evaluation frame to report ready");
+    await contents.executeJavaScript(
+      "document.querySelector('iframe').contentWindow.postMessage('spin', '*'); true",
+      true,
+    );
+    await waitFor(() => frameStatus("frame spinning"), "the evaluation frame to start spinning");
+    const evaluated = await callBrowserTool(browser, "evaluate", {
+      tabId: tab.id,
+      expression: "1 + 1",
+      timeoutMs: 5_000,
+    });
+    if (!evaluated.success || toolError(evaluated) !== "2") {
+      throw new Error(`V2 page evaluation waited on a frame that does not answer: ${toolError(evaluated)}`);
+    }
+  } finally {
+    await runCauseEffect(browser.close(tab.id));
   }
 }
 
@@ -3360,6 +3497,50 @@ async function runIdentityFrameProbe(browser: BrowserHost, origin: string): Prom
   } finally {
     await runCauseEffect(browser.close(frameTab.id));
   }
+}
+
+/** Amazon product pages load a 1x1 ad frame whose timers do not run. Evaluation must still return (#3139). */
+async function runAmazonLiveProbe(browser: BrowserHost): Promise<void> {
+  const { tab, contents } = await openTabWithContents(
+    browser,
+    "https://www.amazon.com.br/s?k=disco+de+vinil",
+    "smoke-thread",
+    "smoke-bot",
+  );
+  try {
+    const product = "a[href*=\\'/dp/\\']";
+    await waitForLive(
+      async () => (await contents.executeJavaScript(`!!document.querySelector('${product}')`, true)) === true,
+      "an Amazon product link",
+    );
+    const productUrl = await contents.executeJavaScript(`document.querySelector('${product}').href`, true);
+    if (!isString(productUrl)) throw new Error("Amazon did not list a product.");
+    await runCauseEffect(browser.loadUrl(tab.id, productUrl));
+    await waitForLive(
+      async () => contents.mainFrame.framesInSubtree.some((frame) => frame.url.includes("amazon-adsystem.com")),
+      "the Amazon ad frame",
+    );
+    const evaluated = await callBrowserTool(browser, "evaluate", {
+      tabId: tab.id,
+      expression: "1 + 1",
+      timeoutMs: 5_000,
+    });
+    if (!evaluated.success || toolError(evaluated) !== "2") {
+      throw new Error(`Amazon product evaluation did not return its value: ${toolError(evaluated)}`);
+    }
+    process.stdout.write("BrowserHost: Amazon product evaluation passed.\n");
+  } finally {
+    await runCauseEffect(browser.close(tab.id));
+  }
+}
+
+async function waitForLive(check: () => Promise<boolean>, waitedFor: string): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (await check().catch(() => false)) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Timed out waiting for ${waitedFor}.`);
 }
 
 async function runGoogleLiveProbe(browser: BrowserHost): Promise<void> {

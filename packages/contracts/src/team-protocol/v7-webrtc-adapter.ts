@@ -52,6 +52,8 @@ export function encodeTeamProtocolV7WebRtcHttpResponse(
     preserveBrowserSecrets?: boolean;
     historyExtent?: boolean;
     uiBlocks?: boolean;
+    subagents?: boolean;
+    promptMultiSelect?: boolean;
   } = {},
 ) {
   if (status === 204) return {};
@@ -68,7 +70,13 @@ export function decodeTeamProtocolV7WebRtcHttpResponse(method: string, path: str
 export function createTeamProtocolV7Event(
   sequence: number,
   value: unknown,
-  options: { preserveSemanticTags?: boolean; preserveBrowserSecrets?: boolean; uiBlocks?: boolean } = {},
+  options: {
+    preserveSemanticTags?: boolean;
+    preserveBrowserSecrets?: boolean;
+    uiBlocks?: boolean;
+    subagents?: boolean;
+    promptMultiSelect?: boolean;
+  } = {},
 ): TeamProtocolV2EventFrame {
   const decoded = decodeTeamProtocolV7BaseCurrentEvent(value);
   if (decoded.kind !== "known") throw new Error("Invalid Team protocol v7 event.");

@@ -14,7 +14,6 @@ export const messages = {
   "skill.emptyEnabled": "У этого агента нет включённых навыков.",
   "skill.emptyAssigned": "У этого агента пока нет назначенных навыков.",
   "skill.folderSkill": "OpenBot не устанавливал этот навык. Измените или удалите его здесь: {location}.",
-  "skill.localOnHost": "Этот локальный навык хранится на хосте. Откройте его сведения на том компьютере.",
   "skill.moreFor": "Ещё для {name}",
   "skill.update": "Обновить",
   "skill.updateName": "Обновить {name}",

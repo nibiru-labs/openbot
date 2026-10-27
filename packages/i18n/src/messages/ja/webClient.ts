@@ -25,6 +25,8 @@ export const messages = {
   "webClient.notice.connectComputer": "サーバーを接続してください",
   "webClient.connect.description":
     "コンピューターで OpenBot を実行すると、このブラウザーからエージェントとチャットできます。招待でサーバーに参加することもできます。",
+  "webClient.connect.descriptionHosted":
+    "ホスト型サーバーを作成すると、このブラウザーからエージェントとチャットできます。コンピューターで OpenBot を実行するか、招待でサーバーに参加することもできます。",
   "webClient.connect.stepInstall": "コンピューターに OpenBot をインストールして開きます。",
   "webClient.connect.stepSignIn": "メールアドレスでサインインします。",
   "webClient.connect.stepRemote": "リモートアクセスをオンにします。",

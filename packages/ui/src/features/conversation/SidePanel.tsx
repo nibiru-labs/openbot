@@ -1,10 +1,10 @@
 import type { AppTextKey } from "@openbot/i18n";
 import {
+  AudioLines,
   Button,
   buttonVariants,
   DropdownMenu,
   Folder,
-  ListChecks,
   Maximize2,
   MessageCircleQuestionMark,
   Minimize2,
@@ -12,6 +12,7 @@ import {
   Plus,
   Settings,
   Tabs,
+  Workflow,
   X,
 } from "@openbot/ui";
 import { ComputerIcon } from "@openbot/ui/features/conversation/ConversationIcons";
@@ -21,16 +22,18 @@ import { For, flush, onSettled, Show } from "solid-js";
 
 /**
  * A pane of the side panel. Each open pane has a tab at the top of the panel. A side question opens
- * from the composer only, so the launcher and Add do not list it.
+ * from the composer only, and a subagent from its row in the chat, so the launcher and Add do not
+ * list them.
  */
-export type SidePanelPane = "browser" | "files" | "tasks" | "settings" | "question";
+export type SidePanelPane = "browser" | "files" | "settings" | "question" | "voice" | "subagent";
 
 const PANE_LABELS: Record<SidePanelPane, AppTextKey> = {
   browser: "conversation.sidePanel.pane.browser",
   files: "conversation.sidePanel.pane.files",
-  tasks: "conversation.sidePanel.pane.tasks",
   settings: "conversation.sidePanel.pane.settings",
   question: "conversation.sidePanel.pane.question",
+  voice: "conversation.sidePanel.pane.voice",
+  subagent: "conversation.sidePanel.pane.subagent",
 };
 
 /** The same glyphs as the rest of the app: the browser is the computer. */
@@ -40,12 +43,14 @@ function PaneIcon(props: { pane: SidePanelPane }): JSX.Element {
       return <ComputerIcon />;
     case "files":
       return <Folder aria-hidden="true" />;
-    case "tasks":
-      return <ListChecks aria-hidden="true" />;
     case "settings":
       return <Settings aria-hidden="true" />;
     case "question":
       return <MessageCircleQuestionMark aria-hidden="true" />;
+    case "voice":
+      return <AudioLines aria-hidden="true" />;
+    case "subagent":
+      return <Workflow aria-hidden="true" />;
   }
 }
 
@@ -53,21 +58,17 @@ export interface SidePanelToggleProps {
   open: boolean;
   /** The name of the agent that controls the browser now. */
   actingAgentName?: string | undefined;
-  /** The number of tasks that run now. */
-  running: number;
   onToggle: () => void;
 }
 
-/** The panel button at the end of the chat header. Its dots show browser control and running tasks. */
+/** The panel button at the end of the chat header. Its dot shows browser control. */
 export function SidePanelToggle(props: SidePanelToggleProps) {
   const { t } = useText();
   const label = () => {
     if (props.actingAgentName !== undefined)
       return t("conversation.header.browserActing", { name: props.actingAgentName });
     if (props.open) return t("conversation.sidePanel.close");
-    return props.running > 0
-      ? t("conversation.sidePanel.openRunning", { count: props.running })
-      : t("conversation.sidePanel.open");
+    return t("conversation.sidePanel.open");
   };
   return (
     <Button
@@ -86,9 +87,6 @@ export function SidePanelToggle(props: SidePanelToggleProps) {
       <Show when={props.actingAgentName !== undefined}>
         <span class="computer-control-dot" aria-hidden="true" />
       </Show>
-      <Show when={props.actingAgentName === undefined && props.running > 0}>
-        <span class="agent-tasks-trigger-dot" aria-hidden="true" />
-      </Show>
     </Button>
   );
 }
@@ -100,6 +98,8 @@ export interface SidePanelHeaderProps {
   /** The panes that this chat can open. */
   available: readonly SidePanelPane[];
   maximized: boolean;
+  /** The name of the settings pane, when it holds other settings than an agent's. */
+  settingsLabel?: string | undefined;
   onSelect: (pane: SidePanelPane) => void;
   onClose: (pane: SidePanelPane) => void;
   onToggleMaximized: () => void;
@@ -119,6 +119,8 @@ export function SidePanelHeader(props: SidePanelHeaderProps) {
   const { t } = useText();
   let tabList: HTMLDivElement | undefined;
   const closedPanes = () => props.available.filter((pane) => !props.panes.includes(pane));
+  const paneLabel = (pane: SidePanelPane) =>
+    pane === "settings" && props.settingsLabel !== undefined ? props.settingsLabel : t(PANE_LABELS[pane]);
   /** Delete closes the tab. The closed tab leaves the list, so focus moves to the tab that takes its place. */
   const onTabKeyDown = (event: KeyboardEvent, pane: SidePanelPane) => {
     if (event.key !== "Delete" && event.key !== "Backspace") return;
@@ -133,7 +135,7 @@ export function SidePanelHeader(props: SidePanelHeaderProps) {
       <Tabs.List ref={tabList} class="side-panel-tabs" aria-label={t("conversation.sidePanel.label")}>
         <For each={props.panes}>
           {(pane) => {
-            const label = () => t(PANE_LABELS[pane]);
+            const label = () => paneLabel(pane);
             const selected = () => props.selected === pane;
             return (
               <div role="presentation" class="side-panel-tab no-drag" data-selected={selected() ? "true" : undefined}>
@@ -189,7 +191,7 @@ export function SidePanelHeader(props: SidePanelHeaderProps) {
                   {(pane) => (
                     <DropdownMenu.Item class="side-panel-menu-item" onSelectAfterClose={() => props.onSelect(pane)}>
                       <PaneIcon pane={pane} />
-                      {t(PANE_LABELS[pane])}
+                      {paneLabel(pane)}
                     </DropdownMenu.Item>
                   )}
                 </For>
@@ -234,6 +236,8 @@ export function SidePanelHeader(props: SidePanelHeaderProps) {
  */
 export function SidePanelLauncher(props: {
   available: readonly SidePanelPane[];
+  /** As in `SidePanelHeader`. */
+  settingsLabel?: string | undefined;
   onOpen: (pane: SidePanelPane) => void;
 }) {
   const { t } = useText();
@@ -248,7 +252,10 @@ export function SidePanelLauncher(props: {
         {(pane) => (
           <Button variant="secondary" class="side-panel-launch" onClick={() => props.onOpen(pane)}>
             <PaneIcon pane={pane} />
-            {t("conversation.sidePanel.openPane", { name: t(PANE_LABELS[pane]) })}
+            {t("conversation.sidePanel.openPane", {
+              name:
+                pane === "settings" && props.settingsLabel !== undefined ? props.settingsLabel : t(PANE_LABELS[pane]),
+            })}
           </Button>
         )}
       </For>

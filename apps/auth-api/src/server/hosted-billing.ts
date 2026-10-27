@@ -29,7 +29,7 @@ export function createHostedBilling(
   options: Pick<HostedServerServiceOptions, "removeHost" | "developerKey"> & {
     /** Tells the members of a host that its plan, and so its member limit, can be different. */
     planChanged: (hostId: string) => Effect.Effect<void, RemoteFailure>;
-    /** Keeps the Worker alive until an analytics send ends (`waitUntil`). */
+    /** Keeps the Worker alive until an analytics send or a server start command ends (`waitUntil`). */
     schedule: (work: Effect.Effect<void>) => void;
   },
 ): { billing: BillingService | null; hosting: HostedServerService } {
@@ -67,6 +67,7 @@ export function createHostedBilling(
     developerKey: options.developerKey ?? null,
     billing,
     analytics,
+    schedule: options.schedule,
   });
   return { billing, hosting };
 }

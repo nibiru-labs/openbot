@@ -17,6 +17,7 @@ import { ANTIGRAVITY_MANIFEST } from "../src/backend/cli";
 import { runCauseEffect } from "../src/backend/effect-boundary";
 import { OpenBotDatabase } from "../src/backend/openbot-database";
 import { BUILT_IN_PROVIDER_DRIVERS, NO_PROVIDER_CREDENTIALS } from "../src/backend/provider-drivers";
+import { checkProviderAccountReload } from "./provider-account-reload-e2e";
 
 const OUT = resolve(import.meta.dirname, "../.openbot-build/provider-update-busy-e2e");
 const WAIT_MS = 15_000;
@@ -259,6 +260,7 @@ try {
   assert.equal(row()?.state, "available");
   busy = false;
 
+  await checkProviderAccountReload();
   report.passed = true;
 } finally {
   for (const client of await runCauseEffect(providers.dispose())) await runCauseEffect(client.stop());

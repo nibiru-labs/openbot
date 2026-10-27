@@ -6,7 +6,9 @@ import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
 import { AGENT_MEMORY_SELECTION_SCHEMA_SQL, migrateAgentMemorySelection } from "./agent-memory-selection";
 import { AGENT_TASK_SCHEMA_SQL } from "./agent-tasks/agent-task-schema";
+import { AGENT_THREAD_MIGRATION_SQL, AGENT_THREAD_SCHEMA_SQL } from "./agent-threads/agent-thread-schema";
 import { AGENT_WAIT_SCHEMA_SQL } from "./agent-waits/agent-wait-schema";
+import { BROWSER_PROFILE_SCHEMA_SQL } from "./browser-profiles/browser-profile-schema";
 import { CHANNEL_SCHEMA_SQL, CHANNEL_SETTINGS_SCHEMA_SQL } from "./channel-schema";
 import { PROVIDER_HISTORY_SCHEMA_SQL } from "./database/provider-history-schema";
 import { MCP_SERVERS_SCHEMA_SQL } from "./mcp-schema";
@@ -18,6 +20,7 @@ import {
 import { ROUTINE_BACKOFF_SCHEMA_SQL } from "./routine-backoff/routine-backoff-schema";
 import { ROUTINE_FLOW_SCHEMA_SQL } from "./routine-flows/routine-flow-schema";
 import { ROUTINE_RESULT_SCHEMA_SQL } from "./routine-results/routine-result-schema";
+import { WORKFLOW_SCHEMA_SQL } from "./workflows/workflow-schema";
 
 const BASELINE_SCHEMA_VERSION = 8;
 
@@ -594,12 +597,14 @@ const LATEST_SCHEMA_SQL =
   AGENT_WAIT_SCHEMA_SQL +
   MESSAGING_MEMORY_SCHEMA_SQL +
   ROUTINE_RESULT_SCHEMA_SQL +
-  AGENT_TASK_SCHEMA_SQL +
   V40_THREAD_MESSAGE_ORDER_INDEX_SQL +
   V41_ATTACHMENT_OWNER_INDEX_SQL +
   V42_ROUTINE_FLOW_SWEEP_INDEX_SQL +
   V43_THREAD_EVENT_TYPE_INDEX_SQL +
   MESSAGING_ALLOWED_ROLES_SCHEMA_SQL +
+  BROWSER_PROFILE_SCHEMA_SQL +
+  WORKFLOW_SCHEMA_SQL +
+  AGENT_THREAD_SCHEMA_SQL +
   ROUTINE_BACKOFF_SCHEMA_SQL;
 
 /** The end of the thread message table with the migration 40 columns before its PRIMARY KEY constraint. */
@@ -853,9 +858,30 @@ const MIGRATIONS: readonly OpenBotMigration[] = [
   },
   {
     version: 45,
-    // Only creates a table, so no foreign-key pause and no vacuum. No routine has a backoff row yet, so
-    // every routine runs on its own schedule, which is what it did before.
-    up: (db) => db.exec(ROUTINE_BACKOFF_SCHEMA_SQL),
+    // Only creates a table, so no foreign-key pause and no vacuum. No agent names a profile yet, so
+    // every tab keeps the session it had.
+    up: (db) => db.exec(BROWSER_PROFILE_SCHEMA_SQL),
+  },
+  {
+    version: 46,
+    // Only creates tables, so no foreign-key pause and no vacuum. No one has a workflow yet, and agents,
+    // routines and routine flows stay as they were.
+    up: (db) => db.exec(WORKFLOW_SCHEMA_SQL),
+  },
+  {
+    version: 47,
+    // Copies every task into the side-thread table and drops the task table. No table is rebuilt and the
+    // dropped table is a leaf, so no foreign-key pause; few rows, so no vacuum. Mailbox records keep their
+    // task ids: the thread keeps the task id as `legacy_task_id`.
+    up: (db) => db.exec(AGENT_THREAD_MIGRATION_SQL),
+  },
+  {
+    version: 48,
+    // Only creates a table, so no foreign-key pause and no vacuum. A fork version 45 database already has
+    // this table and its rows, so this step keeps them.
+    up: (db) => {
+      if (!hasTable(db, "routine_backoff")) db.exec(ROUTINE_BACKOFF_SCHEMA_SQL);
+    },
   },
 ];
 
@@ -873,11 +899,14 @@ export function migrateOpenBotDatabase(db: DatabaseSync, options: OpenBotMigrati
   const appliedVersions = readAppliedVersions(db);
   validateAppliedVersions(appliedVersions);
   const currentVersion = latestAppliedVersion(appliedVersions);
-  const pending = MIGRATIONS.filter((migration) => migration.version > currentVersion);
+  const isForkVersion45 = currentVersion === 45 && hasTable(db, "routine_backoff") && !hasTable(db, "browser_profiles");
+  const pending = MIGRATIONS.filter(
+    (migration) => migration.version > currentVersion || (isForkVersion45 && migration.version === 45),
+  );
 
   for (const migration of pending) {
     try {
-      runMigration(db, migration, appliedAt);
+      runMigration(db, migration, appliedAt, { replaceMarker: isForkVersion45 && migration.version === 45 });
     } catch (error) {
       throw new Error(`OpenBot database migration to version ${migration.version} failed.`, {
         cause: error,
@@ -958,6 +987,10 @@ function validateMigrationRegistry(): void {
   }
 }
 
+function hasTable(db: DatabaseSync, name: string): boolean {
+  return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
+}
+
 function hasExistingSchema(db: DatabaseSync): boolean {
   return Boolean(
     db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1").get(),
@@ -1017,10 +1050,18 @@ function latestAppliedVersion(versions: number[]): number {
   return baselineAndLater.at(-1) ?? BASELINE_SCHEMA_VERSION - 1;
 }
 
-function runMigration(db: DatabaseSync, migration: OpenBotMigration, appliedAt: string): void {
+function runMigration(
+  db: DatabaseSync,
+  migration: OpenBotMigration,
+  appliedAt: string,
+  options: { replaceMarker?: boolean } = {},
+): void {
   if (migration.disableForeignKeys) db.exec("PRAGMA foreign_keys = OFF");
   try {
     db.exec("BEGIN IMMEDIATE");
+    if (options.replaceMarker) {
+      db.prepare("DELETE FROM schema_migrations WHERE version = ?").run(migration.version);
+    }
     migration.up(db, appliedAt);
     db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(migration.version, appliedAt);
     assertForeignKeys(db);

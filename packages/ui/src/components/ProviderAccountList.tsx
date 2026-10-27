@@ -81,7 +81,7 @@ export function ProviderAccountList(props: ProviderAccountListProps) {
                     when={renaming() === account().id}
                     fallback={<span class="provider-picker-name">{name()}</span>}
                   >
-                    <RenameField
+                    <ProviderAccountRenameField
                       value={account().label ?? ""}
                       placeholder={name()}
                       label={t("provider.account.renameLabel", { name: name() })}
@@ -161,7 +161,7 @@ export function ProviderAccountList(props: ProviderAccountListProps) {
 }
 
 /** A name that turns into a field. Enter or leaving the field keeps the new name; Escape keeps the old one. */
-function RenameField(props: {
+export function ProviderAccountRenameField(props: {
   value: string;
   placeholder: string;
   label: string;

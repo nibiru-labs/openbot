@@ -1,4 +1,4 @@
-import type { AccountSession, AgentSummary, CentralAuthUser, HostAnalytics } from "@openbot/contracts/ipc";
+import type { AccountSession, CentralAuthUser, ClientAgentSummary, HostAnalytics } from "@openbot/contracts/ipc";
 import {
   Badge,
   Button,
@@ -28,7 +28,7 @@ import type { SettingsProfileStore } from "./stores/profile-store";
 export interface ProfileActivityState {
   phase: ProfileActivityPhase;
   report: HostAnalytics | null;
-  agents: readonly AgentSummary[];
+  agents: readonly ClientAgentSummary[];
   errorReference: string | null;
   onRetry: () => void;
   /** Draws the image that the Share dialog shows. The Share button is hidden without it. */

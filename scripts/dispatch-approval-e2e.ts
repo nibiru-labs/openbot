@@ -129,7 +129,7 @@ async function exercise(
           grantRoot: null,
           permissions: null,
         },
-        true,
+        { requireExplicitGrant: true },
       );
     }).pipe(Effect.timeout("10 seconds")),
   );

@@ -1,5 +1,10 @@
 import { agentProviderName } from "@openbot/contracts/agent-providers";
-import type { AgentEvent, AgentSummary, ServerNotificationLevel } from "@openbot/contracts/ipc";
+import type {
+  AgentEvent,
+  ClientAgentSummary,
+  ServerNotificationLevel,
+  TeamRealtimeEvent,
+} from "@openbot/contracts/ipc";
 import { markdownPreviewText } from "@openbot/contracts/markdown-preview-text";
 import type { AppFormat, AppTranslate } from "@openbot/i18n";
 import { cleanAgentMessageText } from "./agent-message-text";
@@ -9,6 +14,14 @@ export interface AgentNotificationContent {
   body: string;
   agentId: string;
   threadId: string | null;
+  /** The channel whose thread the event came from. A click opens the channel, not the agent chat. */
+  channelId?: string;
+}
+
+/** The channel that owns the thread of an event, as the caller found it. */
+export interface AgentNotificationChannel {
+  id: string;
+  name: string;
 }
 
 /**
@@ -17,7 +30,7 @@ export interface AgentNotificationContent {
  */
 export function notificationForUsageLimit(
   event: Extract<AgentEvent, { type: "usage-limit-reached" }>,
-  agents: AgentSummary[],
+  agents: ClientAgentSummary[],
   translate: AppTranslate,
   format: AppFormat,
   level: ServerNotificationLevel,
@@ -63,23 +76,88 @@ const PREVIEW_LIMIT = 200;
 /** The start of a reply that the preview reads, so that a long reply is not parsed in full. */
 const REPLY_READ_LIMIT = 2_000;
 
+/** A message or a routine run that the provider refused to start. No turn records the failure. */
+const START_FAILED_CODE = "delivery_start_failed";
+
+/**
+ * The agent events that `notificationForAgentEvent` can show. Desktop, web and phone pass only these,
+ * so each surface notifies about the same kinds.
+ */
+export function agentEventCanNotify(event: AgentEvent | TeamRealtimeEvent): boolean {
+  switch (event.type) {
+    case "prompt":
+    case "approval":
+    case "browser-takeover-requested":
+      return true;
+    case "turn-completed":
+      return event.status === "completed" || event.status === "failed";
+    case "error":
+      return event.code === START_FAILED_CODE && event.agentId !== undefined;
+    default:
+      return false;
+  }
+}
+
+/**
+ * The request that a notification waits for, or that an event resolves, so that an answer from any
+ * device withdraws the notification. Null for an event that is not a request.
+ */
+export function notificationRequestKey(serverId: string, event: AgentEvent): string | null {
+  switch (event.type) {
+    case "prompt":
+      return `${serverId}:${event.agentId}:prompt:${event.requestId}`;
+    case "approval":
+      return `${serverId}:${event.approval.agentId}:approval:${event.approval.requestId}`;
+    case "agent-input-resolved":
+      return `${serverId}:${event.agentId}:${event.kind}:${event.requestId}`;
+    case "browser-takeover-requested":
+      return `${serverId}:${event.request.agentId}:browser:${event.request.requestId}`;
+    case "browser-takeover-resolved":
+      return `${serverId}:${event.agentId}:browser:${event.requestId}`;
+    default:
+      return null;
+  }
+}
+
+/** Whether the event waits for the user, so that the "needs-me" level keeps it. */
+export function agentEventNeedsUser(event: AgentEvent): boolean {
+  return event.type === "prompt" || event.type === "approval" || event.type === "browser-takeover-requested";
+}
+
+/** The thread that an event waits on, or null when it is not a request. A channel can own that thread. */
+export function agentEventRequestThread(event: AgentEvent): string | null {
+  if (event.type === "prompt") return event.threadId;
+  if (event.type === "approval") return event.approval.threadId;
+  if (event.type === "browser-takeover-requested") return event.request.threadId;
+  return null;
+}
+
 /**
  * What a server's agent event says to the user, or null when the server level or the agent's own
- * switch keeps it quiet. "needs-me" keeps only the events that wait for the user.
+ * switch keeps it quiet. "needs-me" keeps only the events that wait for the user. `channel` is the
+ * channel that owns the thread of the event (see `agentEventRequestThread`): the title then names it.
  */
 export function notificationForAgentEvent(
   event: AgentEvent,
-  agents: AgentSummary[],
+  agents: ClientAgentSummary[],
   translate: AppTranslate,
   level: ServerNotificationLevel,
   preview: AgentNotificationPreview | null = null,
+  channel: AgentNotificationChannel | null = null,
 ): AgentNotificationContent | null {
   if (level === "nothing") return null;
   const subject = notificationSubject(event, level, translate, preview);
   if (!subject) return null;
   const agent = agents.find((candidate) => candidate.id === subject.agentId);
   if (!agent?.notifications) return null;
-  return { title: agent.name, ...subject };
+  if (channel)
+    return {
+      title: translate("notification.channelTitle", { agent: agent.name, channel: channel.name }),
+      ...subject,
+      channelId: channel.id,
+    };
+  // A start failure names no thread, so it opens the agent's own chat.
+  return { title: agent.name, ...subject, threadId: subject.threadId ?? agent.threadId ?? null };
 }
 
 function notificationSubject(
@@ -106,8 +184,15 @@ function notificationSubject(
       : translate("notification.needsApproval");
     return { body, agentId, threadId };
   }
+  if (event.type === "browser-takeover-requested") {
+    const { agentId, threadId } = event.request;
+    return { body: translate("notification.needsBrowserStep"), agentId, threadId };
+  }
+  if (level !== "all") return null;
+  if (event.type === "error" && event.agentId && agentEventCanNotify(event))
+    return { body: translate("notification.failed"), agentId: event.agentId, threadId: null };
   // A quiet routine run posted nothing, so there is nothing to look at.
-  if (event.type !== "turn-completed" || level !== "all" || event.quiet) return null;
+  if (event.type !== "turn-completed" || event.quiet) return null;
   const { agentId, threadId } = event;
   if (event.status === "completed") {
     // Redact before the cut and the Markdown change the shape of a secret.
@@ -120,7 +205,7 @@ function notificationSubject(
 }
 
 /** Agent Markdown as plain text, cut to the preview length. */
-function plainPreview(text: string): string | null {
+export function plainPreview(text: string): string | null {
   return previewText(markdownPreviewText(cleanAgentMessageText(text)));
 }
 

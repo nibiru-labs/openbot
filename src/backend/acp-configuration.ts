@@ -429,7 +429,7 @@ interface SessionSetupResponse {
   models?: unknown;
 }
 
-function modelsFromSessionSetup(response: SessionSetupResponse): AcpModel[] {
+export function modelsFromSessionSetup(response: SessionSetupResponse): AcpModel[] {
   const options = sessionConfigOptions(response);
   const discovered = availableModels(response);
   if (discovered.length === 0 || groupedModelOption(response)) return modelsFromConfig(options);

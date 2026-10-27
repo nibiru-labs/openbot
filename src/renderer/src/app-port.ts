@@ -7,14 +7,22 @@ import type { OpenBotDesktopApi } from "@openbot/contracts/ipc";
 export interface AppPort {
   getAppAppearancePreference: OpenBotDesktopApi["getAppAppearancePreference"];
   getAppInfo: OpenBotDesktopApi["getAppInfo"];
+  getAppInterfaceSizePreference: OpenBotDesktopApi["getAppInterfaceSizePreference"];
   getAppLanguagePreference: OpenBotDesktopApi["getAppLanguagePreference"];
   getAppLogoColorPreference: OpenBotDesktopApi["getAppLogoColorPreference"];
   onAppAppearancePreference: OpenBotDesktopApi["onAppAppearancePreference"];
+  onAppInterfaceSizePreference: OpenBotDesktopApi["onAppInterfaceSizePreference"];
+
   onAppLanguagePreference: OpenBotDesktopApi["onAppLanguagePreference"];
   onAppLogoColorPreference: OpenBotDesktopApi["onAppLogoColorPreference"];
   openExternal: OpenBotDesktopApi["openExternal"];
   openUrl: OpenBotDesktopApi["openUrl"];
+  openChatWindow: OpenBotDesktopApi["openChatWindow"];
+  getChatWindows: OpenBotDesktopApi["getChatWindows"];
+  onChatWindows: OpenBotDesktopApi["onChatWindows"];
   setAppAppearancePreference: OpenBotDesktopApi["setAppAppearancePreference"];
+  setAppInterfaceSizePreference: OpenBotDesktopApi["setAppInterfaceSizePreference"];
+
   setAppLanguagePreference: OpenBotDesktopApi["setAppLanguagePreference"];
   setAppLogoColorPreference: OpenBotDesktopApi["setAppLogoColorPreference"];
   agent: Pick<
@@ -25,6 +33,7 @@ export interface AppPort {
   acpRegistry: OpenBotDesktopApi["acpRegistry"];
   hostedSites: OpenBotDesktopApi["hostedSites"];
   billing: OpenBotDesktopApi["billing"];
+  license: OpenBotDesktopApi["license"];
   hostedServers: OpenBotDesktopApi["hostedServers"];
   routineFeed: OpenBotDesktopApi["routineFeed"];
   events: OpenBotDesktopApi["events"];

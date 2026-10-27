@@ -88,6 +88,10 @@ interface AddServerDialogProps {
   onOpenServer: () => void;
   /** Opens the payment page again, for the `payment` status. */
   onOpenPayment: () => Promise<void>;
+  /** Tells the consumer that the user chose another currency. */
+  onCurrencyChange?: ((currency: HostedCurrency) => void) | undefined;
+  /** Tells the consumer that the user chose another billing period. */
+  onBillingChange?: ((billing: HostedServerBilling) => void) | undefined;
 }
 
 type Step = "pricing" | "progress";
@@ -305,14 +309,20 @@ export function AddServerDialog(props: AddServerDialogProps) {
                     <div class="add-server-bar">
                       <HostedCurrencySelect
                         currency={currency()}
-                        onChange={setCurrency}
+                        onChange={(next) => {
+                          setCurrency(next);
+                          props.onCurrencyChange?.(next);
+                        }}
                         disabled={creating()}
                         mount={pricing}
                       />
                       <HostedBillingSwitch
                         billing={billing()}
                         discountPercent={hostedYearlyDiscountPercent(props.plans, currency())}
-                        onChange={setBilling}
+                        onChange={(next) => {
+                          setBilling(next);
+                          props.onBillingChange?.(next);
+                        }}
                         disabled={creating()}
                       />
                     </div>

@@ -3,7 +3,7 @@ import type { messages as source } from "../../en/error/agent";
 
 export const messages = {
   "error.agent.historyUnavailable":
-    "El historial no está disponible para esta solicitud. Vuelve a leer el historial reciente.",
+    "El historial no está disponible para esta solicitud. Vuelve a leer el historial reciente o usa channel_history para el trabajo en canales.",
   "error.agent.toolRequestInvalid":
     "Los argumentos de descubrimiento de herramientas no son válidos. Usa el esquema declarado y un nombre de herramienta cualificado original.",
   "error.agent.approvalWhileDeleting": "No se puede conceder la aprobación mientras se elimina el agente.",
@@ -48,6 +48,9 @@ export const messages = {
     "Hay tareas de este agente en ejecución. Espera a que terminen o detenlas antes de cambiar de proveedor.",
   "error.agent.waitBeforeClearContext":
     "Espera a que terminen el turno activo y la cola antes de iniciar un nuevo chat.",
+  "error.agent.waitBeforeCompactContext":
+    "Espera a que terminen el turno activo y la cola antes de compactar el contexto.",
+  "error.agent.compactContextUnavailable": "Este agente no puede compactar su contexto ahora.",
   "error.agent.unknown": "Agente desconocido: {id}",
   "error.agent.onlyUserWidensSettings":
     "Solo el usuario puede dar acceso completo a un agente o activar el uso del equipo. Pide al usuario que lo cambie en los ajustes del agente.",
@@ -64,6 +67,8 @@ export const messages = {
     "El estado del agente contiene identificadores de agente duplicados; no se sobrescribirá.",
   "error.agent.copyNameFailed": "OpenBot no pudo crear un nombre único para la copia del agente.",
   "error.agent.endpointRemoved": "Se eliminó el endpoint que usaba este agente. Elige otro modelo para él.",
+  "error.agent.turnStalled":
+    "{provider} dejó de responder, así que OpenBot terminó este turno. Envía el mensaje de nuevo o elige otro modelo.",
   "error.agent.selectedGone": "El agente seleccionado ya no existe.",
   "error.agent.profileEndpointsChanged":
     "Los endpoints personalizados cambiaron durante la generación. Inténtalo de nuevo.",
@@ -90,7 +95,8 @@ export const messages = {
   "error.agent.queueEditRejected": "Edición de la cola rechazada: {reason}",
   "error.agent.computerUseLocalOnly": "El uso del equipo solo se puede cambiar en el equipo que ejecuta el agente.",
   "error.agent.automationLocalOnly": "Los scripts locales solo se pueden permitir en el equipo que ejecuta el agente.",
-  "error.agent.sideQuestionLocalOnly": "Las preguntas aparte solo funcionan en el equipo que ejecuta el agente.",
+  "error.agent.newChatLocalOnly": "Solo el equipo que ejecuta el agente puede permitirle iniciar chats nuevos.",
+  "error.agent.quickAcknowledgementLocalOnly": "Solo el equipo que ejecuta el agente puede cambiar este ajuste.",
   "error.agent.sideQuestionBusy": "Hay demasiadas preguntas aparte en curso. Inténtalo de nuevo en breve.",
   "error.agent.sideQuestionFailed": "El agente no pudo responder la pregunta aparte. Inténtalo de nuevo.",
   "error.agent.busyMessageModeLocalOnly":
@@ -117,7 +123,7 @@ export const messages = {
     "La captura de pantalla está desactivada para este agente. El usuario puede activar el uso del equipo en los ajustes del agente.",
   "error.agent.screenCaptureUnavailable": "La captura de pantalla no está disponible en este equipo.",
   "error.agent.screenCaptureShared":
-    "La captura de pantalla no funciona en un canal ni en una conversación de Slack, Discord o Telegram, porque otras personas reciben sus archivos.",
+    "La captura de pantalla no funciona en una conversación de Slack, Discord o Telegram, porque otras personas reciben sus archivos.",
   "error.agent.screenCaptureDeclined": "El usuario no permitió esta captura de pantalla. No se capturó nada.",
   "error.agent.screenCaptureWindowMissing":
     "Esa ventana no está abierta ahora. Llama a list_capture_sources para obtener los ID de ventana actuales.",

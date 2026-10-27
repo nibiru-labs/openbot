@@ -13,7 +13,7 @@ and the Slack Orchestrator, an agent that OpenBot adds, asks the right agent and
 computer (**Server settings**), because Slack sends the workspace's events to OpenBot's Signal
 service, which passes them to this computer.
 
-1. Open **Server settings → Connectors → Slack**.
+1. Open **Marketplace → Apps → Slack**.
 2. Select **Connect Slack**, then **Connect in Slack**. Slack opens in the browser. Select the
    workspace in the top-right corner, and select **Allow**. The dialog continues by itself.
 3. Pick the model of the Slack Orchestrator, and select **Add agent**. OpenBot adds the agent, with its
@@ -69,7 +69,7 @@ needs an OpenBot account and a name for this computer (**Server settings**): Sig
 Discord connection, passes the server's mentions to this computer, and makes OpenBot's Discord posts
 for it.
 
-1. Open **Server settings → Connectors → Discord**.
+1. Open **Marketplace → Apps → Discord**.
 2. Select **Connect Discord**, then **Connect in Discord**. Discord opens in the browser. Select the
    Discord server, and select **Authorize**. You must have the **Manage Server** permission there. The
    dialog continues by itself.
@@ -102,6 +102,11 @@ again.
   Discord's **@ ON** setting of a reply does this, and it is on by default. Without the mention,
   Discord does not give the text to OpenBot.
 - A mention that replies to another person's message starts a new conversation.
+- A new conversation has as context the channel's last 10 messages from the 15 minutes before it, so
+  "@OpenBot make an issue" after a screenshot of another person refers to that screenshot. The
+  agent gets the files of earlier messages with the message, after the message's own files and
+  within the attachment limits. Without the Message Content intent, Discord gives the text and files
+  only of messages that mention OpenBot.
 - A direct message to OpenBot gets one fixed answer: mention OpenBot in a server channel.
 - The rest works as in Slack: the Discord Orchestrator receives each new conversation, 👀 shows that
   the message arrived, "Working on it…" is replaced by the answer, and ✅, ❌ or ⏹️ shows the end.
@@ -120,7 +125,7 @@ OpenBot account and a name for this computer (**Server settings**), because Tele
 updates to OpenBot's Signal service, which passes them to this computer. Signal holds the bot token;
 this computer never has it.
 
-1. Open **Server settings → Connectors → Telegram**.
+1. Open **Marketplace → Apps → Telegram**.
 2. Select **Add to a group** or **Open a direct chat**. Telegram opens with a one-use link (it is
    valid for 15 minutes). Pick the group, or select **Start**. The chat appears in OpenBot by itself.
 3. Pick the model of the Telegram Orchestrator, and select **Add agent**. One orchestrator answers
@@ -220,7 +225,7 @@ whole list, with the ID of each fact. The prompt marks the facts as data, not in
 `openbot.messaging_history` reads the newest messages of the conversation's own channel or thread:
 30 by default, 100 at most. It reads no other place. Slack can limit it to one read a minute; it
 then fails at once, and the agent can try again. Discord gives the text only of messages that
-mention OpenBot, and of bot posts. Telegram gives what this computer saw since it started.
+mention OpenBot, and of bot posts. Discord messages name their files. Telegram gives what this computer saw since it started.
 
 ## Posts that an agent sends
 
@@ -305,5 +310,5 @@ core changes:
 | Discord | The Gateway in Signal (`@discordjs/ws`), which passes mentions to the host; calls go through Signal | The id of the first message of a reply chain | Implemented. No privileged intent. |
 | Telegram | The webhook of the one OpenBot bot through Signal, which holds the token | `message_thread_id`, the topic in a forum, `dm` in a direct chat | Implemented. No history API: the host keeps what the bot sees, in memory. |
 
-Then add the platform to `MESSAGING_PLATFORMS`, a page in Server settings → Connectors, and its i18n
+Then add the platform to `MESSAGING_PLATFORMS`, a page in Marketplace → Apps, and its i18n
 keys. The database needs no migration: `platform` has no `CHECK`.

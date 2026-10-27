@@ -1,4 +1,4 @@
-import type { AgentSummary, HostAnalytics } from "@openbot/contracts/ipc";
+import { analyticsTokens, type ClientAgentSummary, type HostAnalytics } from "@openbot/contracts/ipc";
 import { usageProviders } from "../usage/usage-format";
 
 const DAY_MS = 86_400_000;
@@ -27,7 +27,7 @@ export interface ProfileStats {
   busiestWeekday: number | null;
   providers: Array<{ provider: string; tokens: number; share: number }>;
   models: Array<{ provider: string; model: string; share: number }>;
-  teammates: Array<{ agent: AgentSummary; tokens: number }>;
+  teammates: Array<{ agent: ClientAgentSummary; tokens: number }>;
 }
 
 function active(day: ProfileDay): boolean {
@@ -76,7 +76,7 @@ export function heatmapMonths(weeks: ReadonlyArray<ReadonlyArray<ProfileDay | nu
  * The Profile tab's view of one host report: every day of the range, the streaks, and the
  * rankings. A teammate that was deleted has usage but no row in `agents`, so the ranking skips it.
  */
-export function profileStats(report: HostAnalytics, agents: readonly AgentSummary[]): ProfileStats {
+export function profileStats(report: HostAnalytics, agents: readonly ClientAgentSummary[]): ProfileStats {
   const byDate = new Map(report.daily.map((day) => [day.date, day]));
   const days: ProfileDay[] = [];
   const end = Date.parse(`${report.endDate}T00:00:00Z`);
@@ -86,7 +86,7 @@ export function profileStats(report: HostAnalytics, agents: readonly AgentSummar
     days.push({
       date,
       weekday: new Date(time).getUTCDay(),
-      tokens: day?.processedTokens ?? 0,
+      tokens: day ? analyticsTokens(day) : 0,
       messages: (day?.userMessages ?? 0) + (day?.assistantMessages ?? 0),
     });
   }
@@ -112,7 +112,7 @@ export function profileStats(report: HostAnalytics, agents: readonly AgentSummar
   const weekdays = Array.from({ length: 7 }, () => 0);
   for (const day of days) weekdays[day.weekday] = (weekdays[day.weekday] ?? 0) + day.tokens;
   const busiest = Math.max(...weekdays);
-  const tokens = report.totals.processedTokens;
+  const tokens = analyticsTokens(report.totals);
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
 
   return {
@@ -131,12 +131,16 @@ export function profileStats(report: HostAnalytics, agents: readonly AgentSummar
       .map((row) => ({ provider: row.provider, tokens: row.tokens, share: tokens > 0 ? row.tokens / tokens : 0 }))
       .sort((a, b) => b.tokens - a.tokens),
     models: [...report.models]
-      .sort((a, b) => b.processedTokens - a.processedTokens)
-      .map((row) => ({ provider: row.provider, model: row.model, share: row.share })),
+      .sort((a, b) => analyticsTokens(b) - analyticsTokens(a))
+      .map((row) => ({
+        provider: row.provider,
+        model: row.model,
+        share: tokens > 0 ? analyticsTokens(row) / tokens : 0,
+      })),
     teammates: report.agents
       .flatMap((row) => {
         const agent = agentById.get(row.agentId);
-        return agent && row.processedTokens > 0 ? [{ agent, tokens: row.processedTokens }] : [];
+        return agent && analyticsTokens(row) > 0 ? [{ agent, tokens: analyticsTokens(row) }] : [];
       })
       .sort((a, b) => b.tokens - a.tokens),
   };

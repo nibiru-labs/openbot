@@ -202,6 +202,8 @@ export class AttachmentFiles {
     this: AttachmentFiles,
     paths: string[],
     data: AttachmentDataInput[],
+    /** A voice recording is a WebM file, which the user cannot attach. It never reaches a provider. */
+    options: { voiceRecording?: boolean } = {},
   ): Effect.fn.Return<StoredDraft[], AttachmentOperationError> {
     if (paths.some((path) => !path || path.length > INPUT_LIMITS.path)) {
       return yield* attachmentFailure(new Error("An attachment path is invalid."));
@@ -268,7 +270,7 @@ export class AttachmentFiles {
           const targetDirectory = join(this.#draftsRoot, id);
           preparedRoots.push(targetDirectory);
           const name = sanitizeName(item.name || "pasted-image.png");
-          assertSupportedAttachmentName(name);
+          if (!options.voiceRecording) assertSupportedAttachmentName(name);
           const targetPath = join(targetDirectory, name);
           yield* attachmentCall(() => mkdir(targetDirectory, { recursive: true, mode: 0o700 })).pipe(
             Effect.uninterruptible,
@@ -406,6 +408,11 @@ export class AttachmentFiles {
           if (metadata.size > MAX_FILE_BYTES)
             return yield* attachmentFailure(
               new Error(sourceText("error.attachment.namedFileTooLarge", { name: basename(source.path) })),
+            );
+          // SVG is not an attachment type (see `attachmentMimeTypeForName`), but the chat shows a named one.
+          if (extname(source.path).toLowerCase() === ".svg")
+            return yield* attachmentFailure(
+              new Error(sourceText("error.backend.attachSvg", { name: basename(source.path) })),
             );
           yield* attachmentSync(() => assertSupportedAttachmentName(source.path));
           return { ...source, size: metadata.size };
@@ -695,9 +702,11 @@ function attachmentMetadata(
   explicitMimeType?: string,
 ): { kind: AttachmentKind; mimeType: string; previewKind: AttachmentPreviewKind } {
   const inferred = attachmentMimeTypeForName(name);
-  // Media stays an opaque file even if an importer supplies a preview MIME type.
+  // Media and archives stay opaque files even if an importer supplies a preview MIME type.
   const mimeType =
-    inferred.startsWith("audio/") || inferred.startsWith("video/") ? inferred : explicitMimeType?.trim() || inferred;
+    inferred.startsWith("audio/") || inferred.startsWith("video/") || inferred === "application/zip"
+      ? inferred
+      : explicitMimeType?.trim() || inferred;
   const previewKind: AttachmentPreviewKind = mimeType.startsWith("image/")
     ? "image"
     : mimeType === "application/pdf"

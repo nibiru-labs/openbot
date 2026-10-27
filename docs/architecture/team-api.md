@@ -2,7 +2,7 @@
 
 ## Team API compatibility boundary
 
-Current remote connections use Team API protocol v7 over three ordered WebRTC DataChannels: `rpc`,
+Current remote connections use Team API protocol v8 over three ordered WebRTC DataChannels: `rpc`,
 `events`, and `files`. A sandboxed hidden Chromium page owns each `RTCPeerConnection`. Electron main
 uses a `MessagePort` and transfers binary data as `ArrayBuffer`. Signal carries SDP and ICE only,
 except the Slack requests of an agent's Slack app (see [Messaging connections](channels-and-messaging.md#messaging-connections)).
@@ -10,6 +10,13 @@ OpenBot Mobile uses the same ticket, authentication transcript, framing, RPC cod
 In Expo Go, an Expo DOM component owns the browser `RTCPeerConnection` inside a hidden WebView and
 passes only serializable, validated commands and events to the native React UI; no native WebRTC
 module or development build is required.
+The host's network route preference (`openbot-remote-network-route-v1.json`) applies to every
+remote connection to the computer. With `private`, the host gives WebRTC no ICE servers, and the
+hidden page removes each local, remote, and SDP candidate that is not a `host` candidate on a private
+address (RFC 1918, 100.64.0.0/10, `fc00::/7`, or `.local`). A change to `private` closes the
+connected peers, so each one connects again without the relay. The Remote Desktop runtime reads its
+ICE servers from main for each stream and sends them to the viewer, so its media also has no relay.
+Its candidates are not filtered; a direct public IPv6 path stays possible.
 Mobile server labels in the drawer and connection settings describe the authenticated application
 connection, not membership or Signal presence. Each membership has its own transport and recovery controller while mobile is active.
 On a return to the app, the selected server connects first; the others become active when it is
@@ -105,8 +112,13 @@ The native document and photo pickers and the in-chat camera panel prepare local
 uploads them to the host before one message commits the ordered draft IDs. Mobile limits each file
 to 10 MB because the native/DOM bridge copies Base64 data. Downloads use the same authenticated file
 channel, validate size, chunk order, and SHA-256, and pass verified bytes back through the command
-bridge. Mobile queues downloads to limit concurrent copies. Image previews preserve aspect ratio;
-other files use the system share sheet through a temporary cache file.
+bridge. Mobile queues downloads to limit concurrent copies. Image previews preserve aspect ratio.
+Audio and video play in the chat. Other files take the desktop preview kind from
+`filePreviewKindForFile`: Markdown, text, HTML, PDF and `.xlsx` files open on the preview screen.
+The `.xlsx` parser in `packages/contracts/src/spreadsheet-workbook.ts` runs in a DOM component,
+because it needs `DOMParser`. iOS shows a PDF in a native web view with no scripts; Android draws
+its pages with pdf.js in a DOM component. A visual reply shows its page in the chat, with no
+scripts. Files with no preview use the system share sheet through a temporary cache file.
 
 Mobile chat loads the latest 50 messages through `conversation-page` and loads older pages by cursor.
 Its Legend List (`KeyboardAwareLegendList` from `@legendapp/list/keyboard`) renders only the rows near
@@ -246,6 +258,11 @@ The desktop client starts each remote connection with `GET /v1/compatibility`. T
 The first released Team API protocol is `1`. All later HTTP requests include `OpenBot-Protocol-Version` and `OpenBot-App-Version`. The event socket uses the `openbot-team-v1` WebSocket subprotocol. A host without the compatibility endpoint is treated as an old host and is blocked. A request without the required protocol headers is treated as an old client and is blocked.
 
 Each protocol has a frozen codec and adapter in `packages/contracts/src/team-protocol`. The v1 HTTP codec owns the fixed route registry and validates JSON requests and responses before the adapter converts current values. Uploads, downloads, and other binary routes use the same negotiated headers and error envelope. The host does not write current service or IPC values directly to the network. Breaking or semantic changes add a new protocol directory and registry entry. A released adapter keeps its original meaning.
+
+From protocol 8, provider ids and auth kinds are open values. A new provider is a new value, not a
+new protocol. A client keeps an agent of a provider that it does not know, and shows it disabled
+with an update prompt. See [Providers](providers.md) for the frozen lists that hide new providers
+from peers below 8.
 
 Capabilities describe additive behavior. The client sends its capability list when it sets the event scope. The host sends optional events only when the client declared the related capability. A missing capability disables only that feature. An unknown optional event is ignored. A malformed known event closes the connection as `protocol_error` because the client cannot safely apply it.
 

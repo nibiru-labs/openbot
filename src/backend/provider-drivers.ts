@@ -1,17 +1,38 @@
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { ClientSideConnection, InitializeResponse } from "@agentclientprotocol/sdk";
-import type { AgentAuthState, AgentProviderId } from "@openbot/contracts/ipc";
+import {
+  type AgentAuthState,
+  type AgentModelOption,
+  type AgentProviderId,
+  customProviderOfModel,
+  DEFAULT_PROMPT_CACHE_TTL,
+  type KeyOnlyProviderId,
+  type PromptCacheTtl,
+} from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import { AcpAgentClient, type AcpHistoryPersistence } from "./acp-client";
+import { CURSOR_ACP_FLAVOR, customAgentFlavor, DEFAULT_ACP_FLAVOR } from "./acp-flavor";
+import { ANTIGRAVITY_ACP_FLAVOR } from "./acp-flavor-antigravity";
+import { OPENCODE_ACP_FLAVOR } from "./acp-flavor-opencode";
 import { readMuseAccount } from "./agent/muse-login";
+import {
+  claudeModelName,
+  codexFastServiceTier,
+  isOpencodeModelUnusableWithStoredKey,
+  modelsAfterOpenCodeDiscoveryFailure,
+} from "./agent/provider-models";
 import type { AgentClient } from "./agent-client";
+import { ANTIGRAVITY_USAGE_PROMPT, antigravityRateLimits } from "./antigravity-usage";
 import { CodexAppServerClient } from "./app-server-client";
 import { ClaudeAgentClient } from "./claude-client";
 import {
   type AgentCliInfo,
+  antigravityAnswersUsageCommand,
+  antigravityReadsGeminiHome,
+  cliPathEnvironment,
   resolveAntigravityCli,
   resolveClaudeCli,
   resolveClineCli,
@@ -23,6 +44,7 @@ import {
   resolvePiCli,
 } from "./cli";
 import { clineFreeModels } from "./cline-free-models";
+import { readCursorUsage } from "./cursor-usage";
 import { CustomAcpAgentsClient, type CustomAgentConfig, type CustomAgentSource } from "./custom-acp-agents-client";
 import { GrokAgentClient } from "./grok-client";
 import type { McpOAuthAuthority } from "./mcp-oauth-provider";
@@ -33,6 +55,7 @@ import {
   type CustomProviderSource,
   OPENCODE_PROFILE_CONFIG,
   openCodeConfigEnv,
+  openCodeModelName,
   openCodeSignInMessage,
 } from "./opencode-config";
 import { readOpenCodeGoUsage } from "./opencode-usage";
@@ -48,10 +71,11 @@ import {
   OPENCODE_CONFINED_ENV,
   openCodeStatePaths,
   type ProcessConfinement,
+  piAgentDirectory,
   piStatePaths,
   type SpawnTarget,
 } from "./process-confinement";
-import type { AccountReadResult } from "./protocol";
+import type { AccountReadResult, ModelListResponse } from "./protocol";
 import { type ProviderClientOperationError, providerCall, providerFailure } from "./provider-client-effects";
 
 /** One command OpenBot runs against a provider's own CLI, waiting for the process to exit. */
@@ -71,10 +95,17 @@ const CLI_LOGIN_TIMEOUT_MS = 10 * 60_000;
 export interface ProviderAccountSupport {
   /** The variable that names the CLI's home folder. */
   readonly homeVariable: string;
-  /** Signs a new, empty home folder in through the browser. */
-  readonly signIn: ProviderCliCommand;
+  /** Signs a new, empty home folder in through the browser: a CLI command, or an ACP `authenticate`. */
+  readonly signIn: ProviderCliCommand | AcpAuthenticateSignIn;
   /** Signs the account out before its folder is removed, for a CLI that keeps a credential outside it. */
   readonly signOut?: ProviderCliCommand;
+  /** False for a CLI version that ignores `homeVariable`. Absent when every version reads it. */
+  supports?(cli: AgentCliInfo): boolean;
+  /**
+   * A usage read in a process of its own leaves a session on disk. An account with no agent process
+   * then shows its last reading, from its sign-in check, and starts no process to read usage.
+   */
+  readonly usageLeavesSession?: boolean;
 }
 
 const CLAUDE_COMMAND_ENV = (cli: AgentCliInfo): Record<string, string> =>
@@ -116,17 +147,19 @@ type ProviderSignIn =
    * `muse login` with no terminal only prints that page and never opens it.
    */
   | { kind: "muse-device"; timeoutMs: number }
-  /**
-   * OpenBot starts the ACP server and calls `authenticate` with this method, which opens a browser
-   * from the server. Only the sign-in process calls it: in a status probe it would open a browser.
-   */
-  | {
-      kind: "acp-authenticate";
-      methodId: string;
-      argv: readonly string[];
-      env?: Readonly<Record<string, string>>;
-      timeoutMs: number;
-    };
+  | AcpAuthenticateSignIn;
+
+/**
+ * OpenBot starts the ACP server and calls `authenticate` with this method, which opens a browser
+ * from the server. Only the sign-in process calls it: in a status probe it would open a browser.
+ */
+interface AcpAuthenticateSignIn {
+  readonly kind: "acp-authenticate";
+  readonly methodId: string;
+  readonly argv: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+  readonly timeoutMs: number;
+}
 
 /**
  * A sign-in the user finishes on another device, for a host with no browser the user can see.
@@ -145,14 +178,19 @@ type ProviderCodeSignIn =
  * computer. The CLI saves only the chosen method, never the key, so the key goes in
  * `GEMINI_API_KEY` at every spawn. A saved key wins over a Google account: the user saved it last.
  * A profile-generation client gets the key but not the agent environment, as before.
+ *
+ * The key belongs to the provider's own sign-in. An account after the first is a Google account in
+ * its own `GEMINI_HOME`, so its processes get that folder and never the key.
  */
 function antigravityKeyOptions(context: ProviderClientContext, agentEnvironment: boolean) {
-  const key = () => context.apiKey("antigravity");
+  const account = context.accountEnvironment;
+  const key = () => (account ? null : context.apiKey("antigravity"));
   return {
     extraEnv: () => {
       const saved = key();
       return {
         ...(agentEnvironment ? context.agentEnvironment?.() : {}),
+        ...account,
         ...(saved ? { GEMINI_API_KEY: saved } : {}),
       };
     },
@@ -169,12 +207,31 @@ function antigravityKeyOptions(context: ProviderClientContext, agentEnvironment:
 }
 
 /**
+ * On macOS, Antigravity 1.4.0 and later keep the Google sign-in in the login Keychain only when a
+ * test item can be written there at start. A Workspace only process cannot write the Keychain, so
+ * it reads the token file in `antigravity-acp`, which does not exist, and reports no account
+ * (#2988). The token file is the store on every platform, so each process shares one sign-in.
+ */
+const ANTIGRAVITY_ENV = { AGY_ACP_FORCE_FILE_STORAGE: "1" };
+
+/**
+ * The sandbox paths of a Gemini process: in the account's `GEMINI_HOME` when it has one. The
+ * sandbox cannot create the folders in a new account's home, so OpenBot makes them.
+ */
+function antigravityAccountStatePaths(context: ProviderClientContext) {
+  const state = antigravityStatePaths({ ...process.env, ...context.accountEnvironment });
+  if (context.accountEnvironment)
+    for (const folder of state.writable) mkdirSync(folder, { recursive: true, mode: 0o700 });
+  return state;
+}
+
+/**
  * Antigravity 1.3.0 starts Google's browser sign-in by itself when `session/new` finds no valid
  * token, and waits there for five minutes. A client that serves turns must never open that page:
  * `BROWSER=true` stops the launch, and the prompt line tells the account check to stop waiting.
  */
 const ANTIGRAVITY_SERVING_OPTIONS = {
-  env: { BROWSER: "true" },
+  env: { BROWSER: "true", ...ANTIGRAVITY_ENV },
   interactiveSignInPrompt: /Open the following link to authenticate the ACP server: /u,
 };
 
@@ -199,6 +256,15 @@ export function antigravityTemp(context: Pick<ProviderClientContext, "providerTe
  * argument. OpenBot starts it the same way.
  */
 const ANTIGRAVITY_ARGV: readonly string[] = process.platform === "linux" ? ["--uid="] : [];
+
+// `oauth-personal` is the Google account sign-in that a Google AI Pro or Ultra plan uses.
+const ANTIGRAVITY_SIGN_IN: AcpAuthenticateSignIn = {
+  kind: "acp-authenticate",
+  methodId: "oauth-personal",
+  argv: ANTIGRAVITY_ARGV,
+  env: ANTIGRAVITY_ENV,
+  timeoutMs: CLI_LOGIN_TIMEOUT_MS,
+};
 
 const CLINE_ARGV: readonly string[] = ["--acp"];
 
@@ -295,6 +361,14 @@ export interface ProviderClientContext {
    */
   readonly agentEnvironment?: (inherited?: NodeJS.ProcessEnv) => Readonly<Record<string, string>>;
   /**
+   * Variables that every provider process gets on a server, and so every program an agent starts: the
+   * marker that the server memory guard finds leftover processes by, and the CPU limit module for Node
+   * (`agentProcessEnvironment` in `src/main/server-memory.ts`). Fixed while the app runs. They are not
+   * part of `agentEnvironment`: Codex gets that in each thread configuration and replaces a session
+   * whose variables change, so Codex gets these in the spawn environment of its app-server instead.
+   */
+  readonly serverEnvironment?: Readonly<Record<string, string>>;
+  /**
    * The home folder variable of a provider account after the first, for a driver with `accounts`.
    * Every process the client starts gets it, the account check included, so the client signs in
    * and keeps its sessions in that folder only.
@@ -306,6 +380,11 @@ export interface ProviderClientContext {
    * custom agent is saved.
    */
   readonly customAgents?: CustomAgentSource;
+  /**
+   * How long this server asks Claude to keep the prompt cache, read at each spawn. Optional for the
+   * same reason as `reportMcpDrops`: without it the CLI uses its own cache time.
+   */
+  readonly promptCacheTtl?: () => PromptCacheTtl;
 }
 
 /** The agent environment with the account's home folder after it, so the account folder wins. */
@@ -317,12 +396,61 @@ function withAccountEnvironment(
   return (inherited) => ({ ...agentEnvironment?.(inherited), ...accountEnvironment });
 }
 
+/**
+ * Claude's agent environment with the prompt cache time of this server. `5m`, the default, leaves the
+ * CLI's own choice. `1h` sets `ENABLE_PROMPT_CACHING_1H`, which the CLI reads last: a `promptCacheTtl`
+ * in the Claude settings or `CLAUDE_CODE_PROMPT_CACHE_TTL` still wins. The CLI reads the flag before
+ * its subscription rules, so subagents, an API key and a subscription on extra usage also get 1 hour.
+ */
+function claudeAgentEnvironment(
+  context: ProviderClientContext,
+): (inherited?: NodeJS.ProcessEnv) => Readonly<Record<string, string>> {
+  const environment = withAccountEnvironment(context);
+  return (inherited) => ({
+    ...((context.promptCacheTtl?.() ?? DEFAULT_PROMPT_CACHE_TTL.ttl) === "1h" ? { ENABLE_PROMPT_CACHING_1H: "1" } : {}),
+    ...environment?.(inherited),
+  });
+}
+
+/**
+ * The saved Anthropic API key, for the provider's own sign-in when it has no claude.ai account. An
+ * account after the first has its own `CLAUDE_CONFIG_DIR`; the account of the key carries the key in
+ * its environment, and no other account gets it.
+ */
+function claudeFallbackApiKey(context: ProviderClientContext): (() => string | null) | undefined {
+  return context.accountEnvironment ? undefined : () => context.apiKey("claude");
+}
+
 /** Nothing stored and no endpoint, for tests and for call sites that predate the credential store. */
 export const NO_PROVIDER_CREDENTIALS: ProviderClientContext = {
   apiKey: () => null,
   customProviders: () => [],
   mcpServers: () => [],
 };
+
+/**
+ * How a provider's model list differs from a plain `model/list` reading. Absent for a provider that
+ * needs nothing more.
+ */
+interface ProviderModelCatalog {
+  /** The CLI gives its list in pages, with `nextCursor`. */
+  readonly paged?: true;
+  /** The list can take the full request timeout, not 5 s. */
+  readonly slowList?: true;
+  /** No models while the provider says that the user must sign in and it has no client. */
+  readonly hiddenWhenSignedOut?: true;
+  /** The name to show for a model, before the name the CLI gives. Null keeps the CLI's name. */
+  modelName?(id: string): string | null;
+  /** Fields that only this provider's CLI reports. */
+  modelFields?(model: ModelListResponse["data"][number]): { fastServiceTier?: string };
+  /** False drops a model that the stored API key cannot use. Runs only while a key is stored. */
+  usableWithStoredKey?(id: string, name: string): boolean;
+  /**
+   * The models to keep when the list failed, timed out or came back empty. Without this hook a
+   * failed list keeps the previous models, and an empty list is a real answer.
+   */
+  fallback?(previous: AgentModelOption[]): AgentModelOption[];
+}
 
 /**
  * What a provider *does*. What it is called, how it is described and where its sign-in help points
@@ -332,10 +460,20 @@ export const NO_PROVIDER_CREDENTIALS: ProviderClientContext = {
 export interface BuiltInProviderDriver {
   id: AgentProviderId;
   signIn: ProviderSignIn;
+  /**
+   * The file the provider's CLI writes when the user signs in with it. The host checks the account
+   * again when this file changes, so a sign-in done outside OpenBot, such as over SSH, needs no
+   * restart. Absent for a provider that OpenBot always signs in itself.
+   */
+  signInFile?(): string;
   /** Absent for a provider that has no sign-in on another device. */
   codeSignIn?: ProviderCodeSignIn;
   /** Absent for a provider that holds one account only. */
   accounts?: ProviderAccountSupport;
+  /** The provider whose downloaded CLI this one runs. Absent when the provider has a CLI of its own. */
+  cliProvider?: AgentProviderId;
+  /** Absent for a provider whose `model/list` needs no special reading. */
+  catalog?: ProviderModelCatalog;
   resolveCli(options?: {
     bundledExecutable?: string | null | undefined;
   }): Effect.Effect<AgentCliInfo, ProviderClientOperationError>;
@@ -355,40 +493,103 @@ export interface BuiltInProviderDriver {
   validateAccount(account: NonNullable<AccountReadResult["account"]>): void;
 }
 
+/** Pi and the key-only providers run the same Pi client. A key-only provider adds its key extension. */
+function piClient(
+  provider: "pi" | KeyOnlyProviderId,
+  cli: AgentCliInfo,
+  timeout: number,
+  context: ProviderClientContext,
+  confinement: ProcessConfinement | undefined,
+): AgentClient {
+  const history = context.history?.(provider);
+  return new PiAgentClient(cli, {
+    requestTimeoutMs: timeout,
+    ...(confinement
+      ? {
+          confine: (target) => {
+            const paths = piStatePaths();
+            for (const path of paths.writable) mkdirSync(path, { recursive: true, mode: 0o700 });
+            // Pi writes an empty `auth.json` before it reads one, and the confined process cannot.
+            try {
+              writeFileSync(join(piAgentDirectory(), "auth.json"), "{}", { flag: "wx", mode: 0o600 });
+            } catch (error) {
+              if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+            }
+            return confineSpawnTarget(target, confinement, paths);
+          },
+        }
+      : {}),
+    extraEnv: () => ({ ...context.agentEnvironment?.() }),
+    ...piKeyProvider(provider, context),
+    ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
+    mcpServers: context.mcpServers,
+    ...(context.reportMcpDrops ? { reportMcpDrops: context.reportMcpDrops } : {}),
+    ...(context.mcpToolRuntimes ? { mcpToolRuntimes: context.mcpToolRuntimes } : {}),
+    ...(context.mcpEndpoint ? { mcpEndpoint: context.mcpEndpoint } : {}),
+    ...(history ? { history } : {}),
+  });
+}
+
+function piKeyProvider(provider: "pi" | KeyOnlyProviderId, context: ProviderClientContext) {
+  return provider === "pi" ? {} : { keyProvider: { id: provider, apiKey: () => context.apiKey(provider) } };
+}
+
+function piProfileClient(
+  provider: "pi" | KeyOnlyProviderId,
+  cli: AgentCliInfo,
+  timeout: number,
+  context: ProviderClientContext,
+): AgentClient {
+  return new PiAgentClient(cli, {
+    requestTimeoutMs: timeout,
+    profileGeneration: true,
+    ...piKeyProvider(provider, context),
+    ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
+  });
+}
+
 export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
   {
     id: "pi",
     signIn: { kind: "terminal", timeoutMs: CLI_LOGIN_TIMEOUT_MS },
+    signInFile: () => join(piAgentDirectory(), "auth.json"),
     resolveCli: resolvePiCli,
-    createClient: (cli, timeout, context, confinement) => {
-      const history = context.history?.("pi");
-      return new PiAgentClient(cli, {
-        requestTimeoutMs: timeout,
-        ...(confinement
-          ? {
-              confine: (target) => {
-                const paths = piStatePaths();
-                for (const path of paths.writable) mkdirSync(path, { recursive: true, mode: 0o700 });
-                return confineSpawnTarget(target, confinement, paths);
-              },
-            }
-          : {}),
-        extraEnv: () => ({ ...context.agentEnvironment?.() }),
-        ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
-        mcpServers: context.mcpServers,
-        ...(context.reportMcpDrops ? { reportMcpDrops: context.reportMcpDrops } : {}),
-        ...(context.mcpToolRuntimes ? { mcpToolRuntimes: context.mcpToolRuntimes } : {}),
-        ...(context.mcpEndpoint ? { mcpEndpoint: context.mcpEndpoint } : {}),
-        ...(history ? { history } : {}),
-      });
-    },
-    createProfileClient: (cli, timeout, context) =>
-      new PiAgentClient(cli, {
-        requestTimeoutMs: timeout,
-        profileGeneration: true,
-        ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
-      }),
+    createClient: (cli, timeout, context, confinement) => piClient("pi", cli, timeout, context, confinement),
+    createProfileClient: (cli, timeout, context) => piProfileClient("pi", cli, timeout, context),
     authState: (account) => ({ kind: "pi", email: account?.email ?? null }),
+    validateAccount: () => undefined,
+  },
+  {
+    id: "inception",
+    // The key is pasted into OpenBot. Pi's own sign-in stays on the Pi row.
+    signIn: { kind: "external" },
+    cliProvider: "pi",
+    resolveCli: resolvePiCli,
+    createClient: (cli, timeout, context, confinement) => piClient("inception", cli, timeout, context, confinement),
+    createProfileClient: (cli, timeout, context) => piProfileClient("inception", cli, timeout, context),
+    authState: (account) => ({ kind: "inception", email: account?.email ?? null }),
+    validateAccount: () => undefined,
+  },
+  {
+    id: "deepseek",
+    // The key is pasted into OpenBot. Pi's own sign-in stays on the Pi row.
+    signIn: { kind: "external" },
+    cliProvider: "pi",
+    resolveCli: resolvePiCli,
+    createClient: (cli, timeout, context, confinement) => piClient("deepseek", cli, timeout, context, confinement),
+    createProfileClient: (cli, timeout, context) => piProfileClient("deepseek", cli, timeout, context),
+    authState: (account) => ({ kind: "deepseek", email: account?.email ?? null }),
+    validateAccount: () => undefined,
+  },
+  {
+    id: "openrouter",
+    // The key is pasted into OpenBot. Pi's own sign-in stays on the Pi row.
+    signIn: { kind: "external" },
+    cliProvider: "pi",
+    resolveCli: resolvePiCli,
+    createClient: (cli, timeout, context, confinement) => piClient("openrouter", cli, timeout, context, confinement),
+    createProfileClient: (cli, timeout, context) => piProfileClient("openrouter", cli, timeout, context),
+    authState: (account) => ({ kind: "openrouter", email: account?.email ?? null }),
     validateAccount: () => undefined,
   },
   {
@@ -441,9 +642,14 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
       signIn: { argv: ["login"], env: () => ({}), timeoutMs: CLI_LOGIN_TIMEOUT_MS },
       signOut: { argv: ["logout"], env: () => ({}), timeoutMs: 30_000 },
     },
+    catalog: { paged: true, modelFields: codexFastServiceTier },
     resolveCli: resolveCodexCli,
     createClient: (cli, requestTimeoutMs, context) =>
-      new CodexAppServerClient(cli.executable, requestTimeoutMs, context.accountEnvironment),
+      new CodexAppServerClient(cli.executable, requestTimeoutMs, {
+        ...cliPathEnvironment(cli),
+        ...context.serverEnvironment,
+        ...context.accountEnvironment,
+      }),
     authState: (account) => ({ kind: "chatgpt", email: account?.email ?? null }),
     validateAccount: (account) => {
       if (account.type !== "chatgpt") {
@@ -470,6 +676,8 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
       signIn: { argv: ["auth", "login", "--claudeai"], env: CLAUDE_COMMAND_ENV, timeoutMs: CLI_LOGIN_TIMEOUT_MS },
       signOut: { argv: ["auth", "logout"], env: CLAUDE_COMMAND_ENV, timeoutMs: 30_000 },
     },
+    // `claudeModelName` says why Claude Code's own model names are not used.
+    catalog: { modelName: claudeModelName },
     resolveCli: resolveClaudeCli,
     createClient: (cli, requestTimeoutMs, context) =>
       new ClaudeAgentClient(
@@ -482,7 +690,9 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
         context.mcpToolRuntimes,
         context.mcpEndpoint,
         context.providerStateDirectory,
-        withAccountEnvironment(context),
+        claudeAgentEnvironment(context),
+        undefined,
+        claudeFallbackApiKey(context),
       ),
     authState: (account) => ({ kind: "claude", email: account?.email ?? null }),
     validateAccount: () => undefined,
@@ -538,23 +748,34 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
     // optional OpenCode Go key is pasted into OpenBot instead. Nothing is required to sign in:
     // with no credential at all the CLI still lists the free models and answers a turn.
     signIn: { kind: "external" },
+    // A stored key is an OpenCode Go key, and `isOpencodeModelUnusableWithStoredKey` says why that
+    // drops models. The free tier stays in the picker when discovery fails or answers empty.
+    catalog: {
+      hiddenWhenSignedOut: true,
+      usableWithStoredKey: (id, name) => !isOpencodeModelUnusableWithStoredKey(id, name),
+      fallback: modelsAfterOpenCodeDiscoveryFailure,
+    },
     resolveCli: resolveOpencodeCli,
     // Both clients read the key and the custom providers at spawn, and the profile client merges the
-    // endpoints *into* the deny-all layer rather than beside it: the two share one environment
-    // variable, so the layer would be lost if a custom provider config replaced it.
+    // endpoints *into* the profile permission layer rather than beside it: the two share one
+    // environment variable, so the layer would be lost if a custom provider config replaced it.
     createClient: (cli, timeout, context, confinement) =>
       new AcpAgentClient(cli, timeout, {
         provider: "opencode",
+        flavor: OPENCODE_ACP_FLAVOR,
         argv: ["acp"],
         env: {},
         ...(confinement ? { confine: (target) => confineSpawnTarget(target, confinement, openCodeStatePaths()) } : {}),
         extraEnv: () => ({
           ...context.agentEnvironment?.(),
           ...opencodeEnv(cli, context),
-          ...openCodeConfigEnv({}, context.customProviders),
+          ...openCodeConfigEnv({}, context.customProviders, context.apiKey("opencode")),
           ...(confinement ? OPENCODE_CONFINED_ENV : {}),
         }),
         signInMessage: openCodeSignInMessage(context.customProviders().length),
+        modelName: (id, name) => openCodeModelName(id, name, context.customProviders),
+        // A stalled turn on a custom endpoint names the endpoint, not OpenCode (#3234).
+        providerName: (modelId) => customProviderOfModel(modelId, context.customProviders())?.name ?? null,
         servesModel: context.servesModel,
         mcpServers: context.mcpServers,
         reportMcpDrops: context.reportMcpDrops,
@@ -569,14 +790,16 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
     createProfileClient: (cli, timeout, context) =>
       new AcpAgentClient(cli, timeout, {
         provider: "opencode",
+        flavor: OPENCODE_ACP_FLAVOR,
         argv: ["acp"],
         profileGeneration: true,
         env: {},
         extraEnv: () => ({
           ...opencodeEnv(cli, context),
-          ...openCodeConfigEnv(OPENCODE_PROFILE_CONFIG, context.customProviders),
+          ...openCodeConfigEnv(OPENCODE_PROFILE_CONFIG, context.customProviders, context.apiKey("opencode")),
         }),
         signInMessage: openCodeSignInMessage(context.customProviders().length),
+        modelName: (id, name) => openCodeModelName(id, name, context.customProviders),
         servesModel: context.servesModel,
       }),
     authState: (account) => ({ kind: "opencode", email: account?.email ?? null }),
@@ -584,23 +807,26 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
   },
   {
     id: "antigravity",
-    // `oauth-personal` is the Google account sign-in that a Google AI Pro or Ultra plan uses.
-    signIn: {
-      kind: "acp-authenticate",
-      methodId: "oauth-personal",
-      argv: ANTIGRAVITY_ARGV,
-      timeoutMs: CLI_LOGIN_TIMEOUT_MS,
+    signIn: ANTIGRAVITY_SIGN_IN,
+    // The token file and `settings.json`, which names the sign-in method, are in `GEMINI_HOME`.
+    accounts: {
+      homeVariable: "GEMINI_HOME",
+      signIn: ANTIGRAVITY_SIGN_IN,
+      supports: (cli) => antigravityReadsGeminiHome(cli.version),
+      // Each new Antigravity session keeps a conversation database in the account's folder.
+      usageLeavesSession: true,
     },
     resolveCli: resolveAntigravityCli,
     createClient: (cli, timeout, context, confinement) =>
       new AcpAgentClient(cli, timeout, {
         provider: "antigravity",
+        flavor: ANTIGRAVITY_ACP_FLAVOR,
         argv: ANTIGRAVITY_ARGV,
         ...ANTIGRAVITY_SERVING_OPTIONS,
         discoveryCwd: () => discoveryFolder("antigravity"),
         privateTemp: antigravityTemp(context),
         ...(confinement
-          ? { confine: (target) => confineSpawnTarget(target, confinement, antigravityStatePaths()) }
+          ? { confine: (target) => confineSpawnTarget(target, confinement, antigravityAccountStatePaths(context)) }
           : {}),
         ...antigravityKeyOptions(context, true),
         signInMessage: sourceText("error.provider.antigravitySignIn"),
@@ -610,12 +836,17 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
         mcpToolRuntimes: context.mcpToolRuntimes,
         mcpEndpoint: context.mcpEndpoint,
         history: context.history?.("antigravity"),
+        readRateLimits: (_connection, privatePrompt, model) =>
+          antigravityAnswersUsageCommand(cli.version)
+            ? privatePrompt(ANTIGRAVITY_USAGE_PROMPT).pipe(Effect.map((answer) => antigravityRateLimits(answer, model)))
+            : Effect.succeed({ rateLimits: null, rateLimitsByLimitId: null }),
       }),
     // A profile-generation client asks one question and must not act: no MCP servers, and every
     // permission request is cancelled.
     createProfileClient: (cli, timeout, context) =>
       new AcpAgentClient(cli, timeout, {
         provider: "antigravity",
+        flavor: ANTIGRAVITY_ACP_FLAVOR,
         argv: ANTIGRAVITY_ARGV,
         profileGeneration: true,
         ...ANTIGRAVITY_SERVING_OPTIONS,
@@ -644,6 +875,7 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
     createClient: (cli, timeout, context, confinement) =>
       new AcpAgentClient(cli, timeout, {
         provider: "cursor",
+        flavor: CURSOR_ACP_FLAVOR,
         argv: ["acp"],
         env: {},
         ...(confinement ? { confine: (target) => confineSpawnTarget(target, confinement, cursorStatePaths()) } : {}),
@@ -655,10 +887,12 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
         mcpToolRuntimes: context.mcpToolRuntimes,
         mcpEndpoint: context.mcpEndpoint,
         history: context.history?.("cursor"),
+        readRateLimits: () => readCursorUsage().pipe(Effect.mapError((failure) => providerFailure(failure.cause))),
       }),
     createProfileClient: (cli, timeout, context) =>
       new AcpAgentClient(cli, timeout, {
         provider: "cursor",
+        flavor: CURSOR_ACP_FLAVOR,
         argv: ["acp"],
         profileGeneration: true,
         env: {},
@@ -689,6 +923,7 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
     createClient: (cli, timeout, context, confinement) =>
       new AcpAgentClient(cli, timeout, {
         provider: "cline",
+        flavor: DEFAULT_ACP_FLAVOR,
         argv: CLINE_ARGV,
         env: { ...CLINE_ENV },
         ...(confinement ? { confine: (target) => confineClineTarget(target, confinement) } : {}),
@@ -705,6 +940,7 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
     createProfileClient: (cli, timeout, context) =>
       new AcpAgentClient(cli, timeout, {
         provider: "cline",
+        flavor: DEFAULT_ACP_FLAVOR,
         argv: CLINE_ARGV,
         profileGeneration: true,
         env: { ...CLINE_ENV },
@@ -719,6 +955,9 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
     id: "acp",
     // Each custom agent signs in its own way, in its own CLI. OpenBot only checks it again.
     signIn: { kind: "external" },
+    // A custom agent can need more than 5 s to start and open a probe session in `initialize` and
+    // again in `model/list`: Claude Agent ACP with a few plugins and MCP servers does.
+    catalog: { slowList: true },
     resolveCli: () => Effect.succeed(CUSTOM_AGENTS_CLI),
     createClient: (_cli, timeout, context, confinement) =>
       new CustomAcpAgentsClient(
@@ -769,6 +1008,7 @@ function customAgentChild(
   const values = config.env.map((entry) => entry.value);
   return new AcpAgentClient({ executable, version: "", source: "system" }, timeout, {
     provider: "acp",
+    flavor: customAgentFlavor(config.command),
     label: config.name,
     allowNoModels: true,
     discoveryCwd: () => folder ?? discoveryFolder(config.id),

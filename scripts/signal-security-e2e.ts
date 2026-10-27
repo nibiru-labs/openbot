@@ -1,7 +1,7 @@
 // Starts the real Signal service (`remote/api`) on a free local port with throwaway secrets and a
 // fake account service, then checks its secret and authentication rules over real HTTP and
 // WebSocket connections: the Telegram secret header, the Slack signature, the signed account
-// events, the body limits, the remote and route tickets, the generic webhook headers, the hello deadline, the reuse of
+// events, the body limits, the remote and route tickets, a failed account service during an initial ticket check after a start, the generic webhook headers, the hello deadline, the reuse of
 // TURN credentials, and that no frame or log line holds the Telegram bot token. Writes .openbot-build/signal-security-e2e/report.json and exits
 // non-zero when a check fails. It makes no request to Telegram, Slack or Discord.
 import { type ChildProcess, spawn } from "node:child_process";
@@ -53,6 +53,9 @@ const WEBHOOK_ROUTE = "route-e2e";
 const LINK_HOST_ID = "host-link-e2e";
 const LINK_CHAT = "-500";
 const LINK_CODE = randomBytes(32).toString("base64url");
+// The account service fails for the sessions of this host, and calls the sessions of the next one inactive.
+const UNAVAILABLE_HOST_ID = "host-unavailable-e2e";
+const INACTIVE_HOST_ID = "host-inactive-e2e";
 
 interface Check {
   name: string;
@@ -123,7 +126,10 @@ function startControlPlane(port: number): Promise<Server> {
       response.end(value === undefined ? "" : JSON.stringify(value));
     };
     if (!signed) return answer(401);
-    if (path === "/v2/remote/resume/validate") return answer(200, { valid: true });
+    if (path === "/v2/remote/resume/validate") {
+      if (payload.hostId === UNAVAILABLE_HOST_ID) return answer(503);
+      return answer(200, { valid: payload.hostId !== INACTIVE_HOST_ID });
+    }
     if (path === "/v2/remote/telegram-route/validate") return answer(200, { chats: payload.chats });
     // Only the one link code of this run links a chat, to the host of the link check.
     if (path === "/v2/remote/telegram-route/link")
@@ -574,6 +580,67 @@ try {
       protocolMaximum: REMOTE_TICKET_PROTOCOL_VERSION + 1,
     }),
   );
+  // After a restart, Signal asks the account service about each session. A failed account service
+  // must not end a session that can still be active; an inactive session still ends.
+  await check("A session that the account service cannot check is closed with 1013 and no error", async () => {
+    const peer = await connect(signalUrl);
+    peer.socket.send(
+      JSON.stringify({
+        type: "hello",
+        version: 1,
+        peer: "host",
+        token: await remoteTicket({ hostId: UNAVAILABLE_HOST_ID, membershipId: `${UNAVAILABLE_HOST_ID}:host` }),
+      }),
+    );
+    const code = await withDeadline(peer.closed, "close after an unchecked hello");
+    expect(code === 1013, `close code: ${code}`);
+    expect(peer.frames.length === 0, `frames: ${peer.frames.join(" ").slice(0, 200)}`);
+    return `closed with ${code} and no frame`;
+  });
+  await check("A revoked session that the account service cannot check is still refused", async () => {
+    const body = JSON.stringify({ type: "remote-auth-changed", hostId: UNAVAILABLE_HOST_ID, authEpoch: 2 });
+    const timestamp = nowSeconds();
+    const revoked = await postAuthEvent(
+      body,
+      timestamp,
+      hmac(AUTH_WEBHOOK_SECRET, `${timestamp}.${body}`, "base64url"),
+    );
+    expect(revoked.status === 204, `signed revoke: ${revoked.status}`);
+    const peer = await connect(signalUrl);
+    peer.socket.send(
+      JSON.stringify({
+        type: "hello",
+        version: 1,
+        peer: "host",
+        token: await remoteTicket({ hostId: UNAVAILABLE_HOST_ID, membershipId: `${UNAVAILABLE_HOST_ID}:host` }),
+      }),
+    );
+    const code = await withDeadline(peer.closed, "close after a revoked unchecked hello");
+    expect(code === 1008, `close code: ${code}`);
+    expect(
+      peer.frames.some((frame) => frame.includes('"code":"authentication_required"')),
+      `frames: ${peer.frames.join(" ").slice(0, 200)}`,
+    );
+    return `closed with ${code} and an authentication_required error`;
+  });
+  await check("A session that the account service calls inactive is refused", async () => {
+    const peer = await connect(signalUrl);
+    peer.socket.send(
+      JSON.stringify({
+        type: "hello",
+        version: 1,
+        peer: "host",
+        token: await remoteTicket({ hostId: INACTIVE_HOST_ID, membershipId: `${INACTIVE_HOST_ID}:host` }),
+      }),
+    );
+    const code = await withDeadline(peer.closed, "close after an inactive hello");
+    expect(code === 1008, `close code: ${code}`);
+    expect(
+      peer.frames.some((frame) => frame.includes('"code":"authentication_required"')),
+      `frames: ${peer.frames.join(" ").slice(0, 200)}`,
+    );
+    return `closed with ${code} and an authentication_required error`;
+  });
   await check("An ingress hello without a route ticket is refused", async () => {
     const peer = await connect(signalUrl);
     peer.socket.send(JSON.stringify({ type: "hello", version: 1, peer: "ingress", token: await remoteTicket() }));

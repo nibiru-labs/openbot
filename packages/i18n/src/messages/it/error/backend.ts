@@ -69,6 +69,9 @@ export const messages = {
     "Questa scheda del browser attende un segreto. Rispondi prima alla richiesta del segreto.",
   "error.backend.browserUserControlUnsupported":
     "Questo host remoto non supporta il controllo di una scheda del browser.",
+  "error.backend.browserSignInUnsupported": "Questo host remoto non può ricevere un accesso da questo computer.",
+  "error.backend.browserSignInOpenFailed": "OpenBot non è riuscito ad aprire la finestra di accesso.",
+  "error.backend.browserSignInReadFailed": "OpenBot non è riuscito a leggere l’accesso dalla finestra.",
   "error.backend.browserStopUnsupported": "Questo host remoto non può interrompere il caricamento di una pagina.",
   "error.backend.sharedDataLocalOnly": "I dati condivisi sono gestiti sul computer su cui girano questi agenti.",
   "error.backend.browserUrlProtocol": "Sono consentiti solo URL del browser HTTP(S).",
@@ -82,8 +85,6 @@ export const messages = {
   "error.backend.channelNotFound": "Canale non trovato.",
   "error.backend.channelMemberUnavailable": "Un membro del canale non è disponibile.",
   "error.backend.channelArchived": "Ripristina questo canale prima di inviare messaggi o modificare le attività.",
-  "error.backend.channelsRetired":
-    "I canali non sono più supportati. Metti gli agenti in una sezione della barra laterale per farli lavorare insieme.",
   "error.backend.channelReferenceUnavailable": "Il messaggio del canale a cui si fa riferimento non è disponibile.",
   "error.backend.channelTaskNotFound": "Attività del canale non trovata.",
   "error.backend.channelTaskComplete": "Questa attività è già completata.",
@@ -93,6 +94,11 @@ export const messages = {
   "error.backend.channelRoutingTooLong":
     "Questa richiesta supera il limite del contesto di instradamento. Seleziona un membro o invia una richiesta più breve.",
   "error.backend.channelTaskMemberRequired": "Scegli un membro per questa attività.",
+  "error.backend.channelRoutingFailed": "L'instradamento non è riuscito. Scegli un membro o riprova.",
+  "error.backend.channelLeadTimedOut":
+    "Il responsabile del canale non ha risposto in tempo. Scegli un membro o riprova.",
+  "error.backend.channelLeadFailed":
+    "Il responsabile del canale non è riuscito a instradare questo messaggio. Scegli un membro o riprova.",
   "error.backend.channelRequestMemberRequired": "Scegli un membro per questa richiesta.",
   "error.backend.channelDeliveryNotCreated": "La consegna del canale non è stata creata.",
   "error.backend.channelAssignmentStopped": "Questa assegnazione del canale è stata interrotta o sostituita.",
@@ -232,6 +238,8 @@ export const messages = {
   "error.backend.mcpSignInCancelled": "L'accesso è stato annullato.",
   "error.backend.mcpSignInTimedOut": "L'accesso non è stato completato nel browser.",
   "error.backend.mcpSignInResponseTimedOut": "La risposta dell'accesso non è arrivata in tempo.",
+  "error.backend.mcpSignInMetadataUnreadable":
+    "OpenBot non ha potuto leggere le informazioni di accesso di questo server. Controlla l’indirizzo del server e riprova.",
   "error.backend.mcpServerExited":
     "Il server si è fermato prima di rispondere. Esegui il comando in un terminale per vedere l'errore.",
   "error.backend.mcpOAuthProxyUnavailable":
@@ -266,6 +274,7 @@ export const messages = {
   "error.backend.directMessageSelf": "Non puoi inviare un messaggio diretto a te stesso.",
   "error.backend.readBoundaryUnavailable": "Il punto di lettura non è più disponibile.",
   "error.backend.sharedFileOutside": "Il file condiviso deve trovarsi nella cartella condivisa.",
+  "error.backend.sharedPathIsFolder": "Il percorso condiviso è una cartella, non un file.",
   "error.backend.sharedPathNotFile": "Il percorso condiviso non è un file.",
   "error.backend.workspaceFileOutside": "Il file del workspace deve trovarsi nel workspace dell'agente.",
   "error.backend.workspacePathNotFile": "Il percorso del workspace non è un file.",
@@ -282,6 +291,7 @@ export const messages = {
   "error.backend.steerTurnChanged": "Il turno attivo è cambiato prima che questo messaggio potesse essere indirizzato.",
   "error.backend.steerUnsupported":
     "Questo provider non può indirizzare un turno in corso. Il tuo messaggio resta in coda.",
+  "error.backend.steerRoutineRun": "È in corso una routine. Il tuo messaggio resta in coda e parte dopo la routine.",
   "error.backend.steerQueuedOnly": "Si possono indirizzare solo i messaggi in coda.",
   "error.backend.promptInactive": "Questo prompt non è più attivo.",
   "error.backend.promptAnswerMismatch": "La risposta al prompt non corrisponde a una domanda attiva.",
@@ -291,11 +301,20 @@ export const messages = {
   "error.backend.approvalInactive": "Questa approvazione non è più attiva.",
   "error.backend.takeoverInactive": "Questo intervento nel browser non è più attivo.",
   "error.backend.authSubmitting": "L'invio dell'autenticazione è già in corso.",
+  "error.backend.apiKeySaveFailed": "OpenBot non è riuscito a salvare la chiave API. Riprova.",
+  "error.backend.apiKeyNotAllowed": "Solo il proprietario del server o un amministratore può inserire una chiave API.",
+  "error.backend.apiKeySaving": "La chiave API è già in fase di salvataggio.",
   "error.backend.authRequestInactive": "Questa richiesta di autenticazione sicura non è più attiva.",
   "error.backend.secureAuthUnavailable": "L'autenticazione sicura non è disponibile.",
   "error.backend.browserUrlRequired": "L'URL del browser è obbligatorio.",
   "error.backend.browserUrlTooLong": "L'URL del browser è troppo lungo.",
   "error.backend.browserTabLimit": "Il browser può avere fino a {limit} schede aperte.",
+  "error.backend.browserProfileMissing":
+    "Il profilo browser di questo agente non esiste più. Scegli un altro profilo nelle impostazioni dell’agente.",
+  "error.backend.browserProfileNotFound": "Questo profilo browser non esiste più.",
+  "error.backend.browserProfileNameTaken": "Esiste già un profilo browser con questo nome.",
+  "error.backend.browserSessionInUse": "Una scheda usa ancora questa sessione del browser. Riprova.",
+  "error.backend.browserProfileLimit": "Puoi avere fino a {limit} profili browser.",
   "error.backend.browserLowMemory":
     "Su questo server la memoria è quasi esaurita, quindi il browser non può aprire un'altra scheda. Chiudi una scheda o attendi che gli altri agenti finiscano.",
   "error.backend.browserOpenFailed": "Impossibile aprire {url}: {reason}",
@@ -333,6 +352,15 @@ export const messages = {
   "error.backend.taskNotFound": "Questa attività non è disponibile.",
   "error.backend.taskClosed": "Questa attività è chiusa. Riaprila per inviare un messaggio.",
   "error.backend.taskStillRunning": "Questa attività è ancora in corso. Attendi che si fermi, poi chiudila.",
+  "error.backend.threadNotFound": "Questo thread non è disponibile.",
+  "error.backend.threadStillRunning": "Questo thread è ancora in esecuzione. Interrompilo, poi riprova.",
+  "error.backend.threadArchived": "Questo thread è archiviato. Ripristinalo per inviare un messaggio.",
+  "error.backend.threadTitleRequired": "Dai al thread un titolo breve.",
+  "error.backend.threadOpenLimitReached":
+    "Questo agente ha {count} thread aperti. Archivia un thread, poi avviane o ripristinane un altro.",
+  "error.backend.threadRemoteUnsupported": "I thread sono disponibili solo per gli agenti su questo computer.",
+  "error.backend.threadMoveRefused":
+    "Solo un messaggio che hai inviato soltanto a questo agente può essere eseguito in un nuovo thread.",
   "error.backend.taskTitleRequired": "Dai all'attività un titolo breve.",
   "error.backend.taskToolInvalid":
     "Dai all'attività un titolo di al massimo 120 caratteri e una descrizione che dica cosa fare.",

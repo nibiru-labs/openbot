@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { z } from "zod";
 import { openBotToolFailure, openBotToolResult } from "../agent/routine-tools";
 import { toolStep } from "../agent/tool-operation";
+import { DispatchFailed } from "./dispatch-process";
 import type { DispatchService } from "./dispatch-service";
 
 const name = z
@@ -132,8 +133,9 @@ export const handleDispatchTool = Effect.fn("DispatchTools.handle")(function* (
     );
   });
   return yield* operation.pipe(
-    Effect.catchTag("DispatchFailed", (failure) =>
-      Effect.succeed(openBotToolFailure(failure.reason ?? sourceText("error.backend.dispatchCommand"))),
+    Effect.catchIf(
+      (failure): failure is DispatchFailed => failure instanceof DispatchFailed,
+      (failure) => Effect.succeed(openBotToolFailure(failure.reason ?? sourceText("error.backend.dispatchCommand"))),
     ),
   );
 });

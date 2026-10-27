@@ -1,8 +1,12 @@
 import { VOICE_AUDIO_LIMITS, VOICE_MODELS, VOICE_STREAM_LIMITS, type VoiceModelId } from "@openbot/contracts/ipc";
+import { VOICE_LIMIT_WARNING_SECONDS } from "@openbot/ui/features/conversation/VoiceRecordingMorph";
 import { currentText } from "@openbot/ui/text";
 import { onCleanup } from "solid-js";
 import { desktopAnalytics } from "../../../analytics";
+import { unlockCompletionSound } from "../../../completion-sound";
+import { playVoiceLimitStop, playVoiceLimitWarning } from "../../../voice-limit-sound";
 import { appendVoiceTranscript, encodePcm16, recordingToSamples, recordingToWav } from "../../../voice-recording";
+import { forgetDictatedMessage, noteDictatedMessage, stopSpokenReply } from "../../speech/speech-replies";
 import { EMPTY_DRAFT } from "../composer-draft";
 import { composerDraftKey } from "../conversation-keys";
 import { conversationRuntime } from "../conversation-runtime";
@@ -99,6 +103,8 @@ export interface VoiceStoreDeps {
   clearConversationError: (target: ConversationTarget) => void;
   setConversationError: (target: ConversationTarget, message: string) => void;
   viewIsMounted: () => boolean;
+  /** Shows or ends the notice that the recording of this conversation stopped at the time limit. */
+  setVoiceLimitReached?: (target: ConversationTarget, reached: boolean) => void;
   hooks: VoiceSubmitHooks;
 }
 
@@ -106,12 +112,19 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
   const { resources } = deps;
   /** The model that `prepareModel` downloads, so the progress of another model is not shown. */
   let preparingModelId: VoiceModelId | null = null;
+  /** The recording that is being transcribed stopped at the time limit, not at the user's click. */
+  let stoppedAtLimit = false;
 
   async function startVoiceRecording(): Promise<void> {
     const agentId = deps.props.agent?.id;
     const serverId = deps.props.server?.id ?? "local";
     if (!agentId || deps.voicePhase() !== "idle") return;
+    // The user speaks again: the reply that is read aloud stops.
+    stopSpokenReply();
+    // The limit cues play up to two minutes after this click, and audio starts surely only from one.
+    unlockCompletionSound();
     const target = { agentId, serverId };
+    deps.setVoiceLimitReached?.(target, false);
     deps.clearConversationError(target);
     resources.voiceSubmitRequest = undefined;
     deps.setComposerError(null);
@@ -188,7 +201,7 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
       startVoiceMeter(stream);
       startVoiceElapsedTimer();
       deps.setVoicePhase("recording");
-      resources.voiceRecordingTimer = setTimeout(stopVoiceRecording, VOICE_AUDIO_LIMITS.maximumSeconds * 1_000);
+      resources.voiceRecordingTimer = setTimeout(stopVoiceRecordingAtLimit, VOICE_AUDIO_LIMITS.maximumSeconds * 1_000);
     } catch (error) {
       // The recorder failed after the microphone opened: release it, or the OS keeps it in use.
       if (stream) {
@@ -293,6 +306,14 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
     stopVoiceStream();
   }
 
+  /** The recording reached the time limit: a chime says so, as the user may not look at the screen. */
+  function stopVoiceRecordingAtLimit(): void {
+    if (deps.voicePhase() !== "recording" || !resources.voiceRecorder) return;
+    playVoiceLimitStop();
+    stoppedAtLimit = true;
+    stopVoiceRecording();
+  }
+
   /** Discards the recording: nothing is transcribed and the draft stays as it was. */
   function cancelVoiceRecording(): void {
     const recorder = resources.voiceRecorder;
@@ -387,6 +408,8 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
     const targetServerId = resources.voiceServerId;
     const chunks = resources.voiceChunks;
     const submitRequest = resources.voiceSubmitRequest;
+    const atLimit = stoppedAtLimit;
+    stoppedAtLimit = false;
     const cloud = resources.voiceCloudStream;
     resources.voiceCloudStream = undefined;
     resources.voiceRecorder = undefined;
@@ -440,8 +463,11 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
       deps.clearConversationError(recordingTarget);
       const draft = submitRequest?.draft ?? deps.drafts()[composerDraftKey(recordingTarget)] ?? EMPTY_DRAFT;
       const transcribedDraft = { ...draft, text: appendVoiceTranscript(draft.text, result.text) };
+      // Only the desktop app reads replies aloud; the web client has its own runtime.
+      const spokenReply = !deps.props.runtime;
       if (submitRequest) {
         const target = { agentId: submitRequest.agentId, serverId: submitRequest.serverId };
+        if (spokenReply) noteDictatedMessage(target, result.text);
         let delivered: boolean;
         if (submitRequest.queuedEdit) {
           delivered = await deps.hooks.saveEdit(
@@ -455,10 +481,15 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
         } else {
           delivered = await deps.hooks.submit(transcribedDraft, target, submitRequest.draft);
         }
-        if (!delivered) deps.hooks.restoreTranscript(target, result.text);
+        if (!delivered) {
+          if (spokenReply) forgetDictatedMessage(target);
+          deps.hooks.restoreTranscript(target, result.text);
+        }
       } else {
+        if (spokenReply) noteDictatedMessage(recordingTarget, result.text);
         const key = composerDraftKey(recordingTarget);
         deps.setDrafts((current) => ({ ...current, [key]: transcribedDraft }));
+        if (atLimit) deps.setVoiceLimitReached?.(recordingTarget, true);
         if (deps.props.agent?.id === targetAgentId && (deps.props.server?.id ?? "local") === targetServerId) {
           deps.setComposerFocusRequest((current) => current + 1);
         }
@@ -495,11 +526,15 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
   function startVoiceElapsedTimer(): void {
     stopVoiceElapsedTimer();
     const startedAt = Date.now();
+    let warned = false;
     deps.setVoiceElapsedSeconds(0);
     resources.voiceElapsedTimer = setInterval(() => {
-      deps.setVoiceElapsedSeconds(
-        Math.min(VOICE_AUDIO_LIMITS.maximumSeconds, Math.floor((Date.now() - startedAt) / 1_000)),
-      );
+      const elapsed = Math.min(VOICE_AUDIO_LIMITS.maximumSeconds, Math.floor((Date.now() - startedAt) / 1_000));
+      deps.setVoiceElapsedSeconds(elapsed);
+      if (!warned && elapsed >= VOICE_AUDIO_LIMITS.maximumSeconds - VOICE_LIMIT_WARNING_SECONDS) {
+        warned = true;
+        playVoiceLimitWarning();
+      }
     }, 250);
   }
 

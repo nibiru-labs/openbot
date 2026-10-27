@@ -29,7 +29,7 @@ export const messages = {
   "agentSettings.backupModels.intro":
     "Если {model} достигнет лимита использования до того, как {name} начнёт писать, {name} спросит вас, какую модель использовать.",
   "agentSettings.backupModels.introAutomatic":
-    "Если {model} достигнет лимита использования до того, как {name} начнёт писать, {name} переключится на первую доступную модель по порядку.",
+    "Если {model} достигнет лимита использования или завершится с ошибкой провайдера до того, как {name} начнёт писать, {name} переключится на первую доступную модель по порядку.",
   "agentSettings.backupModels.ask": "Спрашивать перед переключением",
   "agentSettings.backupModels.order": "Порядок",
   "agentSettings.backupModels.listLabel": "Резервные модели по порядку",
@@ -42,7 +42,7 @@ export const messages = {
   "agentSettings.backupModels.unavailable": "Сейчас недоступна · пропущена",
   "agentSettings.backupModels.withAccount": "{model} · {account}",
   "agentSettings.backupModels.note":
-    "После начала ответа {name} не переключает модель. Когда лимит закончится, {name} вернётся к {model}.",
+    "После начала ответа {name} не переключает модель. Когда лимит закончится или через 10 минут после ошибки провайдера, {name} вернётся к {model}.",
   "agentSettings.groups.brain": "Мозг",
   "agentSettings.groups.knows": "Знает",
   "agentSettings.groups.does": "Делает",
@@ -64,7 +64,7 @@ export const messages = {
   "agentSettings.avatar.image": "Изображение",
   "agentSettings.avatar.replaceImage": "Заменить изображение",
   "agentSettings.avatar.uploadImage": "Загрузить изображение",
-  "agentSettings.avatar.imageHint": "PNG, JPEG или WebP · квадратная обрезка",
+  "agentSettings.avatar.imageHint": "PNG, JPEG, GIF или WebP · квадратная обрезка",
   "agentSettings.avatar.generatedFace": "Сгенерированное лицо",
   "agentSettings.avatar.resetToId": "Сбросить до ID",
   "agentSettings.avatar.newSet": "Новый набор",
@@ -80,7 +80,6 @@ export const messages = {
   "agentSettings.avatar.processFailed": "Не удалось обработать аватар агента.",
 
   "agentSettings.runtime.model": "Модель агента",
-  "agentSettings.runtime.modelBusy": "Дождитесь завершения текущей работы, прежде чем менять модель.",
   "agentSettings.runtime.modelUnavailable": "Модели станут доступны после подключения CLI агента.",
   "agentSettings.runtime.reasoning": "Рассуждение",
   "agentSettings.runtime.reasoningLabel": "Уровень рассуждения агента",
@@ -90,8 +89,8 @@ export const messages = {
   "agentSettings.runtime.accessLabel": "Доступ агента",
   "agentSettings.runtime.busyMessage": "Во время работы",
   "agentSettings.runtime.busyMessageLabel": "Сообщения, пока агент работает",
-  "agentSettings.runtime.taskLimit": "Задач одновременно",
-  "agentSettings.runtime.taskLimitLabel": "Сколько задач выполняется одновременно",
+  "agentSettings.runtime.taskLimit": "Параллельные ветки",
+  "agentSettings.runtime.taskLimitLabel": "Ветки, которые работают одновременно",
   "agentSettings.runtime.workingDirectory": "Рабочая папка",
   "agentSettings.runtime.notAvailable": "Пока недоступно",
   "agentSettings.runtime.fullAccessNote":
@@ -110,7 +109,7 @@ export const messages = {
   "agentSettings.busyMessage.steerUnsupported":
     "{provider} не умеет направлять выполняемый ход. Сообщения, отправленные во время работы, ждут в очереди.",
   "agentSettings.taskLimit.default": "По умолчанию ({count})",
-  "agentSettings.taskLimit.oneTurn": "{provider} выполняет один ход за раз. Задачи и чат этого агента ждут друг друга.",
+  "agentSettings.taskLimit.oneTurn": "{provider} выполняет один ход за раз. Ветки этого агента ждут друг друга.",
 
   "agentSettings.notifications.title": "Уведомления",
 
@@ -175,6 +174,21 @@ export const messages = {
   "agentSettings.automation.title": "Локальные скрипты",
   "agentSettings.automation.description":
     "Разрешить скриптам на хосте отправлять сообщения, запускать регулярные задачи, отвечать на вопросы, принимать и отклонять запросы на подтверждение",
+  "agentSettings.agentNewChat.title": "Агент начинает новые чаты",
+  "agentSettings.agentNewChat.description":
+    "Агент может начать новый чат, когда его чат становится длинным. Сначала он сохраняет заметки.",
+  "agentSettings.quickAcknowledgement.title": "Показывать план перед долгими задачами",
+  "agentSettings.quickAcknowledgement.description":
+    "Перед долгой задачей агент показывает свой план. Он начинает через 10 с или когда вы нажимаете «Начать».",
+  "agentSettings.browserProfile.label": "Профиль браузера",
+  "agentSettings.browserProfile.shared": "Общий",
+  "agentSettings.browserProfile.agent": "Только этот агент",
+  "agentSettings.browserProfile.missing": "Удалённый профиль",
+  "agentSettings.browserProfile.new": "Новый профиль",
+  "agentSettings.browserProfile.manageTitle": "Профили браузера",
+  "agentSettings.browserProfile.manageDescription":
+    "Каждый профиль хранит свои входы в аккаунты и cookie. Изменение закрывает открытые вкладки агента.",
+  "agentSettings.browserProfile.manage": "Настроить",
   "agentSettings.runtime.workspaceEnforcedProcess":
     "Весь процесс {provider} работает в песочнице, поэтому запись за пределами рабочего пространства не удастся. Доступно только в macOS.",
 } as const satisfies PartialTranslation<typeof source>;

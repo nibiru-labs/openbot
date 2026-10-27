@@ -345,6 +345,15 @@ export interface ComputerUseCursorPoint {
   y: number;
 }
 
+/**
+ * One chat that is open in its own window as well as in the main window (#2964). The main window
+ * keeps the chat; closing the extra window closes only the window.
+ */
+export interface ChatWindowTarget {
+  serverId: string;
+  agentId: string;
+}
+
 export type ExternalDestination =
   | "opencode-install"
   | "opencode-auth"
@@ -353,9 +362,12 @@ export type ExternalDestination =
   | "feedback"
   | "message"
   // The release notes, the guides and the Discord community of OpenBot, from the Help menu of the window rail.
+  // The community card of the sidebar also opens Discord.
   | "changelog"
   | "guides"
   | "discord"
+  // The OpenBot account on X, from the community card of the sidebar.
+  | "x"
   // The x.ai marketplace listing of the Grok Bot agent that exports agents for OpenBot.
   | "grok-bot-export"
   // The email for a hosted server plan that the add server dialog does not have, such as a Mac.

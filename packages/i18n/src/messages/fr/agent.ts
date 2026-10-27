@@ -14,6 +14,9 @@ export const messages = {
   "agent.setup.name": "Nom",
   "agent.setup.purpose": "En quoi cet agent doit-il vous aider ?",
   "agent.setup.purposePlaceholder": "Planifier des voyages, comparer des options ou aider au travail quotidien.",
+  "agent.instructions.length": "{length} / {limit}",
+  "agent.instructions.tooLong":
+    "Raccourcissez les instructions à {limit} caractères. Les instructions plus longues ne sont pas enregistrées.",
   "agent.setup.model": "Modèle de l’agent",
   "agent.setup.creating": "Création de l’agent…",
   "agent.setup.create": "Créer l’agent",
@@ -62,6 +65,8 @@ export const messages = {
   "agent.error.codexConfigIgnored": "Avertissement de configuration Codex",
   "agent.error.provider": "Erreur du fournisseur",
   "agent.description.generalPurpose": "Assistant généraliste",
+  "agent.error.run": "{provider} · {model}",
+  "agent.error.providerNamed": "Erreur de {provider}",
   "agent.color.red": "rouge",
   "agent.color.orange": "orange",
   "agent.color.yellow": "jaune",

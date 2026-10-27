@@ -1,13 +1,12 @@
 # `src/renderer`
 
-The UI stack sits on prerelease channels your training data does not cover: `solid-js@2.0.0-rc.0`
+The UI stack sits on prerelease channels your training data does not cover: `solid-js@2.0.0-rc.18`
 with `@solidjs/signals` and `@solidjs/web` at the same RC, `@kobalte/core@2.0.0-alpha.0` (patched
-here), plus patched `lucide-solid` and `solid-sonner`. `@solidjs/signals` is patched to dispose the
-children of a memo run that a list-row removal interrupts, and so that `flatten` keeps a function child
-that comes before an array child (`[memo, <Tab />]`), which otherwise reaches `insertBefore` and halts
-the UI. Check that the patch still applies when you upgrade Solid. `@solidjs/web` has the rc.9 event delegation fix backported: a delegated event
-stops when its target leaves the DOM. Drop the patch when you upgrade to rc.9 or later. Do not
-trust your memory of these APIs —
+here), plus patched `lucide-solid` and `solid-sonner`. Read props in the compute function of a
+`createEffect`, not in its callback. The compiler makes a conditional prop (`a() && b`, `x.y ? a : b`)
+a getter that creates a memo, and a memo created in an effect callback throws
+`PRIMITIVE_IN_EFFECT_CALLBACK` and halts the UI. Use `untrack` in the compute function when the read
+must not run the effect again. Do not trust your memory of these APIs —
 check `package.json` for what is actually installed, and load the reference that matches the work:
 
 - `node_modules/solid-js/CHEATSHEET.md` — the source of truth for core Solid APIs. Read it before
@@ -112,13 +111,21 @@ reusable. The [Zaidan catalog](https://zaidan.carere.dev/docs/components) is a s
 *patterns*, not a dependency — it is not installed here; adapt its source to this repository's
 SolidJS conventions, tokens, typography, spacing, icons and accessibility requirements.
 
+A story that shows a feature in context renders the real `App` (`OpenBotPlayground`, or
+`PrototypeApp` from `stories/prototype-support.tsx`) or the real container, such as
+`ServerSettingsStory` from `stories/server-settings-story.tsx` or `StoryConversation`. Do not
+hand-build the shell, a header, a sidebar, a settings menu, or a composer: a copy keeps the old
+design when the app changes. Delete a concept or prototype story when its decision is made.
+
 ## Design system
 
 Use `lucide-solid` icons, and reuse a suitable one before adding an inline SVG or a local icon
 component — document the exception next to any custom icon. The `:root` properties in
 `packages/brand/src/tokens.css` are the palette, shared with the web and mobile apps: use the
 closest semantic `--openbot-*` token, including opacity variants, instead of a colour literal, and
-add a token only for a new semantic role — there, not in a renderer stylesheet. Keep compatibility
+add a token only for a new semantic role — there, not in a renderer stylesheet. A token whose dark
+value does not read on a light canvas also needs a value in `tokens-light.css`; a surface that stays
+light in both themes uses the `paper-*` tokens, not the inverted `*-on-light` ones. Keep compatibility
 aliases that are in use, and isolate fixed integration, generated-asset, SVG and platform colours at
 their boundaries.
 

@@ -1,4 +1,6 @@
-import type { CentralAuthUser, ServerSummary } from "@openbot/contracts/ipc";
+import type { CentralAuthUser, RoutineFields, ServerSummary } from "@openbot/contracts/ipc";
+import { BROWSER_PROFILES_CAPABILITY } from "@openbot/contracts/team-protocol/browser-profiles-v1";
+import { VAULT_CAPABILITY } from "@openbot/contracts/team-protocol/vault-v1";
 import { classifyFailure } from "@openbot/telemetry";
 import { isAgentAccount } from "@openbot/ui/components/provider-accounts";
 import type { AcpRegistrySettingsApi } from "@openbot/ui/features/custom-providers/AcpRegistrySettings";
@@ -8,13 +10,14 @@ import { LeaveServerDialog } from "@openbot/ui/features/servers/LeaveServerDialo
 import { RestartServerDialog } from "@openbot/ui/features/servers/RestartServerDialog";
 import type { HostedSiteDeleteResult } from "@openbot/ui/features/settings/stores/hosted-sites-store";
 import { currentText } from "@openbot/ui/text";
-import { createEffect, Loading, Show, untrack } from "solid-js";
+import { createEffect, createMemo, Loading, Show, untrack } from "solid-js";
 import { actionToast } from "./action-toast";
 import { desktopAnalytics } from "./analytics";
 import { appPort } from "./app-port";
 import { useAuth } from "./features/account/account-context";
 import { useAgents } from "./features/agents/agents-context";
-import type { ConnectorRegistry } from "./features/connectors/connector-registry";
+import { desktopBrowserProfileCalls } from "./features/browser/browser-profiles-port";
+import { createBrowserProfilesStore } from "./features/browser/stores/browser-profiles-store";
 import { useConnectors } from "./features/connectors/connectors-context";
 import { conversationPort } from "./features/conversation/conversation-port";
 import { useCustomAgents } from "./features/custom-agents/custom-agents-context";
@@ -24,6 +27,11 @@ import type { ServerStorageOptions } from "./features/files/ServerStoragePanel";
 import { useSetup } from "./features/onboarding/onboarding-context";
 import { useRemoteDesktop } from "./features/remote-desktop/remote-desktop-context";
 import { AddServerOverlay } from "./features/servers/AddServerOverlay";
+import {
+  createdRoutines,
+  HostedServerUpsell,
+  hostedUpsellRoutineCreated,
+} from "./features/servers/hosted-server-upsell-controller";
 import { mcpToolRuntimeNote } from "./features/servers/mcp-servers";
 import { useServerActions } from "./features/servers/server-actions";
 import { remoteMcpSignIn, serverCanAdminister, serverSupportsCapability } from "./features/servers/server-capabilities";
@@ -33,14 +41,19 @@ import { useServerSwitch } from "./features/servers/server-switch";
 import { useServers } from "./features/servers/servers-context";
 import type { HostProviderSettings } from "./features/settings/ProviderSettingsSection";
 import { useSettings } from "./features/settings/settings-context";
+import { settingsPort } from "./features/settings/settings-port";
 import { useUpdates } from "./features/updates/updates-context";
 import { useWhatsNew } from "./features/updates/whats-new-context";
+import { usePlanLimitRows } from "./features/usage/plan-limit-rows";
+import { createVaultStore } from "./features/vault/stores/vault-store";
+import { desktopVaultCalls, hostVaultCalls } from "./features/vault/vault-port";
 import { useWindowPage } from "./features/window/window-page-context";
 import { useGlobalSearchSources } from "./global-search-sources";
 import { RemoteDesktopWorkspace, SettingsModal } from "./lazy-views";
 import { useNavigation } from "./navigation";
 import { usePlatform } from "./platform";
 import { useProviders } from "./providers";
+import { useTurns } from "./turns";
 import {
   ChannelCreateOverlay,
   GlobalSearchOverlay,
@@ -72,26 +85,22 @@ interface AccountProps {
  */
 export function WorkspaceOverlays(props: AccountProps) {
   const { skillsMarketplaceOpen } = useSettings();
-  const { serverSettingsOpen } = useServerSettings();
   const connectors = useConnectors();
   /* The overlays mount with the app. A first read that failed then must not hide a connector for
-     good, and a sign-in can change outside this window, so each window reads them again when it opens. */
-  createEffect(
-    () => skillsMarketplaceOpen() || serverSettingsOpen(),
-    (open) => {
-      if (!open) return;
-      connectors.active.reload();
-      connectors.settings.reload();
-    },
-  );
+     good, and a sign-in can change outside this window, so the Marketplace reads them again when it opens. */
+  createEffect(skillsMarketplaceOpen, (open) => {
+    if (!open) return;
+    connectors.active.reload();
+  });
   return (
     <>
       <SharedAgentInstall />
       <JoinServer account={props.account} />
       <AddServer />
+      <HostedUpsell account={props.account} />
       <LeaveServer />
       <RestartServer />
-      <ServerSettings connectors={connectors.settings} />
+      <ServerSettings />
       <AppSettings account={props.account} />
       <GlobalMessageSearch />
       <RemoteDesktop />
@@ -122,6 +131,7 @@ export function SkillsMarketplace() {
   const { selectAgent } = useNavigation();
   const { activeServer } = useServers();
   const { openInstalledMarketplaceAgent } = useServerSelection();
+  const { openMcpAdd } = useServerSettings();
   const connectors = useConnectors();
   const { remoteDesktopWorkspaceVisible, hideRemoteDesktopWorkspace } = useRemoteDesktop();
   // The remote desktop covers the window card, so a link or a search that opens the page hides it.
@@ -147,7 +157,10 @@ export function SkillsMarketplace() {
         setPendingPluginConnect(false);
       }}
       connectors={connectors.active}
-      variant="page"
+      onAddServer={(serverId) => {
+        setSkillsMarketplaceOpen(false);
+        openMcpAdd(serverId, null);
+      }}
     />
   );
 }
@@ -195,13 +208,14 @@ function JoinServer(props: AccountProps) {
 
 /** A hosted server: the plans, the payment, then the setup. */
 function AddServer() {
-  const { servers, addServerOpen, setAddServerOpen, setJoinServerOpen } = useServers();
+  const { servers, addServerOpen, addServerEntryPoint, setAddServerOpen, setJoinServerOpen } = useServers();
   const { select } = useServerActions();
   const { openAppSettings } = useSettings();
 
   return (
     <AddServerOverlay
       open={addServerOpen()}
+      entryPoint={addServerEntryPoint() ?? undefined}
       calls={appPort().hostedServers}
       servers={servers()}
       onClose={() => setAddServerOpen(false)}
@@ -215,6 +229,49 @@ function AddServer() {
         setJoinServerOpen(true);
       }}
       onManageServers={() => openAppSettings(null, "hosted-servers")}
+    />
+  );
+}
+
+/**
+ * The offer of a hosted server when routines depend on this computer or on the user's own remote
+ * computer. A routine that an agent makes shows the offer when that agent's turn ends.
+ */
+function HostedUpsell(props: AccountProps) {
+  const { activeServer, hostedServersAvailable, hostedServersLoaded, hostedServerIds, setAddServerOpen } = useServers();
+  const { activeTurns, routinesByConversation } = useTurns();
+  const platform = usePlatform();
+  // The last current list of each conversation. A list that is loading again keeps the previous one.
+  const seen = new Map<string, readonly RoutineFields[]>();
+  createEffect(routinesByConversation, (snapshots) => {
+    for (const [key, snapshot] of Object.entries(snapshots)) {
+      if (!snapshot?.current || seen.get(key) === snapshot.routines) continue;
+      const created = createdRoutines(seen.get(key), snapshot.routines);
+      seen.set(key, snapshot.routines);
+      const agentId = key.slice(key.indexOf("\0") + 1);
+      for (const routine of created) {
+        hostedUpsellRoutineCreated({ id: routine.id, name: routine.name, agentId });
+      }
+    }
+  });
+  return (
+    <HostedServerUpsell
+      accountId={props.account().id}
+      canOffer={
+        !platform.landingPreview &&
+        hostedServersAvailable() &&
+        hostedServersLoaded() &&
+        hostedServerIds().size === 0 &&
+        (activeServer()?.kind === "local" || activeServer()?.role === "owner") &&
+        activeServer()?.hosted !== true
+      }
+      serverId={activeServer()?.id ?? "local"}
+      host={activeServer()?.kind === "remote" ? { name: activeServer()?.name ?? "" } : "this-computer"}
+      busy={(agentId) => Boolean(activeTurns()[agentId])}
+      openPlans={() => setAddServerOpen(true, "upsell")}
+      track={(action, entryPoint) =>
+        desktopAnalytics.track("hosted_server_upsell", { action, entry_point: entryPoint })
+      }
     />
   );
 }
@@ -253,8 +310,9 @@ function RestartServer() {
  * Settings for one server, which is any server on the rail rather than the
  * active one - hence the target held by the domain instead of `activeServer()`.
  */
-function ServerSettings(props: { connectors: ConnectorRegistry }) {
+function ServerSettings() {
   const windowPage = useWindowPage();
+  const usageRows = usePlanLimitRows();
   const platform = usePlatform();
   const { hostStatus, setServerMuted, setServerNotificationLevel, hostedServerIds, hostedServersLoaded } = useServers();
   const { selectAgent, selectGlobalSearchMessage } = useNavigation();
@@ -274,6 +332,8 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
     cancelProviderSignIn,
     openProviderInstallGuide,
     setProviderOn,
+    measureProviderDownload,
+    removeProviderDownload,
     providerAccounts,
     restartProvider,
     cancelProviderRestart,
@@ -326,6 +386,7 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
     refreshServerSettings,
     saveServerIdentity,
     recheckScreenRecording,
+    rotateHostKey,
     setServerPublished,
     createServerInvite,
     updateServerMember,
@@ -335,6 +396,10 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
     serverSettingsMcp,
     serverSettingsMcpError,
     serverSettingsMcpSignIns,
+    serverSettingsMcpSignInRequest,
+    clearMcpSignInRequest,
+    serverSettingsMcpAddRequest,
+    clearMcpAddRequest,
     serverSettingsMcpSignInPages,
     serverSettingsMcpSignInRelays,
     openMcpSignInRelay,
@@ -351,6 +416,30 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
     setMcpServerEnabled,
     testMcpServer,
   } = useServerSettings();
+  /**
+   * The named browser profiles of the selected server: this computer, or a joined server whose host
+   * serves `browser-profiles-v1` to this owner or admin. One store per server, so the list of the
+   * last server never shows for the next. The section lists them each time it opens.
+   */
+  const browserProfileServerId = createMemo(() => serverSettingsTarget()?.id);
+  const browserProfiles = createMemo(() => {
+    const calls = desktopBrowserProfileCalls(browserProfileServerId());
+    return createBrowserProfilesStore(() => calls);
+  });
+  /**
+   * The Vault of the selected server: this computer, or a joined server whose host serves `vault-v1`
+   * to this owner or admin. One store per server, so the items of the last server never show for the next.
+   */
+  const vaultServerId = createMemo(() => {
+    const target = serverSettingsTarget();
+    return serverCanAdminister(target, VAULT_CAPABILITY) ? target.id : undefined;
+  });
+  const vault = createMemo(() => {
+    const serverId = vaultServerId();
+    if (serverId === undefined) return undefined;
+    const local = untrack(serverSettingsTarget)?.kind === "local";
+    return { store: createVaultStore(local ? desktopVaultCalls() : hostVaultCalls(serverId)) };
+  });
   // The workspace belongs to the selected server. For another server, the switch comes first and
   // the agent is published for the scope it lands in; a message there opens as its agent's chat.
   const openOnServer = (server: ServerSummary, agentId: string, open: () => void) => {
@@ -420,6 +509,8 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
       },
       onAddCustomProvider: endpoints.saveCustomProvider,
       onDeleteCustomProvider: endpoints.deleteCustomProvider,
+      // The Team API has no edit route, so only this computer's endpoints have Edit.
+      onUpdateCustomProvider: local ? localEndpoints.updateCustomProvider : undefined,
       get providerKeys() {
         return providerRuntimeDownloadsAvailable() ? providerKeys() : undefined;
       },
@@ -434,6 +525,8 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
         return local && providerRuntimeDownloadsAvailable() ? openProviderInstallGuide : undefined;
       },
       onSetProviderOn: local ? setProviderOn : undefined,
+      onMeasureProviderDownload: local ? measureProviderDownload : undefined,
+      onRemoveProviderDownload: local ? removeProviderDownload : undefined,
       get providerUsers() {
         return Object.fromEntries(
           (agentStatus().providers ?? []).map((provider) => [
@@ -464,6 +557,10 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
       // The active server's accounts: a joined host offers them only with `provider-accounts-v1`.
       get accountActions() {
         return providerAccounts();
+      },
+      // The readings are of the active server, which is the only server with a Providers tab.
+      get usage() {
+        return usageRows();
       },
       onRestartProvider: local ? restartProvider : undefined,
       onCancelProviderRestart: local ? cancelProviderRestart : undefined,
@@ -540,9 +637,12 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
           onRetry={() => refreshServerSettings(server().id)}
           onSaveIdentity={saveServerIdentity}
           onSetPublished={setServerPublished}
+          onRotateHostKey={server().kind === "local" ? rotateHostKey : undefined}
           onSetMuted={(muted) => setServerMuted(server().id, muted)}
           onSetNotificationLevel={(level) => setServerNotificationLevel(server().id, level)}
           onCreateInvite={createServerInvite}
+          license={appPort().license}
+          onContactUs={() => void appPort().openExternal("hosted-server-contact")}
           onUpdateMember={updateServerMember}
           onRemoveMember={removeServerMember}
           onRevokeInvite={revokeServerInvite}
@@ -562,8 +662,12 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
           onRemoveMcpServer={removeMcpServer}
           onSetMcpServerEnabled={setMcpServerEnabled}
           onTestMcpServer={testMcpServer}
+          mcpAddRequest={serverSettingsMcpAddRequest()}
+          onMcpAddRequestHandled={clearMcpAddRequest}
           // A remote host with `sign-in-relay-v1` opens the page in this computer's browser. An older
           // host's page shows here through the live view, which streams the active server only.
+          mcpSignInRequest={serverSettingsMcpSignInRequest()}
+          onMcpSignInRequestHandled={clearMcpSignInRequest}
           mcpSignIn={
             server().kind === "local" || remoteMcpSignIn(server())
               ? {
@@ -614,6 +718,8 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
           hostUpdate={{}}
           hostTimezone={{}}
           hostMemoryLimit={{}}
+          hostPromptCacheTtl={{}}
+          agentAccess={{ listAgents: () => appPort().agent.listAgents(server().id) }}
           initialSection={serverSettingsSection()}
           // Any member imports into this computer or a remote host with `agent-import-v1`.
           agentImport={
@@ -632,13 +738,18 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
                 ? {}
                 : undefined
           }
-          connectors={props.connectors}
           // The feed listens on this computer, so a calendar app on another one cannot read it.
           routineFeed={
             server().kind === "local"
               ? { api: appPort().routineFeed, listAgents: () => appPort().agent.listAgents(server().id) }
               : undefined
           }
+          browserProfiles={
+            serverCanAdminister(server(), BROWSER_PROFILES_CAPABILITY)
+              ? { store: browserProfiles(), listAgents: () => appPort().agent.listAgents(server().id) }
+              : undefined
+          }
+          vault={vault()}
         />
       )}
     </Show>
@@ -693,6 +804,7 @@ function AppSettings(props: AccountProps) {
         preferencesLoadFailed={preferencesLoadFailed()}
         onRetryPreferencesLoad={reloadPreferences}
         appInfo={platform.appInfo()}
+        chatWindow={platform.chatWindow !== null}
         builtInDisplayGeometry={builtInDisplayGeometry()}
         servers={servers()}
         updateStatus={updates.status()}
@@ -718,14 +830,18 @@ function AppSettings(props: AccountProps) {
         onRevokeMobileConnectLink={auth.revokeMobileConnectLink}
         onListMobileConnectedDevices={auth.listMobileConnectedDevices}
         onRevokeMobileConnectedDevice={auth.revokeMobileConnectedDevice}
+        onGetRemoteNetworkRoute={() => settingsPort().getRemoteNetworkRoute()}
+        onSetRemoteNetworkRoute={(route) => settingsPort().setRemoteNetworkRoute({ route })}
         onListAccountSessions={auth.listAccountSessions}
         onRevokeAccountSession={auth.revokeAccountSession}
         onSignOut={platform.landingPreview ? undefined : auth.logoutCentralAccount}
         billingApi={appPort().billing}
+        licenseApi={appPort().license}
+        onContactUs={() => void appPort().openExternal("hosted-server-contact")}
         hostedServersApi={appPort().hostedServers}
         onAddHostedServer={() => {
           setAppSettingsOpen(false);
-          setAddServerOpen(true);
+          setAddServerOpen(true, "settings_billing");
         }}
         onTestNotification={sendTestNotification}
         onOpenNotificationSettings={openNotificationSettings}

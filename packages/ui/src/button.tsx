@@ -194,6 +194,8 @@ export interface CopyButtonProps extends Omit<ButtonProps, "children" | "onClick
   label?: string;
   copiedLabel?: string;
   iconOnly?: boolean;
+  /** Called after the value is on the clipboard. */
+  onCopy?: () => void;
   onCopyError?: (error: unknown) => void;
 }
 
@@ -203,7 +205,18 @@ export function CopyButton(props: CopyButtonProps): JSX.Element {
   const copiedLabel = () => props.copiedLabel ?? t("common.copied");
   const [copied, setCopied] = createSignal(false);
   let resetTimer: number | undefined;
-  const others = omit(props, "value", "label", "copiedLabel", "iconOnly", "onCopyError", "disabled", "class", "size");
+  const others = omit(
+    props,
+    "value",
+    "label",
+    "copiedLabel",
+    "iconOnly",
+    "onCopy",
+    "onCopyError",
+    "disabled",
+    "class",
+    "size",
+  );
 
   function clearResetTimer(): void {
     if (resetTimer === undefined) return;
@@ -227,6 +240,7 @@ export function CopyButton(props: CopyButtonProps): JSX.Element {
       await navigator.clipboard.writeText(props.value);
       clearResetTimer();
       setCopied(true);
+      props.onCopy?.();
       resetTimer = window.setTimeout(() => {
         resetTimer = undefined;
         setCopied(false);

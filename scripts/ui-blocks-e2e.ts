@@ -31,6 +31,7 @@ import {
   encodeTeamProtocolV7BaseCurrentEvent,
 } from "@openbot/contracts/team-protocol/v7-base-adapter";
 import {
+  type ConversationUiBlock,
   normalizeUiBlockSpec,
   type UiBlockResponse,
   type UiBlockSpec,
@@ -65,6 +66,13 @@ interface AgentAnswer {
 /** Records what OpenBot answers to the agent. The process never starts: only the answer is read. */
 class RecordingClient extends CodexAppServerClient {
   readonly answers = new Map<RequestId, { success: boolean; value: AgentAnswer | null }>();
+  readonly #waiters = new Map<RequestId, () => void>();
+
+  /** Resolves when OpenBot answers the request, so that a host timer is awaited, not slept on. */
+  answered(id: RequestId): Promise<void> {
+    if (this.answers.has(id)) return Promise.resolve();
+    return new Promise((resolve) => this.#waiters.set(id, resolve));
+  }
 
   // A provider that still waits: the registry answers it when the turn ends.
   override get running(): boolean {
@@ -76,6 +84,8 @@ class RecordingClient extends CodexAppServerClient {
     const parsed: { success?: boolean; contentItems?: Array<{ text?: string }> } = JSON.parse(raw);
     const text = parsed.contentItems?.[0]?.text;
     this.answers.set(id, { success: parsed.success === true, value: text ? JSON.parse(text) : null });
+    this.#waiters.get(id)?.();
+    this.#waiters.delete(id);
   }
 }
 
@@ -110,8 +120,11 @@ const registry = new AttentionRegistry({
 
 let nextRequest = 1;
 
-/** Shows a block as the `ask_ui` router does after its checks, and returns its request id and message. */
-function ask(spec: UiBlockSpec, turnId: string) {
+/**
+ * Shows a block as the `ask_ui` router does after its checks, and returns its request id and message.
+ * `autoAnswer` is what `acknowledge_request` adds: the host presses that action after the delay.
+ */
+function ask(spec: UiBlockSpec, turnId: string, autoAnswer?: { actionId: string; afterMs: number }) {
   const normalized = normalizeUiBlockSpec(spec);
   assert(normalized, "the router would refuse this spec");
   const id = nextRequest++;
@@ -119,6 +132,7 @@ function ask(spec: UiBlockSpec, turnId: string) {
     client,
     { id, method: "item/tool/call", params: { threadId: THREAD, turnId } },
     { blockId: `block-${id}`, spec: normalized },
+    autoAnswer,
   );
   const message = snapshot.messages.find((candidate) => candidate.id === `question-prompt:${turnId}:${id}`);
   assert(message?.uiBlock, "the block was not stored");
@@ -181,7 +195,30 @@ const formSpec: UiBlockSpec = {
   ],
 };
 
+// The plan card that `acknowledge_request` builds.
+const planSpec: UiBlockSpec = {
+  type: "confirm",
+  title: "On it. This is my plan.",
+  fields: [
+    { label: "First", value: "Read the logs" },
+    { label: "Then", value: "Fix the cause" },
+  ],
+  actions: [
+    { id: "start", label: "Start", style: "primary" },
+    { id: "alternative", label: "Only find the cause" },
+    { id: "cancel", label: "Cancel", style: "ghost" },
+  ],
+};
+const AUTO_START = { actionId: "start", afterMs: 50 };
+
 const hasUiBlock = (json: string) => json.includes('"uiBlock"');
+
+/** A block as `ui-blocks-v1` carries it: the host's auto-answer state stays on the host. */
+function onV1Wire(block: ConversationUiBlock | undefined): ConversationUiBlock | undefined {
+  if (!block) return block;
+  const { autoAnswer: _autoAnswer, ...state } = block.state;
+  return { ...block, state };
+}
 
 function page(messages: ConversationMessage[], references: Record<string, ConversationMessage> = {}): ConversationPage {
   return {
@@ -303,6 +340,33 @@ try {
     assert.equal(message.uiBlock?.state.status, "closed");
   });
 
+  await step("nobody answers a plan card: the host presses Start after its delay", async () => {
+    const { id, message } = ask(planSpec, "turn-8", AUTO_START);
+    const pending = message.uiBlock?.state.autoAnswer;
+    assert.equal(pending?.actionId, "start");
+    assert.ok(pending && Number.isFinite(Date.parse(pending.at)), "the card has no start time");
+    assert.equal(pending?.done, undefined);
+    await client.answered(id);
+    assert.deepEqual(client.answers.get(id)?.value, { status: "answered", blockId: `block-${id}`, actionId: "start" });
+    assert.equal(message.uiBlock?.state.status, "answered");
+    assert.deepEqual(message.uiBlock?.state.response, { actionId: "start" });
+    assert.equal(message.uiBlock?.state.autoAnswer?.done, true);
+    return message.uiBlock?.state;
+  });
+
+  await step("a person answers a plan card first: the host does not answer it again", async () => {
+    const { id, spec, message } = ask(planSpec, "turn-9", AUTO_START);
+    await answer(id, asNewClient(spec, { actionId: "cancel" }), OWNER);
+    assert.equal(client.answers.get(id)?.value?.actionId, "cancel");
+    assert.equal(message.uiBlock?.state.autoAnswer?.done, undefined);
+    // A second plan card on a later delay: when the host presses it, the first timer had its turn too.
+    const later = ask(planSpec, "turn-10", { actionId: "start", afterMs: AUTO_START.afterMs * 2 });
+    await client.answered(later.id);
+    assert.equal(client.answers.get(id)?.value?.actionId, "cancel", "the host replaced the person's answer");
+    assert.deepEqual(message.uiBlock?.state.response, { actionId: "cancel" });
+    return message.uiBlock?.state;
+  });
+
   await step("the turn ends before an answer: the block expires", async () => {
     const { id, message } = ask(repliesSpec, "turn-7");
     registry.clearForTurn(THREAD, "turn-7");
@@ -349,7 +413,7 @@ try {
     assert.equal(messages.length, current.messages.length);
     for (const [index, message] of messages.entries()) {
       assert.ok(isConversationMessage(message), `message ${index} does not decode`);
-      assert.deepEqual(message.uiBlock, current.messages[index]?.uiBlock);
+      assert.deepEqual(message.uiBlock, onV1Wire(current.messages[index]?.uiBlock));
     }
     const references = decoded.references;
     assert(references && typeof references === "object" && !Array.isArray(references));
@@ -367,10 +431,24 @@ try {
     assert(read.kind === "known" && read.event.type === "conversation-page");
     assert.deepEqual(
       read.event.page.messages.map((message) => message.uiBlock),
-      current.messages.map((message) => message.uiBlock),
+      current.messages.map((message) => onV1Wire(message.uiBlock)),
     );
     assert.deepEqual(read.event.page.references["quoted-1"]?.uiBlock?.state.response?.values, { agentId: "a-7" });
     return { pageBytes: encoded.length, eventBytes: event.length, blocks: messages.length };
+  });
+
+  await step("protocol 7 with the capability: the host's auto-answer state stays off the wire", () => {
+    assert.ok(
+      current.messages.some((message) => message.uiBlock?.state.autoAnswer),
+      "no plan card to send",
+    );
+    const encoded = encodeTeamProtocolV7CurrentHttpResponse("GET", PAGE_PATH, 200, current, { uiBlocks: true });
+    assert.ok(!encoded.includes('"autoAnswer"'));
+    const event = encodeTeamProtocolV7BaseCurrentEvent(
+      { type: "conversation-page", page: current },
+      { uiBlocks: true },
+    );
+    assert.ok(event && !event.includes('"autoAnswer"'));
   });
 
   await step("a malformed block fails closed in both directions", () => {

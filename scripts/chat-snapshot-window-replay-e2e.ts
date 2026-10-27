@@ -84,7 +84,7 @@ for (const threadId of threads) {
       continue;
     }
     const firstLoadedId = loaded[0]?.id;
-    const next = windowedSnapshotMessages(loaded, snapshot, { hasOlder: true, mode: "latest" });
+    const next = windowedSnapshotMessages(loaded, snapshot, { mode: "latest", capped: true });
     const nextIds = new Set(next.map((message) => message.id));
     const lost = snapshot
       .slice(

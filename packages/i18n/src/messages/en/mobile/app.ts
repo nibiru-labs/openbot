@@ -2,6 +2,8 @@ import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("mobile.app", {
   "mobile.app.route.scanQrCode": "Scan QR code",
+  "mobile.app.route.actionsNeeded": "Actions needed",
+  "mobile.app.route.newChannel": "New channel",
   "mobile.app.route.createAgent": "Create an agent",
   "mobile.app.route.addSharedAgent": "Add a shared agent",
   "mobile.app.route.newSection": "New section",
@@ -12,6 +14,7 @@ export const messages = defineMessages("mobile.app", {
   "mobile.app.route.support": "Support",
   "mobile.app.route.hiddenChats": "Hidden chats",
   "mobile.app.route.share": "Share",
+  "mobile.app.route.deletedChannels": "Deleted channels",
   "mobile.app.route.cropPhoto": "Move and Scale",
   "mobile.app.route.queuedMessages": "Queued messages",
   "mobile.app.route.messageOptions": "Message options",
@@ -21,8 +24,14 @@ export const messages = defineMessages("mobile.app", {
   "mobile.app.route.hostedServerPlans": "Cloud server",
   "mobile.app.route.hostedServerSetup": "Setup",
   "mobile.app.route.routines": "Routines",
+  "mobile.app.route.workflows": "Workflows",
+  "mobile.app.route.workflow": "Workflow",
+  "mobile.app.route.workflowRun": "Run",
   "mobile.app.route.routine": "Routine",
+  "mobile.app.route.tasks": "Tasks",
+  "mobile.app.route.task": "Task",
   "mobile.app.route.usage": "Usage",
+  "mobile.app.route.marketplace": "Marketplace",
   // The quick actions of the app icon, which the phone shows when the icon is held.
   "mobile.app.quickAction.routines": "Routines",
   "mobile.app.quickAction.search": "Search",

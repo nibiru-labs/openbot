@@ -8,11 +8,17 @@ export const messages = {
   "settings.language.system": "Langue du système",
   // The logo color setting, General tab.
   "settings.appearance.title": "Apparence",
-  "settings.colorScheme.title": "Thème",
-  "settings.colorScheme.description": "« Système » suit l’apparence de votre appareil.",
-  "settings.colorScheme.system": "Système",
-  "settings.colorScheme.light": "Clair",
-  "settings.colorScheme.dark": "Sombre",
+  "settings.appearance.theme.title": "Thème",
+  "settings.appearance.theme.description":
+    "Couleurs claires ou sombres. « Système » suit le réglage de votre appareil.",
+  "settings.appearance.theme.system": "Système",
+  "settings.appearance.theme.light": "Clair",
+  "settings.appearance.theme.dark": "Sombre",
+  "settings.appearance.transparentWindow.title": "Fenêtre transparente",
+  "settings.appearance.transparentWindow.description":
+    "Affiche le bureau flouté derrière la fenêtre. Les sites et les menus suivent alors le thème de l’app.",
+  "settings.interfaceSize.title": "Taille de l’interface",
+  "settings.interfaceSize.description": "La taille du texte et des commandes dans OpenBot.",
   "settings.logoColor.title": "Couleur du logo",
   "settings.logoColor.description": "Affichée dans le Dock, la barre des tâches et l’îlot dynamique.",
   "settings.logoColor.buildNote":
@@ -28,31 +34,46 @@ export const messages = {
   "settings.logoColor.gray": "Gris",
   "settings.logoColor.white": "Blanc",
   // The Settings window, General tab.
-  "settings.providers.title": "Fournisseurs d’IA",
   "settings.appBehavior.title": "Comportement de l’application",
   "settings.conversations.title": "Conversations",
   "settings.launchAtLogin.title": "Lancer OpenBot à l’ouverture de session",
   "settings.launchAtLogin.description": "Ouvrir l’application lorsque vous vous connectez à cet ordinateur.",
   "settings.keepRunning.title": "Garder OpenBot actif en arrière-plan",
   "settings.keepRunning.description": "Poursuivre les tâches en cours après la fermeture de la fenêtre.",
+  "settings.keepAwake.title": "Empêcher la mise en veille",
+  "settings.keepAwake.description":
+    "Les routines s’exécutent à l’heure tant que l’ordinateur est branché. L’écran peut quand même s’éteindre.",
+  "settings.keepAwakeOnBattery.title": "Aussi sur batterie",
+  "settings.keepAwakeOnBattery.description":
+    "Garder l’ordinateur éveillé aussi sur batterie. La batterie se décharge plus vite.",
   "settings.restoreWorkspace.title": "Restaurer le dernier espace de travail au lancement",
   "settings.restoreWorkspace.description": "Rouvrir l’espace de travail et les tâches de votre session précédente.",
   "settings.externalLinks.title": "Ouvrir les liens externes dans",
-  "settings.externalLinks.description": "Choisir où s’ouvrent les liens provenant des conversations.",
+  "settings.externalLinks.description":
+    "Les liens des discussions, des pages de connexion et de facturation s’ouvrent ici.",
   // The two link targets. The saved value stays in English; only the label is translated.
   "settings.externalLinks.defaultBrowser": "Navigateur par défaut",
   "settings.externalLinks.openbot": "OpenBot",
+  "settings.externalLinks.defaultBrowserNamed": "Navigateur par défaut ({name})",
+  "settings.externalLinks.otherApp": "Autre app…",
+  "settings.externalLinks.command": "Commande…",
+  "settings.externalLinks.commandLabel": "Commande du navigateur",
+  "settings.externalLinks.commandPlaceholder": "Chemin du programme ou commande",
+  "settings.externalLinks.useCommand": "Utiliser",
+  "settings.externalLinks.fallback.title": "Impossible d’ouvrir {name}",
+  "settings.externalLinks.fallback.description": "Le lien s’est ouvert dans le navigateur par défaut.",
   "settings.sendShortcut.title": "Raccourci d’envoi",
   "settings.sendShortcut.description":
     "Choisissez les touches qui envoient un message sur cet appareil et dans ce navigateur.",
   "settings.sendShortcut.enter": "Entrée pour envoyer",
   "settings.sendShortcut.modEnterMac": "⌘Entrée pour envoyer",
   "settings.sendShortcut.modEnterWin": "Ctrl+Entrée pour envoyer",
+  "settings.showAgentSteps.title": "Afficher les étapes de l’agent",
+  "settings.showAgentSteps.description":
+    "Ouvre par défaut la réflexion, les étapes d’outils et les changements de souvenirs de chaque tour sur cet appareil et ce navigateur.",
   "settings.busyMessage.title": "Orienter les agents pendant leur travail",
   "settings.busyMessage.description":
     "Les nouveaux messages rejoignent le travail en cours de l’agent, pas la file. Fonctionne avec ChatGPT et Claude.",
-  "settings.agentMemoryLimit.title": "Souvenirs par agent",
-  "settings.agentMemoryLimit.description": "Nombre de souvenirs que chaque agent de cet ordinateur peut garder.",
   "settings.tokenBudget.hour.title": "Limite de tokens par heure",
   "settings.tokenBudget.hour.description":
     "À cette limite, un agent ne démarre aucun nouveau travail tant que vous ne continuez pas. Le travail en cours se poursuit.",
@@ -120,9 +141,8 @@ export const messages = {
   "settings.analytics.title": "Partager les données analytiques du produit",
   "settings.analytics.description":
     "Envoyer des métadonnées d’utilisation et de fiabilité, avec l’identifiant et l’e-mail de votre compte, aux services analytiques auto-hébergés d’OpenBot.",
-  "settings.analytics.webTitle": "Partager les rapports d’erreurs",
   "settings.analytics.webDescription":
-    "Envoyez les codes d’erreur et d’avertissement, avec l’identifiant de votre compte, au service d’analyse d’OpenBot. Ce réglage s’applique à ce navigateur.",
+    "Envoyer des métadonnées d’utilisation et de fiabilité, avec l’identifiant et l’e-mail de votre compte, aux services analytiques auto-hébergés d’OpenBot. Ce réglage s’applique à ce navigateur.",
   // The Settings window shell: its tab list, headers and save bar.
   "settings.tab.general.title": "Général",
   "settings.tab.general.description": "Contrôler le comportement d’OpenBot sur cet ordinateur.",
@@ -133,7 +153,7 @@ export const messages = {
     "Dictée dans la zone de message. Les modèles locaux s’exécutent sur cet ordinateur ; ElevenLabs s’exécute dans le cloud.",
   "settings.tab.computerUse.title": "Computer Use",
   "settings.tab.computerUse.description":
-    "Autoriser OpenBot à voir et à interagir avec les applications de cet ordinateur.",
+    "Autoriser les agents de l'OpenBot de cet ordinateur à voir et utiliser ses apps. Les agents d'un autre serveur utilisent l'ordinateur de ce serveur.",
   "settings.tab.profile.title": "Profil",
   "settings.tab.profile.description": "Gérer votre apparence dans OpenBot.",
   "settings.tab.mobileConnect.title": "Appli mobile",
@@ -143,7 +163,7 @@ export const messages = {
   "settings.tab.updates.title": "Mises à jour",
   "settings.tab.updates.description": "Garder OpenBot à jour sur cet ordinateur.",
   "settings.tab.billing.title": "Facturation",
-  "settings.tab.billing.description": "Offres des serveurs, moyen de paiement et factures.",
+  "settings.tab.billing.description": "Licence, offres des serveurs, moyen de paiement et factures.",
   "settings.tab.hostedServers.title": "Serveurs hébergés",
   "settings.tab.hostedServers.description":
     "Créer des serveurs OpenBot qui fonctionnent quand cet ordinateur est éteint.",
@@ -164,13 +184,12 @@ export const messages = {
   "settings.mobileConnect.app.copyLink": "Copier le lien",
   "settings.mobileConnect.app.linkCopied": "Lien copié",
   "settings.mobileConnect.iosApp.title": "OpenBot pour iPhone",
-  "settings.mobileConnect.iosApp.badge": "Bêta",
-  "settings.mobileConnect.iosApp.description": "Bêta publique sur TestFlight. Pour iOS 16.4 ou version ultérieure.",
-  "settings.mobileConnect.iosApp.qrLabel": "Code QR de l’invitation TestFlight",
-  "settings.mobileConnect.iosApp.step.testFlight": "Sur votre iPhone, installez TestFlight depuis l’App Store.",
-  "settings.mobileConnect.iosApp.step.invite":
-    "Scannez ce code QR avec l’appareil photo de l’iPhone, ou copiez le lien d’invitation et ouvrez-le sur votre iPhone.",
-  "settings.mobileConnect.iosApp.step.install": "Dans TestFlight, touchez « Accepter », puis « Installer ».",
+  "settings.mobileConnect.iosApp.badge": "Disponible",
+  "settings.mobileConnect.iosApp.description": "Sur l’App Store. Pour iOS 16.4 ou version ultérieure.",
+  "settings.mobileConnect.iosApp.qrLabel": "Code QR de l’App Store",
+  "settings.mobileConnect.iosApp.step.scan":
+    "Scannez ce code QR avec l’appareil photo de l’iPhone, ou copiez le lien et ouvrez-le sur votre iPhone.",
+  "settings.mobileConnect.iosApp.step.install": "Dans l’App Store, touchez « Obtenir ».",
   "settings.mobileConnect.androidApp.title": "OpenBot pour Android",
   "settings.mobileConnect.androidApp.badge": "Disponible",
   "settings.mobileConnect.androidApp.description": "Sur Google Play. Pour Android 7.0 ou version ultérieure.",
@@ -219,6 +238,19 @@ export const messages = {
   "settings.mobileConnect.link.error.revoke": "Impossible de révoquer le lien permanent.",
   "settings.mobileConnect.devices.title": "Appareils connectés",
   "settings.mobileConnect.devices.refreshing": "Actualisation…",
+  "settings.mobileConnect.route.title": "Connexion des appareils",
+  "settings.mobileConnect.route.description":
+    "Pour les téléphones, autres ordinateurs et membres de l’équipe qui se connectent à cet ordinateur.",
+  "settings.mobileConnect.route.openbot.title": "Via OpenBot",
+  "settings.mobileConnect.route.openbot.badge": "Recommandé",
+  "settings.mobileConnect.route.openbot.description":
+    "Fonctionne sur tout réseau. Les chats et fichiers sont chiffrés entre vos appareils.",
+  "settings.mobileConnect.route.private.title": "Réseau privé",
+  "settings.mobileConnect.route.private.tailscale": "Tailscale détecté",
+  "settings.mobileConnect.route.private.description":
+    "Tailscale ou ce Wi-Fi. Les appareils se connectent toujours avec OpenBot. Les chats et fichiers ne passent jamais par les serveurs OpenBot, et les appareils se connectent uniquement sur ce réseau.",
+  "settings.mobileConnect.route.error.load": "Impossible de charger la connexion des appareils.",
+  "settings.mobileConnect.route.error.save": "Impossible de modifier la connexion des appareils.",
   "settings.mobileConnect.disconnectInfo.title": "Déconnecter un appareil",
   "settings.mobileConnect.disconnectInfo.description":
     "L’accès est révoqué immédiatement. L’application mobile peut continuer à afficher son écran actuel jusqu’à ce qu’elle soit rouverte ou ramenée au premier plan.",
@@ -270,7 +302,7 @@ export const messages = {
   "settings.profile.share.fileName": "openbot-activity.png",
   // The text in the image to share.
   "settings.profile.share.caption": "Mes six derniers mois avec OpenBot",
-  "settings.profile.activity.title": "Activité",
+  "settings.profile.activity.title": "Activité sur cet ordinateur",
   "settings.profile.activity.activeDays": {
     one: "{count} jour actif sur un an",
     other: "{count} jours actifs sur un an",
@@ -433,6 +465,7 @@ export const messages = {
   "settings.hostedServers.deleteFailed": "Impossible de supprimer le serveur.",
   "settings.hostedServers.plan.label": "Forfait",
   "settings.hostedServers.plan.recommended": "Meilleure offre",
+  "settings.hostedServers.plan.soldOut": "Épuisé",
   "settings.hostedServers.plan.perMonth": "/ mois",
   "settings.hostedServers.plan.disk": "{count} Go de stockage",
   "settings.hostedServers.plan.linux": "Machine Linux",
@@ -449,6 +482,8 @@ export const messages = {
   // The Voice tab: dictation models and the dictation language.
   "settings.voice.models.title": "Modèle de dictée",
   "settings.voice.model.parakeet.description": "Rapide. Détecte seul la langue parlée, parmi 25 langues européennes.",
+  "settings.voice.model.bark.description":
+    "Rapide. Anglais uniquement. Écrit surtout en minuscules, avec peu de ponctuation.",
   "settings.voice.model.whisper.description": "Plus lent. Environ 100 langues, et vous pouvez fixer la langue parlée.",
   "settings.voice.model.size": "Taille du téléchargement : {size}",
   "settings.voice.model.downloading": "Téléchargement · {received} sur {total}",
@@ -460,17 +495,21 @@ export const messages = {
   "settings.voice.model.cancelLabel": "Arrêter le téléchargement de {name}",
   "settings.voice.model.retryLabel": "Télécharger {name} à nouveau",
   "settings.voice.model.useLabel": "Utiliser {name} pour la dictée",
+  "settings.voice.model.removeLabel": "Retirer {name} de cet ordinateur",
   "settings.voice.language.section": "Langue",
   "settings.voice.language.title": "Langue de la dictée",
   "settings.voice.language.description":
     "La langue que vous parlez. « Automatique » la détecte à partir de l’enregistrement.",
   "settings.voice.language.modelDetects":
     "Parakeet détecte seul la langue parlée. Pour fixer une langue, utilisez Whisper ou ElevenLabs.",
+  "settings.voice.language.englishOnly":
+    "Bark reconnaît uniquement l’anglais. Pour fixer une langue, utilisez Whisper ou ElevenLabs.",
   "settings.voice.language.automatic": "Automatique",
   "settings.voice.loadFailed": "Impossible de lire les modèles vocaux.",
   "settings.voice.saveFailed": "Impossible d’enregistrer le réglage vocal. Réessayez.",
   "settings.voice.downloadFailed": "Impossible de lancer le téléchargement. Réessayez.",
   "settings.voice.cancelFailed": "Impossible d’arrêter le téléchargement.",
+  "settings.voice.removeFailed": "Impossible de retirer le modèle. Réessayez.",
   "settings.voice.model.elevenlabs.description":
     "Envoie votre voix à ElevenLabs. Le texte s’affiche pendant que vous parlez et reste stable. Utilise votre propre clé API, et ElevenLabs facture chaque utilisation.",
   "settings.voice.model.keySaved": "Clé API enregistrée",
@@ -481,6 +520,18 @@ export const messages = {
   "settings.voice.apiKey.remove": "Supprimer la clé",
   "settings.voice.apiKey.saveFailed": "Impossible d’enregistrer la clé API. Réessayez.",
   "settings.voice.apiKey.removeFailed": "Impossible de supprimer la clé API. Réessayez.",
+  "settings.voice.speech.section": "Réponses parlées",
+  "settings.voice.speech.model.description": "Lit les réponses à voix haute sur cet ordinateur, en 31 langues.",
+  "settings.voice.speech.readReplies.title": "Lire les réponses à voix haute",
+  "settings.voice.speech.readReplies.description":
+    "Quand vous dictez un message, la réponse est lue à voix haute. Dictez à nouveau pour l’arrêter.",
+  "settings.voice.speech.voice.title": "Voix",
+  "settings.voice.speech.voice.female": "Voix féminine {number}",
+  "settings.voice.speech.voice.male": "Voix masculine {number}",
+  "settings.voice.speech.voice.listen": "Écouter",
+  "settings.voice.speech.voice.stop": "Arrêter",
+  "settings.voice.speech.sample": "Bonjour. Voici comment vos réponses sonneront.",
+  "settings.voice.speech.listenFailed": "Impossible de lire l’extrait.",
   "settings.transfer.title": "Déplacer ce serveur vers un autre ordinateur",
   "settings.transfer.lede":
     "Vos agents, leurs compétences, routines, souvenirs et fichiers sont réunis dans un seul fichier.",

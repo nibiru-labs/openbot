@@ -50,18 +50,17 @@ export const messages = {
   "customProvider.error.baseUrlProtocol": "Użyj adresu URL http:// lub https://.",
   "customProvider.error.baseUrlCredential": "Umieść poświadczenie w nagłówku, nie w adresie URL.",
   "customProvider.saved.restarted": "Zapisano. OpenBot wczytuje modele.",
-  "customProvider.saved.skippedBusy":
-    "Zapisano. OpenCode odczyta listę po zakończeniu bieżącego zadania. Wtedy naciśnij „Połącz”.",
+  "customProvider.saved.skippedBusy": "Zapisano. OpenCode odczyta listę po zakończeniu bieżącego zadania.",
   "customProvider.saved.notRunning": "Zapisano. OpenCode odczyta listę przy następnym uruchomieniu.",
   "customProvider.removed.restarted": "Usunięto. OpenBot wczytuje modele.",
-  "customProvider.removed.skippedBusy":
-    "Usunięto. OpenCode odczyta listę po zakończeniu bieżącego zadania. Wtedy naciśnij „Połącz”.",
+  "customProvider.removed.skippedBusy": "Usunięto. OpenCode odczyta listę po zakończeniu bieżącego zadania.",
   "customProvider.removed.notRunning": "Usunięto. OpenCode odczyta listę przy następnym uruchomieniu.",
   "customProvider.saveFailed": "Nie udało się zapisać tego endpointu.",
   "customProvider.removeFailed": "Nie udało się usunąć: {name}.",
   "customProvider.saveUnavailable": "Ta kompilacja nie może zapisać endpointu.",
   "customProvider.removeUnavailable": "Ta kompilacja nie może usunąć endpointu.",
   "customProvider.form.title": "Dodaj własnego dostawcę",
+  "customProvider.form.editTitle": "Edytuj własnego dostawcę",
   "customProvider.form.description": "Opisz endpoint zgodny z OpenAI i modele, które udostępnia.",
   "customProvider.form.heading": "Własny dostawca",
   "customProvider.form.subtitle": "Dowolny endpoint zgodny z OpenAI.",
@@ -72,8 +71,7 @@ export const messages = {
   "customProvider.field.baseUrl": "Bazowy URL",
   "customProvider.field.apiKey": "Klucz API",
   "customProvider.field.apiKeyHint": "Opcjonalnie. Zostaw puste, jeśli uwierzytelniasz przez nagłówki.",
-  "customProvider.field.apiKeyKeptHint":
-    "Klucz jest zapisany. Zostaw to pole puste, aby zachować klucz i zapisane nagłówki.",
+  "customProvider.field.apiKeyKeptHint": "Klucz jest zapisany. Zostaw to pole puste, aby go zachować.",
   "customProvider.models": "Modele",
   "customProvider.model.id": "ID modelu {number}",
   "customProvider.model.name": "Nazwa wyświetlana modelu {number}",
@@ -84,6 +82,7 @@ export const messages = {
   "customProvider.header.name": "Nazwa nagłówka {number}",
   "customProvider.header.value": "Wartość nagłówka {number}",
   "customProvider.header.valuePlaceholder": "wartość",
+  "customProvider.header.keptPlaceholder": "Zapisano. Zostaw puste, aby zachować.",
   "customProvider.header.remove": "Usuń nagłówek {number}",
   "customProvider.header.add": "Dodaj nagłówek",
   "customProvider.submit": "Zapisz",
@@ -165,6 +164,9 @@ export const messages = {
   "customProvider.acp.commandHint": "Program do uruchomienia. OpenBot szuka go w twojej zmiennej PATH.",
   "customProvider.acp.args": "Argumenty",
   "customProvider.acp.argsHint": "Oddziel argumenty spacjami. Argument ze spacjami ujmij w cudzysłów.",
+  "customProvider.acp.usagePrompt": "Polecenie użycia",
+  "customProvider.acp.usagePromptHint":
+    "OpenBot wysyła je najwyżej co 5 minut i pokazuje ostatnią odpowiedź. Użyj polecenia, na które agent odpowiada sam, np. /usage.",
   "customProvider.acp.env": "Zmienne środowiskowe",
   "customProvider.acp.env.name": "Nazwa zmiennej {number}",
   "customProvider.acp.env.value": "Wartość zmiennej {number}",
@@ -177,6 +179,12 @@ export const messages = {
   "customProvider.acp.checkOk": "{name} odpowiedział",
   "customProvider.acp.checkOkVersion": "{name} {version} odpowiedział",
   "customProvider.acp.checkProtocol": "Wersja ACP {version}",
+  "customProvider.acp.checkModels": {
+    one: "{count} model: {models}",
+    few: "{count} modele: {models}",
+    many: "{count} modeli: {models}",
+    other: "{count} modelu: {models}",
+  },
   "customProvider.acp.checkFailed": "Agent nie odpowiedział",
   "customProvider.acp.trustTitle": "To polecenie działa na twoim komputerze",
   "customProvider.acp.trustDescription":
@@ -192,6 +200,7 @@ export const messages = {
   "customProvider.acp.error.envDuplicate": "Ten agent już ustawia {name}.",
   "customProvider.acp.error.envValueRequired": "Wpisz wartość tej zmiennej.",
   "customProvider.acp.error.envValueLength": "Liczba znaków w wartości musi być mniejsza niż {max}.",
+  "customProvider.acp.error.usagePromptInvalid": "Użyj jednego wiersza o długości maksymalnie {max} znaków.",
   "customProvider.acp.error.agentIdPattern":
     "Użyj małych liter, cyfr lub łączników; zacznij od litery lub cyfry. Maksymalnie 40 znaków.",
   "customProvider.agents.title": "Własni agenci",
@@ -227,6 +236,7 @@ export const messages = {
   "customProvider.list.empty": "Brak własnych endpointów.",
   "customProvider.list.label": "Własne endpointy",
   "customProvider.list.apiKeySaved": "Klucz API zapisany",
+  "customProvider.list.editLabel": "Edytuj: {name}",
   "customProvider.list.deleteLabel": "Usuń: {name}",
   "customProvider.list.confirmTitle": "Usunąć {name}?",
   "customProvider.list.confirmDescription":

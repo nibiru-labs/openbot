@@ -83,6 +83,7 @@ async function send(method: string, path: string, dependencies: TeamRouteDepende
     capabilities: new Set(),
     member: OWNER,
     token: "token-a",
+    agentLevel: () => "manage",
     sessionId: "session-a",
     sessionExpiresAt: "2026-10-18T00:00:00.000Z",
     json: (status) => {

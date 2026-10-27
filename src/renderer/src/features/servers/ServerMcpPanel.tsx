@@ -108,6 +108,14 @@ export interface ServerMcpPanelProps {
    * signs in with the host's browser, and this panel shows that page.
    */
   signIn?: McpPanelSignIn | undefined;
+  /** A row to sign in to as soon as the list holds it: the user pressed Sign in on an agent's card. */
+  signInRequest?: string | null | undefined;
+  /** Called once the panel started the requested sign-in, so it does not start again. */
+  onSignInRequestHandled?: (() => void) | undefined;
+  /** Opens the form for a new server as soon as the panel shows: the user pressed Add custom in the Marketplace. */
+  addRequest?: boolean | undefined;
+  /** Called once the panel opened the requested form, so it does not open again. */
+  onAddRequestHandled?: (() => void) | undefined;
 }
 
 export interface McpPanelSignIn {
@@ -433,12 +441,36 @@ export function ServerMcpPanel(props: ServerMcpPanelProps) {
   }
 
   createEffect(
+    () => Boolean(props.addRequest),
+    (requested) => {
+      if (!requested) return;
+      // A user who cannot add a server ends the request, so the form does not open later unasked.
+      props.onAddRequestHandled?.();
+      if (props.canManage) openForm(null);
+    },
+  );
+
+  createEffect(
+    () => {
+      const id = props.signInRequest;
+      return id ? props.servers.find((candidate) => candidate.id === id) : undefined;
+    },
+    (config) => {
+      if (!config) return;
+      // A row this panel cannot sign in to ends the request, so no sign-in starts later unasked.
+      props.onSignInRequestHandled?.();
+      if (canSignIn(config)) void signInRow(config);
+    },
+  );
+
+  createEffect(
     () => remotePage()?.rowId,
     (rowId, previous) => {
       if (previous === undefined || rowId === previous) return;
       const target = previous === null ? formTestButton : menuButtons[previous];
       requestAnimationFrame(() => {
-        if (target?.isConnected && !document.querySelector(".mcp-sign-in-page-dialog, .mcp-sign-in-relay-dialog"))
+        // A connect dialog that is still open, such as the relayed sign-in, keeps the focus.
+        if (target?.isConnected && !document.querySelector(".integration-wizard-dialog"))
           target.focus({ preventScroll: true });
       });
     },

@@ -8,7 +8,7 @@ import {
   type UpdateAgentInput,
 } from "@openbot/contracts/ipc";
 import { useQueryClient } from "@tanstack/react-query";
-import { router, useLocalSearchParams, useNavigation } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { Typography } from "heroui-native";
 import { useThemeColor } from "heroui-native/hooks";
@@ -29,7 +29,9 @@ import { AgentPublish } from "@/features/agents/components/agent-publish";
 import { AgentRuntimeFields, useProviderAccounts } from "@/features/agents/components/agent-runtime-fields";
 import { AgentSessionSettingsSection } from "@/features/agents/components/agent-session-settings";
 import { AgentSharedTables } from "@/features/agents/components/agent-shared-tables";
+import { AgentTasksRow } from "@/features/agents/components/agent-tasks-row";
 import { BloubAvatarPreview } from "@/features/agents/components/bloub-avatar";
+import { InstructionsLimit, instructionsTooLong } from "@/features/agents/components/instructions-limit";
 import { SettingsRow, SettingsSection } from "@/features/settings/components/settings-content";
 import {
   type MobileAgent,
@@ -116,7 +118,6 @@ function AgentForm({
   const showNotifications = agent.notifications !== undefined;
   const showAdvanced =
     Boolean(agent.workspacePath) || canStartNewChat(agent.serverId) || canManageAgentHostSettings(agent.serverId);
-  const navigation = useNavigation();
   const [edits, setEdits] = useState<AgentEdits>({});
   const foreground = useThemeColor("foreground");
   const [photo, setPhoto] = useState<AgentPhotoDraft | null | undefined>();
@@ -158,16 +159,21 @@ function AgentForm({
     (Boolean(name.trim()) &&
       name.length <= INPUT_LIMITS.agentName &&
       title.length <= INPUT_LIMITS.agentTitle &&
-      description.length <= INPUT_LIMITS.agentDescription);
+      !instructionsTooLong(description));
 
-  usePreventRemove(dirty || saving || pickingPhoto, ({ data }) => {
+  // Discard turns prevention off before it repeats the action, so the hook does not warn.
+  const [discarding, setDiscarding] = useState(false);
+  usePreventRemove(!discarding && (dirty || saving || pickingPhoto), ({ repeat }) => {
     if (pending.current || pickingPhoto) return;
     Alert.alert(t("mobile.agent.discard.title"), t("mobile.agent.discard.body"), [
       { text: t("mobile.agent.discard.keepEditing"), style: "cancel" },
       {
         text: t("mobile.agent.discard.discard"),
         style: "destructive",
-        onPress: () => navigation.dispatch(data.action),
+        onPress: () => {
+          setDiscarding(true);
+          repeat();
+        },
       },
     ]);
   });
@@ -317,11 +323,11 @@ function AgentForm({
             appearance="soft"
             placeholder={t("mobile.agent.edit.instructionsPlaceholder")}
             multiline
-            maxLength={INPUT_LIMITS.agentDescription}
             value={description}
             editable={!saving}
             onChangeText={(value) => change({ description: value })}
           />
+          <InstructionsLimit text={description} />
         </>
       ) : null}
       {page === "appearance" ? (
@@ -346,6 +352,7 @@ function AgentForm({
           available={available}
           saving={saving}
           provider={provider}
+          foreignProvider={edits.provider === undefined ? agent.foreignProvider : undefined}
           model={edits.model ?? agent.model}
           reasoningEffort={edits.reasoningEffort ?? agent.reasoningEffort}
           accounts={providerAccounts}
@@ -468,6 +475,7 @@ function AgentForm({
             ) : null}
           </SettingsSection>
           <SettingsSection title={t("mobile.agent.groups.does")}>
+            <AgentTasksRow agent={agent} />
             <SettingsRow
               onPress={() =>
                 router.push({
