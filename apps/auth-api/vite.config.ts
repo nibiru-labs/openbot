@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import solidPlugin from "@solidjs/vite-plugin";
@@ -12,6 +13,7 @@ import { readLocalRuntimeVars } from "./src/server/runtime-env";
 
 export default defineConfig(({ command }) => {
   const port = readApiPort(process.env.OPENBOT_API_PORT);
+  const stateDirectory = readApiStateDirectory(process.env.OPENBOT_API_STATE_DIR);
   const localRuntimeVars = command === "serve" ? readLocalRuntimeVars(process.env) : {};
   // The local Worker cannot reach Apple over HTTP/2, so it sends Live Activity updates to this server.
   if (localRuntimeVars.APNS_PRIVATE_KEY) {
@@ -44,6 +46,9 @@ export default defineConfig(({ command }) => {
       developmentApnsProxy(),
       cloudflare({
         viteEnvironment: { name: "ssr" },
+        // A throwaway instance keeps its D1 and R2 state in its own directory, so it never shares
+        // the database of the local service that runs beside it.
+        ...(stateDirectory ? { persistState: { path: stateDirectory } } : {}),
         config(config) {
           return { vars: { ...config.vars, ...localRuntimeVars } };
         },
@@ -103,6 +108,12 @@ function lazyLanguageCatalogs(): Plugin {
       return `${I18N_SOURCE}lazy-catalogs.ts`;
     },
   };
+}
+
+/** The state directory of a local instance. Without it, the instance shares the state of the next one. */
+function readApiStateDirectory(value: string | undefined): string | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  return resolve(value.trim());
 }
 
 function readApiHost(value: string | undefined): "127.0.0.1" | "0.0.0.0" {

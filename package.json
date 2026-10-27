@@ -239,6 +239,7 @@
     "test:cloud-authorization": "bun apps/auth-api/scripts/cloud-authorization-e2e.ts",
     "test:billing-snapshot": "bun apps/auth-api/scripts/billing-snapshot-e2e.ts",
     "test:mobile-connected-devices": "bun scripts/mobile-connected-devices-e2e.ts",
+    "test:auth-claim": "bun scripts/auth-claim-e2e.ts",
     "test:composer-lists": "bun scripts/composer-markdown-lists-e2e.ts",
     "codex:doctor": "bun scripts/codex-doctor.ts",
     "cua-driver:doctor": "bun scripts/cua-driver-doctor.ts",

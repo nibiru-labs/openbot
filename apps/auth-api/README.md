@@ -31,6 +31,27 @@ Without this key, the Worker starts with generated local defaults and no Stripe 
 values override shared values. Development commands do not read the root `.env.keys`; production
 commands continue to use that file.
 
+### Server claims
+
+An operator signs a server claim with `SERVER_CLAIMS_ADMIN_TOKEN` and the server redeems it (see
+[server claims](../../docs/self-hosted-server.md#sign-in-with-a-server-claim)). A local Worker reads that
+token from the shell, so a local instance can sign claims too.
+
+`bun run test:auth-claim` proves that a self-hosted owner can sign a claim and redeem it with a local
+account service only. It starts a second, throwaway instance of the Worker on a free port, with its own
+state directory and its own generated admin token, so it never touches the local service on
+`127.0.0.1:3100` and never uses a production key. Then it signs a claim through the admin route,
+redeems it, and checks that the session opens the account of the owner, that the claim works once, and
+that the account service keeps only the hash of the claim.
+
+```bash
+bun run test:auth-claim
+```
+
+The report goes to `.openbot-build/auth-claim-e2e.json`. The throwaway instance reads empty mail settings,
+so it sends no mail. A local instance keeps its D1 and R2 state in `.wrangler/state`; set
+`OPENBOT_API_STATE_DIR` to give it another directory.
+
 ### Stripe sandbox
 
 `bun run api:stripe:bootstrap` creates the six plan Prices (lookup keys `openbot_{plan}_{month|year}`)
