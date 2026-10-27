@@ -14,6 +14,7 @@ import type {
 } from "@openbot/contracts/ipc";
 import {
   CONVERSATION_PLAN_ITEM_TYPE,
+  dispatchConversationEvent,
   isContextResetMarker,
   parseConversationPlanText,
   routineConversationEvent,
@@ -35,6 +36,8 @@ export type ChatMessage =
     }
   /** Where a new chat started: the agent does not see the messages above it. */
   | { id: string; kind: "context-reset" }
+  /** The status card that a coding dispatch posts when a run starts or ends. `text` is source text. */
+  | { id: string; kind: "dispatch"; text: string }
   /** A routine created, changed, deleted, or run by the agent. The label matches the desktop marker. */
   | { id: string; kind: "routine"; event: RoutineMarkerEvent; label: MobileTextKey; routineName: string }
   | { id: string; kind: "question"; turnId: string | undefined; prompt: ConversationQuestionPrompt }
@@ -146,6 +149,7 @@ const projectedExchanges = new WeakMap<ConversationMessage, ChatMessage>();
 const projectedQuestions = new WeakMap<ConversationMessage, ChatMessage>();
 const projectedRoutines = new WeakMap<ConversationMessage, ChatMessage>();
 const projectedResets = new WeakMap<ConversationMessage, ChatMessage>();
+const projectedDispatches = new WeakMap<ConversationMessage, ChatMessage>();
 
 const ROUTINE_RUN_LABELS = {
   queued: "mobile.chat.routine.invoked",
@@ -315,6 +319,16 @@ export function projectChatMessages(
       );
       continue;
     }
+    if (dispatchConversationEvent(message)) {
+      result.push(
+        projectedMarker(projectedDispatches, message, () => ({
+          id: `dispatch:${message.id}`,
+          kind: "dispatch",
+          text: message.text,
+        })),
+      );
+      continue;
+    }
     if (message.delivery?.status === "queued" || message.delivery?.status === "cancelled") continue;
     if (message.exchange) {
       const { exchange } = message;
@@ -419,7 +433,13 @@ export function groupExchangeMarkers<T extends ChatMessage>(messages: readonly T
  * message ID after its prefix, and a group row holds several markers. -1 when no row shows it.
  */
 export function chatRowIndex(rows: readonly (ChatMessage | ExchangeGroup)[], messageId: string): number {
-  const ids = new Set([messageId, `exchange:${messageId}`, `routine:${messageId}`, `context-reset:${messageId}`]);
+  const ids = new Set([
+    messageId,
+    `exchange:${messageId}`,
+    `routine:${messageId}`,
+    `context-reset:${messageId}`,
+    `dispatch:${messageId}`,
+  ]);
   return rows.findIndex((row) =>
     row.kind === "exchange-group" ? row.exchanges.some((marker) => ids.has(marker.id)) : ids.has(row.id),
   );
