@@ -37,7 +37,7 @@ export const messages = {
   "queue.clearAll.label": "キュー内のすべてのメッセージを削除",
   "queue.clearAll.tooltip": "キュー内のすべてのメッセージを削除",
   "queue.clearAll.title": { other: "キュー内の {count} 件のメッセージを削除しますか？" },
-  "queue.clearAll.body": "エージェントはそのメッセージを受け取ります。現在の作業は続きます。",
+  "queue.clearAll.body": "エージェントはそのメッセージを受け取りません。現在の作業は続きます。",
   "queue.clearAll.confirm": "すべて削除",
   "queue.item.runNowLabel": "現在の作業を停止して、キュー内のメッセージ {position} を今すぐ実行",
   "queue.item.runNowTooltip": "今すぐ実行: 現在の作業を停止して、このメッセージを次に開始します",
