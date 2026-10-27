@@ -37,12 +37,11 @@ loads through `tool_describe`. Essential secret handling and untrusted-content r
 permanent instructions. ACP and Muse still insert these shorter instructions on each normal turn.
 Retention after compaction is not assumed. Compaction thresholds are unchanged.
 
-The default synthetic fixture measures 11,541 instruction characters and 8,382 characters for the
-serialized visible tool definitions, including the 1,912-character catalog. This is 19,923
-characters, or about 4,981 tokens at four characters per token, compared with the earlier 101,602
-characters (about 25,401 tokens). It is an 80.4% reduction in default application text. Schemas and
-guidance loaded later add context and can add model steps. Provider prompts, external plugins,
-caching, billing, and native model serialization are outside this measurement.
+An earlier build sent much more default application text. The instructions and the serialized visible
+tool definitions are now about a fifth of that size, a reduction of about 80%. No script in
+`scripts/` measures the sizes today, so this document names no exact count. Schemas and guidance
+loaded later add context and can add model steps. Provider prompts, external plugins, caching,
+billing, and native model serialization are outside this measurement.
 
 ## History retrieval and replacement sessions
 

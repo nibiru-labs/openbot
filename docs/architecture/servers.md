@@ -235,10 +235,11 @@ does not count it. See [hosted servers](../hosted-servers.md) step 5.
 
 ### Admin capabilities
 
-An owner or admin of a joined server manages its host through optional `POST /v1/admin/...` routes.
-Each capability has a frozen codec in `team-protocol/<name>-v1.ts`, registered in
-`team-protocol/optional-routes.ts`, and both transports use it. Every route calls `requireAdmin`. The
-host advertises a capability only when its `TeamApiAdmin` member exists.
+An owner or admin of a joined server manages its host through optional `POST` routes, most of them
+under `/v1/admin/...`. Each capability has a frozen codec in `team-protocol/<name>-v1.ts`,
+registered in `team-protocol/optional-routes.ts`, and both transports use it. Every route calls
+`requireAdmin`, unless a member capability serves the same path. The host serves each one from
+`src/main/team-api/` and advertises a capability only when the service behind it exists.
 
 | Capability | Grants | IPC group |
 | --- | --- | --- |
@@ -259,11 +260,29 @@ host advertises a capability only when its `TeamApiAdmin` member exists.
 | `discord-access-v1` | Read and set which Discord roles can use OpenBot in a Discord server; list its roles | `messaging` |
 | `events-v1` | Manage webhook routines, their secrets, and activity | `events` |
 | `routine-recovery-v1` | Read and set a routine's missed-run policy; read its runs with the missed occurrences | `events` |
+| `acp-registry-v1` | Search the ACP registry; install, cancel and remove a runtime | `acpRegistry` |
+| `agent-publish-v1` | Preview, publish and unpublish an agent template | `agentTemplates` |
+| `agent-session-settings-v1` | Read, set and reset the session settings of an agent | `agent` |
+| `connectors-v1` | The GitHub connector and the messaging connections of the host | `githubConnector`, `messaging` |
+| `mcp-servers-v1` | The MCP servers of the host: list, save, remove, enable, test | `mcpServers` |
+| `mcp-sign-in-v1` | Start, watch, cancel and end the MCP sign-ins of the host | `mcpServers` |
+| `mcp-sign-in-app-v1` | The OAuth app of a saved MCP http row | `mcpServers` |
+| `onepassword-connector-v1` | The 1Password connector of the host | `onePasswordConnector` |
+| `provider-accounts-v1` | The provider accounts of the host: list, usage, sign-in, rename, remove | `providerAdmin` |
+| `provider-host-sign-in-v1` | A provider sign-in in the browser of the host | `providerAdmin` |
+| `providers-v2` | The managed runtime routes of Gemini (`antigravity`) | `providerAdmin` |
+| `providers-v5` | Code sign-in and provider API keys for Pi and Muse, with the runtimes | `providerAdmin` |
+| `sign-in-relay-v1` | A sign-in that the admin finishes in the browser of their own computer | `providerAdmin`, `mcpServers` |
 
-These IPC groups take a required server id and route with `scopedHandler`. A key travels only towards
-the host; no response carries one. `providers-v1` has no progress event, so the renderer reads runtime
-status again every second while a host download runs. Publishing, macOS permissions, the browser
-sign-in and folder import stay on the host.
+The table holds the capabilities an owner or admin uses. `mcp-servers-v1` and `instance-transfer-v1`
+use their own paths. `storage-v1` and `hosted-sites-v1` need an admin for a delete only, and are in
+their sections above.
+
+Every group but `agentTemplates` reaches a joined server with a required server id, through
+`scopedHandler` or `scopedQueryHandler`. A key travels only towards the host; no response carries
+one. `providers-v1` has no progress event, so the renderer reads runtime status again every second
+while a host download runs. Publishing, macOS permissions, the browser sign-in and folder import stay
+on the host.
 
 `providers-v1` signs in Codex only, with a device code. A host that serves `providers-v3` also signs
 in Grok (`grok login --device-auth`) and Claude (`claude auth login`), for a host with no visible
