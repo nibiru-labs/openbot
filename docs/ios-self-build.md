@@ -28,11 +28,19 @@ The default bundle identifier `run.openbot.mobile` requires official project cer
 
 1. Open `apps/mobile/app.json`.
 2. Change `expo.ios.bundleIdentifier` to a unique identifier (for example, `com.example.openbot.mobile`).
-3. If your Apple ID does not support App Groups, update or remove the extension identifiers in `plugins`:
-   - `with-share-target` (`extensionBundleIdentifier` and `appGroupId`)
-   - `expo-widgets` (`bundleIdentifier` and `groupIdentifier`)
-   - `with-notification-service` (`bundleIdentifier` and `groupIdentifier`)
-4. In Xcode, ensure your personal Apple ID team is selected for signing.
+3. For a Personal Team, remove `expo.ios.associatedDomains` and remove these complete entries from `expo.plugins`, including their option objects:
+   - `./plugins/with-share-target`
+   - `expo-widgets`
+   - `./plugins/with-notification-service`
+4. Regenerate the iOS project so that old extension targets and entitlements do not remain. The clean prebuild deletes and recreates `apps/mobile/ios`; save any native changes first:
+   ```bash
+   cd apps/mobile
+   bunx expo prebuild --platform ios --clean
+   cd ../..
+   ```
+5. Open `apps/mobile/ios/OpenBot.xcworkspace` in Xcode. Under the app target's **Signing & Capabilities**, select your personal team and remove any remaining capabilities that the team cannot sign, such as App Groups, Associated Domains, or Push Notifications.
+
+These changes disable the share extension, widgets, notification service extension, associated links, and any removed capabilities. Changing the extension identifiers alone does not remove their App Group entitlement.
 
 ## 3. Development Build vs Release Build
 
@@ -40,8 +48,8 @@ The default bundle identifier `run.openbot.mobile` requires official project cer
   Runs the local desktop stack and the iOS simulator. Automatically pairs the desktop app and the simulator over Chrome DevTools Protocol (CDP) without a QR code scan. Use this command for simulator testing, not for physical iPhones.
 - **Direct device build (`bun mobile:ios -- --device`)**:
   Builds and installs the development client directly on your connected iPhone. The app opens and connects to local or remote servers by camera QR scan.
-- **Local release build (`bun run mobile:ios:build:local`)**:
-  Builds a production `.ipa` file locally with EAS CLI without cloud compute. Outputs `/private/tmp/openbot-testflight.ipa`.
+- **Local production build (`bun run mobile:ios:build:local`)**:
+  Builds a store-distribution `.ipa` locally with EAS CLI. TestFlight distribution requires a paid Apple Developer Program membership. This IPA cannot be installed directly with Xcode or Apple Configurator.
 
 ## 4. Build and Install on iPhone
 
@@ -57,9 +65,9 @@ Or from `apps/mobile`:
 bun run ios -- --device
 ```
 
-Expo prebuilds the native iOS project and installs the app onto your connected device. If Xcode prompts for code signing, select your personal team.
+Expo builds and installs the development client onto your connected device. If Xcode prompts for code signing, select your personal team. Keep the Metro server running while you use the development build.
 
-To create a local standalone production `.ipa`:
+With a paid Apple Developer Program membership, you can create a local production `.ipa` for TestFlight:
 
 From the repository root:
 
@@ -73,7 +81,7 @@ Or from `apps/mobile`:
 bun run ios:build:local
 ```
 
-Install the resulting `/private/tmp/openbot-testflight.ipa` via Apple Configurator or Xcode (**Window > Devices and Simulators**).
+Upload the resulting `/private/tmp/openbot-testflight.ipa` to App Store Connect, then distribute it through TestFlight. Do not use this store-distribution IPA for direct device installation.
 
 ## 5. Connect to a Self-Hosted Server
 
