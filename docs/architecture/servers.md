@@ -271,7 +271,7 @@ registered in `team-protocol/optional-routes.ts`, and both transports use it. Ev
 | `provider-accounts-v1` | The provider accounts of the host: list, usage, sign-in, rename, remove | `providerAdmin` |
 | `provider-host-sign-in-v1` | A provider sign-in in the browser of the host | `providerAdmin` |
 | `providers-v2` | The managed runtime routes of Gemini (`antigravity`) | `providerAdmin` |
-| `providers-v5` | Code sign-in and provider API keys for Pi and Muse, with the runtimes | `providerAdmin` |
+| `providers-v5` | Code sign-in for Codex, Claude, Grok, Cursor and Cline; API keys and managed runtimes include Pi and Muse | `providerAdmin` |
 | `sign-in-relay-v1` | A sign-in that the admin finishes in the browser of their own computer | `providerAdmin`, `mcpServers` |
 
 The table holds the capabilities an owner or admin uses. `mcp-servers-v1` and `instance-transfer-v1`
