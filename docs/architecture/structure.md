@@ -65,7 +65,8 @@ SolidJS, provider, Cloudflare, and application code; and the account server to d
 ## State ownership
 
 - `openbot.db` is the source of truth for OpenBot agents, conversations, queues, reactions,
-  attachments, and provider-session bindings.
+  attachments, and provider-session bindings. Its schema changes only through the migration runner.
+  See [Database migrations](database-migrations.md).
 - `RoutineStore` saves a routine and its webhook trigger in one transaction. `WebhookRouteStore`
   owns route IDs, encrypted secrets, receipts, and route revocations. `RoutineRecords` gives main one
   owner-neutral view of these. Webhook runs use the existing agent and channel queues. Main owns
