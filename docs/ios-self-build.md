@@ -68,7 +68,18 @@ bun run ios -- --device
 
 Expo builds and installs the development client onto your connected device. If Xcode prompts for code signing, select your personal team. Keep the Metro server running while you use the development build.
 
-With a paid Apple Developer Program membership, you can create a local production `.ipa` for TestFlight:
+For a Personal Team, the provisioning profile expires seven days after it is issued. After it expires, rebuild and reinstall the app on the device. See [Apple's developer account overview](https://developer.apple.com/help/account/basics/about-your-developer-account/).
+
+To create a local production `.ipa` for TestFlight, you need a paid Apple Developer Program membership and access to an EAS project. The checked-in `apps/mobile/app.json` points to the shared OpenBot project through `expo.owner` and `expo.extra.eas.projectId`. A paid Apple membership alone does not give you access to that project.
+
+Choose one of these options before the build:
+
+- Get the required access to the existing OpenBot Expo project and its signing credentials from its owner.
+- Use your own Expo account and project. In your local `apps/mobile/app.json`, set `expo.owner` to your Expo account, remove the existing `expo.extra.eas.projectId`, and remove the existing `expo.updates.url` so it does not point to the OpenBot project. From `apps/mobile`, run `bunx eas-cli@latest init` and follow the prompts to create or link your project. See the [EAS CLI reference](https://docs.expo.dev/eas/cli/#eas-projectinit).
+
+You also need Apple signing credentials for the selected bundle identifier and team. An authorized Apple team member can create them, or an authorized Expo user can provide existing credentials. On an individual Apple Developer account, only the Account Holder can generate signing credentials. On an organization account, the Account Holder or Admin can generate them; an App Manager also needs access to Certificates, Identifiers, and Profiles. See [Expo's signing permissions guide](https://docs.expo.dev/app-signing/apple-developer-program-roles-and-permissions/).
+
+Then build the IPA:
 
 From the repository root:
 
