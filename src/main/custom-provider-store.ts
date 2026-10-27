@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import type { CustomProviderSummary, SaveCustomProviderInput, UpdateCustomProviderInput } from "@openbot/contracts/ipc";
 import { sameCustomProviderOrigin } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
+import { registerSecretValue } from "@openbot/logging";
 import { Effect, Schema, Semaphore } from "effect";
 import { z } from "zod";
 import { writeFileAtomically } from "../backend/atomic-json-file";
@@ -153,6 +154,7 @@ export class CustomProviderStore {
       // Refused only for an endpoint that has something to protect. A keyless local endpoint still
       // saves on a computer with no keychain, which is the common case for one.
       if (secret && !this.#cipher.canPersist()) throw new Error(NO_SECURE_STORAGE_MESSAGE);
+      registerProviderSecrets(secret);
       return [
         ...this.#entries,
         {
@@ -191,6 +193,7 @@ export class CustomProviderStore {
         if (secret && !this.#cipher.canPersist()) throw new Error(NO_SECURE_STORAGE_MESSAGE);
         sealed = secret ? this.#cipher.encrypt(JSON.stringify(secret)).toString("base64") : null;
       }
+      registerProviderSecrets(secret);
       const next: Entry = {
         stored: {
           id: current.stored.id,
@@ -287,7 +290,9 @@ export class CustomProviderStore {
     if (!sealed) return null;
     return yield* providerSync(() => {
       const parsed = secretSchema.parse(JSON.parse(this.#cipher.decrypt(Buffer.from(sealed, "base64"))));
-      return { apiKey: parsed.apiKey || null, headers: parsed.headers ?? [] };
+      const secret = { apiKey: parsed.apiKey || null, headers: parsed.headers ?? [] };
+      registerProviderSecrets(secret);
+      return secret;
     }).pipe(Effect.catch(() => Effect.succeed(null)));
   });
 
@@ -300,6 +305,12 @@ export class CustomProviderStore {
       Effect.mapError(({ cause }) => new CustomProviderFailure({ cause })),
     );
   });
+}
+
+function registerProviderSecrets(secret: ProviderSecret | null): void {
+  if (!secret) return;
+  if (secret.apiKey) registerSecretValue(secret.apiKey);
+  for (const { value } of secret.headers) registerSecretValue(value);
 }
 
 /**
