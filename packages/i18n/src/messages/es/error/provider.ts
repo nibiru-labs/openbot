@@ -365,4 +365,5 @@ export const messages = {
   "error.provider.registryInstallFailed": "Falló la instalación del agente. La instalación anterior no cambió.",
   "error.provider.registryRemoveBusy":
     "Espera a que terminen la instalación del agente y el trabajo ACP activo antes de quitarlo.",
+  "error.provider.customAgentNoSwitch": "Los agentes personalizados no tienen un cambio de proveedor integrado.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -26,4 +26,8 @@ export const messages = {
   "error.site.fileType": "Questo tipo di file non è consentito: {path}",
   "error.site.fileOutsideRoot": "I file del sito devono restare dentro la radice dell'origine: {path}",
   "error.site.fileTooLarge": "Un file supera il limite di 1 MB: {path}",
+  "error.site.listInvalid": "L’host ha restituito un elenco di siti non valido.",
+  "error.site.listResponseInvalid": "La risposta con l’elenco dei siti non è valida.",
+  "error.site.hostingUnavailable": "L’hosting di siti di OpenBot non è disponibile.",
+  "error.site.hostedSiteNotFound": "Sito ospitato non trovato.",
 } as const satisfies PartialTranslation<typeof source>;

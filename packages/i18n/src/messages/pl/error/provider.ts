@@ -359,4 +359,5 @@ export const messages = {
     "Instalacja agenta nie powiodła się. Poprzednia instalacja pozostała bez zmian.",
   "error.provider.registryRemoveBusy":
     "Zaczekaj na zakończenie instalacji agenta i aktywnej pracy ACP, zanim go usuniesz.",
+  "error.provider.customAgentNoSwitch": "Agenci własni nie mają wbudowanego przełącznika dostawcy.",
 } as const satisfies PartialTranslation<typeof source>;

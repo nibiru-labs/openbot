@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/customProvider";
 
 export const messages = {
+  "customProvider.dispatch.title": "Ejecutores de código",
+  "customProvider.dispatch.description":
+    "Los agentes pueden enviar trabajo de programación a openswarm. Las tarjetas de tarea y el código van al host ejecutor y a su proveedor de modelos. Deja la lane vacía para una ejecución independiente.",
+  "customProvider.dispatch.binary": "Comando o ruta de openswarm",
+  "customProvider.dispatch.host": "Host de flota predeterminado",
+  "customProvider.dispatch.lane": "Lane predeterminada (opcional)",
   "customProvider.registry.title": "Registro ACP",
   "customProvider.registry.description":
     "Instala agentes en este servidor. Si quitas el entorno de ejecución, se conservan los ajustes, las credenciales y las conversaciones del agente.",

@@ -1,5 +1,6 @@
 import type { AttachmentSummary, ImageGenerationInfo } from "@openbot/contracts/ipc";
 import { isString } from "@openbot/contracts/runtime-values";
+import { sourceText } from "@openbot/i18n/source";
 import { Effect, Exit, Fiber, Result, Schema, Scope } from "effect";
 import { newAssistantMessage } from "../conversation-snapshots";
 import { causeHelpers } from "../effect-boundary";
@@ -196,7 +197,9 @@ export class ImageGenRuntime {
       let attachment: AttachmentSummary;
       const storeBytes = Effect.gen({ self: this }, function* () {
         if (!result)
-          return yield* new GeneratedImageFailed({ cause: new Error("Image generation did not return an image.") });
+          return yield* new GeneratedImageFailed({
+            cause: new Error(sourceText("error.backend.generatedImageMissing")),
+          });
         const bytes = yield* imageStep(() => decodeGeneratedImage(result));
         return yield* this.#mailbox
           .storeGeneratedAttachment({

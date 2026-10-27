@@ -194,4 +194,7 @@ export const messages = {
   "error.remote.remoteNotConfigured": "この OpenBot サービスではリモート接続が設定されていません。",
   "error.remote.hostRefused": "ホストがリクエストを拒否しました ({status})。",
   "error.remote.hostedServerRemoval": "ホスト型サーバーを削除するには「お支払い」を使用してください。",
+  "error.remote.hostRequired": "有効な公開ホストが必要です。",
+  "error.remote.serverReturnedData": "リモートサーバーがデータを返しました。",
+  "error.remote.developmentIdentityChanged": "ローカル開発サーバーの識別子が変わりました。",
 } as const satisfies PartialTranslation<typeof source>;

@@ -2,12 +2,28 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/backend";
 
 export const messages = {
+  "error.backend.dispatchCommand":
+    "Impossible de terminer la requête openswarm. Vérifiez les paramètres de l’exécuteur et l’état de l’exécution avant de réessayer.",
+  "error.backend.dispatchOwnChat": "Envoyez le travail de programmation uniquement depuis votre propre discussion.",
+  "error.backend.dispatchLaneOptions":
+    "Une lane utilise le backend et le modèle qu’elle a configurés. Omettez le backend et le modèle quand vous sélectionnez une lane.",
+  "error.backend.dispatchUnknown": "Cette discussion n’est pas à l’origine de cette exécution de code.",
+  "error.backend.dispatchHostRequired":
+    "Plusieurs exécutions de code ont cet ID. Indiquez l’hôte renvoyé par dispatch_work.",
+  "error.backend.dispatchVerifyWorkspace":
+    "La commande de vérification s’exécute sur l’hôte exécuteur, en dehors de la limite d’espace de travail de cet agent. Un agent « Espace de travail uniquement » ne peut pas définir de vérification.",
+  "error.backend.dispatchExecutorWorkspace":
+    "Un agent « Espace de travail uniquement » ne peut utiliser que l’exécuteur Codex, car les autres exécuteurs ne limitent pas où ils écrivent. Omettez la lane et le backend.",
+  "error.backend.dispatchRepository":
+    "Configurez dans openswarm fleet.json des chemins de dépôt locaux et d’exécuteur identiques.",
   "error.backend.dispatchSpawnFailed": "Impossible de démarrer openswarm.",
   "error.backend.dispatchExitCode": "La commande openswarm s’est terminée avec le code {code}.",
   "error.backend.dispatchExited": "La commande openswarm s’est arrêtée avant de renvoyer un résultat.",
   "error.backend.dispatchTimeout": "openswarm n’a pas répondu avant la fin du délai.",
   "error.backend.dispatchOutputUnreadable": "La sortie d’openswarm n’a pas pu être lue.",
   "error.backend.dispatchSaveFailed": "La demande openswarm n’a pas pu être enregistrée.",
+  "error.backend.dispatchApprovalDenied": "La personne a refusé cet envoi de code. Rien n’a été lancé.",
+  "error.backend.dispatchApprovalMissing": "Cet envoi de code n’a pas d’approbation. Rien n’a été lancé.",
   "error.backend.eventsUnavailable": "Les événements ne sont pas disponibles sur cet hôte.",
   "error.backend.databaseIntegrity": "La base de données OpenBot a échoué à la vérification d’intégrité.",
   "error.backend.webhookRouteLimit": "Un hôte peut avoir au plus {limit} routines webhook.",
@@ -344,4 +360,20 @@ export const messages = {
   "error.backend.agentControlChain":
     "Ce tour a commencé parce qu’un coéquipier vous a interrompu. Terminez-le avant d’interrompre un autre agent. Votre message attend dans sa file.",
   "error.backend.taskStartFailed": "OpenBot n’a pas pu lancer la tâche. Faites plutôt le travail dans ce tour.",
+  "error.backend.requestedPathNotFile": "Le chemin demandé n’est pas un fichier.",
+  "error.backend.sunshinePortsNotAllocated": "Les ports Sunshine n’ont pas encore été alloués.",
+  "error.backend.moonlightPortNotAllocated": "Le port Moonlight n’a pas encore été alloué.",
+  "error.backend.moonlightPortsNotAllocated": "Les ports Moonlight n’ont pas encore été alloués.",
+  "error.backend.remoteDesktopExitedDuringPairing":
+    "Un processus de bureau à distance s’est arrêté pendant l’appairage.",
+  "error.backend.browserUploadInputLimit":
+    "Un onglet de navigateur peut conserver des fichiers pour {n} entrées au maximum.",
+  "error.backend.browserUploadTabLimit": "Un onglet de navigateur peut conserver jusqu’à {n} octets de téléversement.",
+  "error.backend.browserUploadTotalLimit": "Les téléversements du navigateur peuvent conserver au total {n} octets.",
+  "error.backend.generatedImageMissing": "La génération d’images n’a renvoyé aucune image.",
+  "error.backend.channelAssignmentInactive": "L’attribution du canal n’est plus active.",
+  "error.backend.channelAttachmentNotFound": "Pièce jointe introuvable dans ce canal.",
+  "error.backend.routineHandoffDeliveryFailed": "Impossible de créer la remise du travail de la routine.",
+  "error.backend.routineDeliveryNotCreated": "Impossible de créer la remise du travail de la routine.",
+  "error.backend.routineRunGone": "L’exécution de la routine n’existe plus.",
 } as const satisfies PartialTranslation<typeof source>;

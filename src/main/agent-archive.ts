@@ -199,6 +199,6 @@ export function avatarImage(bytes: Uint8Array | undefined): AvatarImageInput | n
 }
 
 function errorText(error: unknown): string {
-  const text = error instanceof Error ? error.message : "The import failed.";
+  const text = error instanceof Error ? error.message : sourceText("error.import.failed");
   return text.slice(0, AGENT_IMPORT_LIMITS.message);
 }

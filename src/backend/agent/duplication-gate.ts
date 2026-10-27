@@ -182,9 +182,9 @@ export class DuplicationGate {
     layout: SidebarLayoutSnapshot,
   ) {
     const operation = yield* duplicationStep(() => {
-      if (!this.#pendingAgents.has(agentId)) throw new Error("This agent duplication is not pending.");
+      if (!this.#pendingAgents.has(agentId)) throw new Error(sourceText("error.agent.duplicationNotPending"));
       const operation = this.#pendingOperations.get(agentId);
-      if (!operation) throw new Error("This agent duplication operation is unavailable.");
+      if (!operation) throw new Error(sourceText("error.agent.duplicationUnavailable"));
       return operation;
     });
     const releaseDuplication = this.#pendingReleases.get(agentId);

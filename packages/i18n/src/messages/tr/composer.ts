@@ -123,4 +123,5 @@ export const messages = {
   "composer.context.noAuto": "Bu ajan bağlamını sıkıştırmaz.",
   "composer.context.lastCompaction": "Son sıkıştırma: {before} → {after} token",
   "composer.compaction.elapsed": "{minutes}:{seconds}",
+  "composer.mcp.unnamedServer": "MCP sunucusu",
 } as const satisfies PartialTranslation<typeof source>;

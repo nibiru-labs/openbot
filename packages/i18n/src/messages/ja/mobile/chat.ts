@@ -345,4 +345,5 @@ export const messages = {
   "mobile.chat.queue.addedOnPhone": "このスマートフォンで追加",
   "mobile.chat.queue.addFiles": "ファイルを追加",
   "mobile.chat.queue.addPhotos": "写真を追加",
+  "mobile.chat.attachment.generatedImage": "生成した画像",
 } as const satisfies PartialTranslation<typeof source>;

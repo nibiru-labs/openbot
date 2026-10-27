@@ -29,4 +29,13 @@ export const messages = {
   "error.auth.adminKeyRejected": "Il servizio account non ha accettato la chiave di amministrazione.",
   "error.auth.sessionNotStorable":
     "OpenBot non può salvare la sessione di accesso su questo computer, quindi non può accedere con una chiave di amministrazione.",
+  "error.auth.hostedServerNoAnswer": "Il server account non ha risposto all'inizio.",
+  "error.auth.hostedServerNoClaim": "Il server ospitato non ha effettuato l'accesso e non ha credenziali di accesso.",
+  "error.auth.hostedServerClaimMismatch": "La credenziale di accesso è per un altro server ospitato.",
+  "error.auth.hostedServerHostMismatch":
+    "L'host configurato non è il server ospitato per cui è stata creata questa VM.",
+  "error.auth.hostedServerUnknown": "Il server account non ha nessuna registrazione di questo server ospitato.",
+  "error.auth.invalidUser": "Il servizio account ha restituito un utente non valido.",
+  "error.auth.invalidHostedServerClaim": "Credenziale di accesso del server ospitato non valida.",
+  "error.auth.sessionNotStored": "Impossibile salvare la sessione.",
 } as const satisfies PartialTranslation<typeof source>;

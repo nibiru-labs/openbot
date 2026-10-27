@@ -12,4 +12,6 @@ export const messages = {
   "error.app.remoteIdentityUnavailable": "Uzak ana makine kimliği kullanılamıyor.",
   "error.app.iceServersMissing": "Remote Signal henüz ICE sunucularını sağlamadı.",
   "error.app.finishLocalTest": "Ekranları değiştirmeden önce yerel testi bitirin.",
+  "error.app.hostedServerSecretStorageUnavailable": "Barındırılan sunucunun oturumu için sır deposu yok.",
+  "error.app.automationBindFailed": "Otomasyon sunucusu bağlanamadı.",
 } as const satisfies PartialTranslation<typeof source>;

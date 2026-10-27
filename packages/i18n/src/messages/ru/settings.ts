@@ -48,6 +48,14 @@ export const messages = {
     "Новые сообщения присоединяются к текущей работе агента, а не встают в очередь. Работает с ChatGPT и Claude.",
   "settings.agentMemoryLimit.title": "Записей памяти на агента",
   "settings.agentMemoryLimit.description": "Сколько записей памяти может хранить каждый агент на этом компьютере.",
+  "settings.tokenBudget.hour.title": "Лимит токенов в час",
+  "settings.tokenBudget.hour.description":
+    "При этом лимите агент не начинает новую работу, пока вы не продолжите. Текущая работа идёт дальше.",
+  "settings.tokenBudget.turn.title": "Лимит токенов за ход",
+  "settings.tokenBudget.turn.description":
+    "Ход, который превысил этот лимит, останавливается после текущего шага. Его работа сохраняется, и вы можете продолжить.",
+  "settings.tokenBudget.unlimited": "Без лимита",
+  "settings.tokenBudget.option": "{amount} токенов",
   "settings.keepRemoteSessions.title": "Быстрое подключение к серверам",
   "settings.keepRemoteSessions.description":
     "Сохранять подключение к серверам между запусками. OpenBot запускается примерно на секунду быстрее. При выходе из OpenBot сервис OpenBot не закрывает подключение.",

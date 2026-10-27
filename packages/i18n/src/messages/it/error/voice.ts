@@ -20,4 +20,5 @@ export const messages = {
   "error.voice.cloud.streamEnded": "Lo stream della dettatura è terminato. Registra di nuovo.",
   "error.voice.cloud.tooLong": "La registrazione è troppo lunga.",
   "error.voice.cloud.keySaveFailed": "Impossibile salvare la chiave API di ElevenLabs.",
+  "error.voice.transcriptTooLong": "La trascrizione vocale è troppo lunga.",
 } as const satisfies PartialTranslation<typeof source>;

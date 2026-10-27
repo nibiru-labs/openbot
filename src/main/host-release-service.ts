@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import type { HostReleaseStatus, UpdateStatus } from "@openbot/contracts/ipc";
+import { sourceText } from "@openbot/i18n/source";
 import { Deferred, Effect, Exit, Schema } from "effect";
 import { parse } from "yaml";
 import { isValidSemver } from "./update-service";
@@ -133,7 +134,7 @@ async function fetchLatestRelease(target: ReleaseTarget, request: typeof fetch, 
   });
   if (!response.ok || !response.body) {
     await response.body?.cancel();
-    throw new Error("Release feed unavailable");
+    throw new Error(sourceText("error.update.feedUnavailable"));
   }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -143,7 +144,7 @@ async function fetchLatestRelease(target: ReleaseTarget, request: typeof fetch, 
       const next = await reader.read();
       if (next.done) break;
       size += next.value.byteLength;
-      if (size > 65_536) throw new Error("Release feed too large");
+      if (size > 65_536) throw new Error(sourceText("error.update.feedTooLarge"));
       chunks.push(next.value);
     }
   } finally {
@@ -152,14 +153,14 @@ async function fetchLatestRelease(target: ReleaseTarget, request: typeof fetch, 
   }
   const manifest = Schema.decodeUnknownSync(ReleaseManifest)(parse(Buffer.concat(chunks).toString("utf8")));
   if (!isValidSemver(manifest.version) || !manifest.files.some((file) => file.url === target.asset(manifest.version)))
-    throw new Error("No compatible release");
+    throw new Error(sourceText("error.update.noCompatibleRelease"));
   return manifest.version;
 }
 
 /** The latest Linux release for `arch`, for the hosted installer. */
 export function fetchLatestLinuxRelease(arch: string, request: typeof fetch, signal: AbortSignal): Promise<string> {
   const target = releaseTarget("linux", arch);
-  if (!target) return Promise.reject(new Error("No release for this machine"));
+  if (!target) return Promise.reject(new Error(sourceText("error.update.noReleaseForMachine")));
   return fetchLatestRelease(target, request, signal);
 }
 

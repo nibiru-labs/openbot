@@ -379,4 +379,5 @@ export const messages = {
     "L’installation de l’agent a échoué. L’installation précédente n’a pas changé.",
   "error.provider.registryRemoveBusy":
     "Attendez la fin de l’installation de l’agent et du travail ACP en cours avant de le supprimer.",
+  "error.provider.customAgentNoSwitch": "Les agents personnalisés n’ont pas de changement de fournisseur intégré.",
 } as const satisfies PartialTranslation<typeof source>;

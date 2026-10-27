@@ -1149,7 +1149,7 @@ export class RoutineStore {
     const row = this.database.connection
       .prepare(`SELECT ${this.runColumns} FROM ${this.tables.runTable} WHERE run_id = ?`)
       .get(runId);
-    if (!isDynamicRecord(row)) throw new Error("The routine run no longer exists.");
+    if (!isDynamicRecord(row)) throw new Error(sourceText("error.backend.routineRunGone"));
     return this.#run(row);
   }
 

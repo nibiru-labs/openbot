@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { sourceText } from "@openbot/i18n/source";
 import type { ProgressInfo, UpdateInfo } from "electron-updater";
 import { fetchLatestLinuxRelease, newerRelease } from "./host-release-service";
 import {
@@ -120,7 +121,7 @@ export class HostedUpdateAdapter implements UpdateAdapter {
     let changedAt: number | null = null;
     for (;;) {
       await delay(this.#options.pollIntervalMs ?? 2_000);
-      if (cancellationToken?.cancelled) throw new Error("The download was cancelled.");
+      if (cancellationToken?.cancelled) throw new Error(sourceText("error.update.downloadCancelled"));
       if (await this.#exists(request)) continue;
       const state = await this.#readState();
       if (state) {
@@ -141,7 +142,7 @@ export class HostedUpdateAdapter implements UpdateAdapter {
       }
       // `stage` removes a staged release that is not the latest one, so what is there now is.
       const ready = await this.#stagedVersion();
-      if (!ready) throw new Error("The server staged no release.");
+      if (!ready) throw new Error(sourceText("error.update.noStagedRelease"));
       this.#emit("update-downloaded", { version: ready });
       return;
     }

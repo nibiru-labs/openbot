@@ -2,12 +2,28 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/backend";
 
 export const messages = {
+  "error.backend.dispatchCommand":
+    "openswarm のリクエストを完了できませんでした。再試行する前に、実行エグゼキューターの設定と実行状態を確認してください。",
+  "error.backend.dispatchOwnChat": "コーディング作業は自分のチャットからだけ送ってください。",
+  "error.backend.dispatchLaneOptions":
+    "lane は設定されたバックエンドとモデルを使います。lane を選ぶときは、バックエンドとモデルを指定しないでください。",
+  "error.backend.dispatchUnknown": "このチャットは、そのコード実行のものではありません。",
+  "error.backend.dispatchHostRequired":
+    "この ID を持つコード実行が複数あります。dispatch_work が返したホストを指定してください。",
+  "error.backend.dispatchVerifyWorkspace":
+    "検証コマンドは実行ホストで、这群のエージェントのワークスペース制限の外で動きます。「ワークスペースのみ」のエージェントは検証を設定できません。",
+  "error.backend.dispatchExecutorWorkspace":
+    "「ワークスペースのみ」のエージェントは Codex 実行エグゼキューターしか使えません。他の実行エグゼキューターは書き込み先を制限しないためです。lane と backend は指定しないでください。",
+  "error.backend.dispatchRepository":
+    "openswarm fleet.json に、ローカルと実行エグゼキューターの同じリポジトリパスを設定してください。",
   "error.backend.dispatchSpawnFailed": "openswarm を起動できませんでした。",
   "error.backend.dispatchExitCode": "openswarm はコード {code} で終了しました。",
   "error.backend.dispatchExited": "openswarm は結果を返す前に停止しました。",
   "error.backend.dispatchTimeout": "openswarm は制限時間内に応答しませんでした。",
   "error.backend.dispatchOutputUnreadable": "openswarm の出力を読み取れませんでした。",
   "error.backend.dispatchSaveFailed": "openswarm の依頼を保存できませんでした。",
+  "error.backend.dispatchApprovalDenied": "このコード送信は却被されました。何も開始されていません。",
+  "error.backend.dispatchApprovalMissing": "このコード送信には承認がありません。何も開始されていません。",
   "error.backend.eventsUnavailable": "このホストではイベントを利用できません。",
   "error.backend.databaseIntegrity": "OpenBot のデータベースが整合性チェックに失敗しました。",
   "error.backend.webhookRouteLimit": "1 つのホストの Webhook ルーティンは最大 {limit} 個です。",
@@ -334,4 +350,18 @@ export const messages = {
   "error.backend.agentControlChain":
     "チームメイトに中断されてこのターンが始まりました。別のエージェントを中断する前にこのターンを終えてください。あなたのメッセージはそのキューで待ちます。",
   "error.backend.taskStartFailed": "OpenBot はタスクを開始できませんでした。代わりにこのターンで作業してください。",
+  "error.backend.requestedPathNotFile": "指定されたパスはファイルではありません。",
+  "error.backend.sunshinePortsNotAllocated": "Sunshine のポートはまだ確保されていません。",
+  "error.backend.moonlightPortNotAllocated": "Moonlight のポートはまだ確保されていません。",
+  "error.backend.moonlightPortsNotAllocated": "Moonlight のポートはまだ確保されていません。",
+  "error.backend.remoteDesktopExitedDuringPairing": "リモートデスクトップのプロセスがペアリング中に終了しました。",
+  "error.backend.browserUploadInputLimit": "ブラウザーのタブは最大 {n} 件の入力分のファイルを保持できます。",
+  "error.backend.browserUploadTabLimit": "ブラウザーのタブは最大 {n} バイトのアップロードを保持できます。",
+  "error.backend.browserUploadTotalLimit": "ブラウザーのアップロードは合計で最大 {n} バイトを保持できます。",
+  "error.backend.generatedImageMissing": "画像生成は画像を返しませんでした。",
+  "error.backend.channelAssignmentInactive": "チャンネル割り当てはすでに有効ではありません。",
+  "error.backend.channelAttachmentNotFound": "このチャンネルに添付ファイルが見つかりません。",
+  "error.backend.routineHandoffDeliveryFailed": "ルーティンの引き継ぎ配信を作成できませんでした。",
+  "error.backend.routineDeliveryNotCreated": "ルーティンの配信を作成できませんでした。",
+  "error.backend.routineRunGone": "ルーティンの実行はもう存在しません。",
 } as const satisfies PartialTranslation<typeof source>;

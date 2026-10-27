@@ -73,4 +73,7 @@ export const messages = {
     "{name}: i valori che possono contenere un segreto sono stati rimossi dagli argomenti o dall'indirizzo. Inseriscili di nuovo nelle Impostazioni.",
   "error.import.transferSharedKept":
     "{number} file della cartella condivisa sono già presenti qui, quindi restano come sono.",
+  "error.import.uploadsUnavailable": "I caricamenti per l’importazione di agenti non sono disponibili.",
+  "error.import.transferUploadsUnavailable": "I caricamenti per il trasferimento dell’istanza non sono disponibili.",
+  "error.import.failed": "L’importazione non è riuscita.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -28,4 +28,10 @@ export const messages = {
   "error.update.remoteDisabled": "Aktualisierungen durch Serveradministratoren sind auf diesem Computer deaktiviert.",
   "error.update.restartStarted": "OpenBot startet bereits zur Installation der Aktualisierung neu.",
   "error.update.alreadyRestarting": "OpenBot startet bereits neu.",
+  "error.update.downloadCancelled": "Der Download wurde abgebrochen.",
+  "error.update.noStagedRelease": "Der Server hat keine Version bereitgestellt.",
+  "error.update.feedUnavailable": "Versionsfeed nicht verfügbar",
+  "error.update.feedTooLarge": "Versionsfeed zu groß",
+  "error.update.noCompatibleRelease": "Keine kompatible Version",
+  "error.update.noReleaseForMachine": "Keine Version für diesen Computer",
 } as const satisfies PartialTranslation<typeof source>;

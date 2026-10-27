@@ -123,4 +123,11 @@ export const messages = {
   "error.team.signInRelayUsed": "To logowanie zostało już wysłane.",
   "error.team.signInRelayMismatch": "Ten adres nie pochodzi z tego logowania.",
   "error.team.signInRelayLinkUnknown": "Żaden agent na tym serwerze nie pokazał tego linku logowania.",
+  "error.team.directMessagesDisabled": "Wiadomości bezpośrednie nie są włączone dla tego klienta.",
+  "error.team.typingAgentRequired": "Stan pisania wymaga prawidłowego agenta.",
+  "error.team.runtimeSnapshotUnsupported":
+    "Migawki środowiska uruchomieniowego nie są obsługiwane w protokole Team v1.",
+  "error.team.directMessagesUnavailable": "Wiadomości bezpośrednie są niedostępne.",
+  "error.team.providerUnknown": "Nieznany dostawca.",
+  "error.team.logoVersionChanged": "Wersja logo serwera nie jest aktualna.",
 } as const satisfies PartialTranslation<typeof source>;

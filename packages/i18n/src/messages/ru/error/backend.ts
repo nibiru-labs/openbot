@@ -2,12 +2,28 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/backend";
 
 export const messages = {
+  "error.backend.dispatchCommand":
+    "Не удалось выполнить запрос openswarm. Проверьте настройки исполнителя и состояние запуска перед повторной попыткой.",
+  "error.backend.dispatchOwnChat": "Отправляйте работу над кодом только из своего чата.",
+  "error.backend.dispatchLaneOptions":
+    "Lane использует настроенные для неё backend и модель. Не указывайте backend и модель, когда выбираете lane.",
+  "error.backend.dispatchUnknown": "Этот чат не относится к данному запуску кода.",
+  "error.backend.dispatchHostRequired":
+    "Этот ID имеют несколько запусков кода. Укажите хост, возвращённый dispatch_work.",
+  "error.backend.dispatchVerifyWorkspace":
+    "Команда проверки выполняется на хосте-исполнителе, за пределами ограничения рабочего пространства этого агента. Агент в режиме «Только рабочее пространство» не может задать проверку.",
+  "error.backend.dispatchExecutorWorkspace":
+    "Агент в режиме «Только рабочее пространство» может использовать только исполнитель Codex, потому что другие исполнители не ограничивают, куда они пишут. Не указывайте lane и backend.",
+  "error.backend.dispatchRepository":
+    "Укажите в openswarm fleet.json совпадающие пути к репозиториям локально и на исполнителе.",
   "error.backend.dispatchSpawnFailed": "Не удалось запустить openswarm.",
   "error.backend.dispatchExitCode": "openswarm завершился с кодом {code}.",
   "error.backend.dispatchExited": "openswarm остановился до возврата результата.",
   "error.backend.dispatchTimeout": "openswarm не ответил за отведённое время.",
   "error.backend.dispatchOutputUnreadable": "Не удалось прочитать вывод openswarm.",
   "error.backend.dispatchSaveFailed": "Не удалось сохранить запрос openswarm.",
+  "error.backend.dispatchApprovalDenied": "Человек отклонил эту отправку кода. Ничего не запущено.",
+  "error.backend.dispatchApprovalMissing": "У этой отправки кода нет подтверждения. Ничего не запущено.",
   "error.backend.eventsUnavailable": "События недоступны на этом хосте.",
   "error.backend.databaseIntegrity": "База данных OpenBot не прошла проверку целостности.",
   "error.backend.webhookRouteLimit": "На хосте может быть не более {limit} регулярных задач с вебхуком.",
@@ -323,4 +339,18 @@ export const messages = {
   "error.backend.agentControlChain":
     "Этот ход начался из-за того, что вас прервал коллега. Завершите его, прежде чем прерывать другого агента. Ваше сообщение ждёт в его очереди.",
   "error.backend.taskStartFailed": "OpenBot не удалось запустить задачу. Выполните работу в этом ходе.",
+  "error.backend.requestedPathNotFile": "Запрошенный путь не является файлом.",
+  "error.backend.sunshinePortsNotAllocated": "Порты Sunshine ещё не выделены.",
+  "error.backend.moonlightPortNotAllocated": "Порт Moonlight ещё не выделен.",
+  "error.backend.moonlightPortsNotAllocated": "Порты Moonlight ещё не выделены.",
+  "error.backend.remoteDesktopExitedDuringPairing": "Процесс удалённого рабочего стола завершился во время сопряжения.",
+  "error.backend.browserUploadInputLimit": "Вкладка браузера может удерживать файлы для до {n} полей ввода.",
+  "error.backend.browserUploadTabLimit": "Вкладка браузера может удерживать до {n} байт загрузки.",
+  "error.backend.browserUploadTotalLimit": "Загрузки в браузере могут удерживать всего до {n} байт.",
+  "error.backend.generatedImageMissing": "Генерация изображения не вернула изображение.",
+  "error.backend.channelAssignmentInactive": "Назначение канала больше не активно.",
+  "error.backend.channelAttachmentNotFound": "Вложение не найдено в этом канале.",
+  "error.backend.routineHandoffDeliveryFailed": "Не удалось создать доставку передачи работы регулярной задачи.",
+  "error.backend.routineDeliveryNotCreated": "Не удалось создать доставку регулярной задачи.",
+  "error.backend.routineRunGone": "Запуск регулярной задачи больше не существует.",
 } as const satisfies PartialTranslation<typeof source>;

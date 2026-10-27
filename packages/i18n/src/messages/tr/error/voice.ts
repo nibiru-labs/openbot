@@ -21,4 +21,5 @@ export const messages = {
   "error.voice.cloud.streamEnded": "Dikte aktarımı sona erdi. Yeniden kaydedin.",
   "error.voice.cloud.tooLong": "Kayıt çok uzun.",
   "error.voice.cloud.keySaveFailed": "ElevenLabs API anahtarı kaydedilemedi.",
+  "error.voice.transcriptTooLong": "Ses dökümü çok uzun.",
 } as const satisfies PartialTranslation<typeof source>;

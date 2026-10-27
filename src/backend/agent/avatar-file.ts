@@ -2,11 +2,11 @@ import { open } from "node:fs/promises";
 import { resolve } from "node:path";
 import { AVATAR_MIME_TYPES, isValidAvatarImage } from "@openbot/contracts/avatar-images";
 import { AVATAR_IMAGE_LIMITS } from "@openbot/contracts/input-limits";
+import { sourceText } from "@openbot/i18n/source";
 import { Effect, Schema, Stream } from "effect";
 import { causeHelpers } from "../effect-boundary";
 
-const SIZE_ERROR =
-  "The avatar exceeds 512 KB. Resize or compress a copy with your available tools, then retry with its path.";
+const SIZE_ERROR = sourceText("error.agent.avatarTooLarge");
 
 class AvatarFileFailed extends Schema.TaggedError<AvatarFileFailed>()("AvatarFileFailed", {
   cause: Schema.Defect(),
@@ -17,8 +17,7 @@ const { io: avatarIo } = causeHelpers(AvatarFileFailed);
 export const loadAvatarFile = Effect.fn("AvatarFile.load")(function* (path: string, workspacePath: string) {
   const source = yield* readSource(resolve(workspacePath, path));
   const mimeType = AVATAR_MIME_TYPES.find((type) => isValidAvatarImage(type, source));
-  if (!mimeType)
-    return yield* new AvatarFileFailed({ cause: new Error("Choose a valid PNG, JPEG, or WebP avatar image.") });
+  if (!mimeType) return yield* new AvatarFileFailed({ cause: new Error(sourceText("error.agent.avatarType")) });
   return { mimeType, bytes: source };
 });
 
@@ -28,7 +27,7 @@ const readSource = Effect.fn("AvatarFile.readSource")((path: string) =>
       Effect.mapError(
         () =>
           new AvatarFileFailed({
-            cause: new Error("OpenBot could not open the avatar file. Use an existing local image path."),
+            cause: new Error(sourceText("error.agent.avatarUnreadable")),
           }),
       ),
     ),
@@ -36,7 +35,7 @@ const readSource = Effect.fn("AvatarFile.readSource")((path: string) =>
       Effect.gen(function* () {
         const metadata = yield* avatarIo(() => file.stat());
         if (!metadata.isFile())
-          return yield* new AvatarFileFailed({ cause: new Error("The avatar path must refer to a regular file.") });
+          return yield* new AvatarFileFailed({ cause: new Error(sourceText("error.agent.avatarNotRegularFile")) });
         if (metadata.size > AVATAR_IMAGE_LIMITS.storedBytes)
           return yield* new AvatarFileFailed({ cause: new Error(SIZE_ERROR) });
         const chunks: Buffer[] = [];

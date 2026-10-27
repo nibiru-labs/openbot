@@ -26,4 +26,8 @@ export const messages = defineMessages("error.site", {
   "error.site.fileType": "This file type is not allowed: {path}",
   "error.site.fileOutsideRoot": "Site files must stay inside the source root: {path}",
   "error.site.fileTooLarge": "A file exceeds the 1 MB limit: {path}",
+  "error.site.listInvalid": "The host returned an invalid site list.",
+  "error.site.listResponseInvalid": "The site list response is invalid.",
+  "error.site.hostingUnavailable": "OpenBot site hosting is unavailable.",
+  "error.site.hostedSiteNotFound": "The hosted site was not found.",
 });

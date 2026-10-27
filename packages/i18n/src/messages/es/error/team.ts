@@ -125,4 +125,10 @@ export const messages = {
   "error.team.signInRelayUsed": "Este inicio de sesión ya se envió.",
   "error.team.signInRelayMismatch": "Esta dirección no es de este inicio de sesión.",
   "error.team.signInRelayLinkUnknown": "Ningún agente de este servidor mostró este enlace de inicio de sesión.",
+  "error.team.directMessagesDisabled": "Los mensajes directos no están activados para este cliente.",
+  "error.team.typingAgentRequired": "Se necesita un agente válido para el estado de escritura.",
+  "error.team.runtimeSnapshotUnsupported": "El protocolo de equipo v1 no admite instantáneas de ejecución.",
+  "error.team.directMessagesUnavailable": "Los mensajes directos no están disponibles.",
+  "error.team.providerUnknown": "Proveedor desconocido.",
+  "error.team.logoVersionChanged": "La versión del logotipo del servidor no está al día.",
 } as const satisfies PartialTranslation<typeof source>;

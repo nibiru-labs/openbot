@@ -123,4 +123,19 @@ export const messages = defineMessages("error.agent", {
   "error.agent.screenCaptureEmptyWindows":
     "Windows gave an empty image. Ask the user to unlock the computer and close protected content. A policy of the organization can also stop screen capture.",
   "error.agent.screenCaptureFailed": "The screen capture failed. Try again.",
+  "error.agent.duplicationOtherSource": "This agent duplication operation belongs to another source agent.",
+  "error.agent.duplicationNotPending": "This agent duplication is not pending.",
+  "error.agent.duplicationUnavailable": "This agent duplication operation is unavailable.",
+  "error.agent.emojiInvalid": "Invalid emoji.",
+  "error.agent.avatarTooLarge":
+    "The avatar exceeds 512 KB. Resize or compress a copy with your available tools, then retry with its path.",
+  "error.agent.avatarType": "Choose a valid PNG, JPEG, or WebP avatar image.",
+  "error.agent.avatarUnreadable": "OpenBot could not open the avatar file. Use an existing local image path.",
+  "error.agent.avatarNotRegularFile": "The avatar path must refer to a regular file.",
+  "error.agent.nameRequired": "Agent name is required.",
+  "error.agent.nameTooLong": "Agent name is too long.",
+  "error.agent.descriptionTooLong": "Agent description is too long.",
+  "error.agent.titleTooLong": "Agent title is too long.",
+  "error.agent.usageNotSaved": "Usage data could not be saved.",
+  "error.agent.providerChangeNotAtomic": "Changing provider requires an atomic provider and model selection.",
 });

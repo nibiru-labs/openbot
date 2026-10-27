@@ -75,6 +75,8 @@ export const messages = {
   "chat.marker.openRoutine": "Ouvrir la routine {name}",
   "chat.marker.unavailable": "Indisponible",
   "chat.marker.contextReset": "Nouvelle discussion commencée",
+  "chat.marker.pause.continue": "Continuer",
+  "chat.marker.pause.continued": "Reprise",
   "chat.usageLimit.title": "Limite d’utilisation de {provider} atteinte",
   "chat.usageLimit.onHold": "Message en attente",
   "chat.usageLimit.bodyReset":

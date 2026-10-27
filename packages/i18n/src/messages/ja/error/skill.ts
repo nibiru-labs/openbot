@@ -59,4 +59,6 @@ export const messages = {
   "error.skill.pathSymlink": "スキルのパスにシンボリックリンクを含めることはできません。",
   "error.skill.folderNotRead":
     "{provider} は {folder} を読み込みません。このフォルダーを {target} にコピーしてください。",
+  "error.skill.localChanged": "スキルが変更されました。改訂する前に最新版を読んでください。",
+  "error.skill.archiveLimitsExceeded": "アーカイブの上限を超えました。",
 } as const satisfies PartialTranslation<typeof source>;

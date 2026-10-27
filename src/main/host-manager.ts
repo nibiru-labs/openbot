@@ -261,14 +261,15 @@ export class HostManager {
       Effect.mapError(({ cause }) => new HostMaintenanceError({ cause })),
     );
     if (!currentConfig?.managed || JSON.stringify(currentConfig.tenants) !== JSON.stringify(config.tenants)) {
-      return yield* new HostMaintenanceError({ cause: new Error("Host configuration changed during maintenance.") });
+      return yield* new HostMaintenanceError({ cause: new Error(sourceText("error.host.maintenanceConfigChanged")) });
     }
     const version = this.#state.version;
-    if (!version) return yield* new HostMaintenanceError({ cause: new Error("Missing staged release.") });
+    if (!version)
+      return yield* new HostMaintenanceError({ cause: new Error(sourceText("error.host.maintenanceMissingRelease")) });
     yield* this.#publishEffect("installing");
     yield* HostInstallation.use((service) => service.install(version));
     if ((yield* HostInstallation.use((service) => service.installedVersion())) !== version)
-      return yield* new HostMaintenanceError({ cause: new Error("Installed version mismatch.") });
+      return yield* new HostMaintenanceError({ cause: new Error(sourceText("error.host.maintenanceVersionMismatch")) });
     yield* this.#publishEffect("released");
   });
 

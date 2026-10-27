@@ -123,4 +123,5 @@ export const messages = {
   "composer.context.noAuto": "Этот агент не сжимает свой контекст.",
   "composer.context.lastCompaction": "Последнее сжатие: {before} → {after} токенов",
   "composer.compaction.elapsed": "{minutes}:{seconds}",
+  "composer.mcp.unnamedServer": "Сервер MCP",
 } as const satisfies PartialTranslation<typeof source>;

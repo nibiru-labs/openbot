@@ -55,4 +55,6 @@ export const messages = {
   "error.skill.localMissingSkillFile": "La cartella della skill richiede SKILL.md nella radice.",
   "error.skill.pathSymlink": "I percorsi delle skill non possono contenere link simbolici.",
   "error.skill.folderNotRead": "{provider} non legge {folder}. Copia questa cartella in {target}.",
+  "error.skill.localChanged": "La skill è cambiata. Leggi l’ultima revisione prima di revisionarla.",
+  "error.skill.archiveLimitsExceeded": "I limiti dell’archivio sono superati.",
 } as const satisfies PartialTranslation<typeof source>;

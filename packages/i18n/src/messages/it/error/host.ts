@@ -29,4 +29,9 @@ export const messages = {
     "L'arresto dei tenant è scaduto. Non è stata avviata nessuna sostituzione dell'applicazione.",
   "error.host.tenantHealthMissing":
     "I report di salute dei tenant mancano o non sono in buono stato dopo il riavvio. Controlla le sessioni dei tenant prima di un altro aggiornamento.",
+  "error.host.nameBeforeDevelopment": "Assegna un nome a questo OpenBot prima di avviare lo sviluppo locale.",
+  "error.host.developmentNotReady": "L’host di sviluppo locale non è pronto.",
+  "error.host.maintenanceConfigChanged": "La configurazione dell’host è cambiata durante la manutenzione.",
+  "error.host.maintenanceMissingRelease": "Rilascio preparato mancante.",
+  "error.host.maintenanceVersionMismatch": "La versione installata non corrisponde.",
 } as const satisfies PartialTranslation<typeof source>;

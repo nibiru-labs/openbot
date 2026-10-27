@@ -26,4 +26,8 @@ export const messages = {
   "error.site.fileType": "Ten typ pliku nie jest dozwolony: {path}",
   "error.site.fileOutsideRoot": "Pliki witryny muszą pozostać w katalogu źródłowym: {path}",
   "error.site.fileTooLarge": "Plik przekracza limit 1 MB: {path}",
+  "error.site.listInvalid": "Host zwrócił nieprawidłową listę witryn.",
+  "error.site.listResponseInvalid": "Odpowiedź z listą witryn jest nieprawidłowa.",
+  "error.site.hostingUnavailable": "Hosting witryn OpenBot jest niedostępny.",
+  "error.site.hostedSiteNotFound": "Nie znaleziono hostowanej witryny.",
 } as const satisfies PartialTranslation<typeof source>;

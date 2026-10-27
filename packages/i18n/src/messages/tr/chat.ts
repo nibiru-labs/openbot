@@ -78,6 +78,8 @@ export const messages = {
   "chat.marker.openRoutine": "{name} rutinini aç",
   "chat.marker.unavailable": "Kullanılamıyor",
   "chat.marker.contextReset": "Yeni sohbet başlatıldı",
+  "chat.marker.pause.continue": "Devam et",
+  "chat.marker.pause.continued": "Sürdürüldü",
   "chat.usageLimit.title": "{provider} kullanım sınırına ulaşıldı",
   "chat.usageLimit.onHold": "Mesaj beklemede",
   "chat.usageLimit.bodyReset":

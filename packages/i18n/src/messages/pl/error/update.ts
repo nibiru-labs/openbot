@@ -27,4 +27,10 @@ export const messages = {
   "error.update.remoteDisabled": "Aktualizacje od administratorów serwera są wyłączone na tym komputerze.",
   "error.update.restartStarted": "OpenBot już uruchamia się ponownie, aby zainstalować aktualizację.",
   "error.update.alreadyRestarting": "OpenBot już uruchamia się ponownie.",
+  "error.update.downloadCancelled": "Pobieranie zostało anulowane.",
+  "error.update.noStagedRelease": "Serwer nie przygotował żadnej wersji.",
+  "error.update.feedUnavailable": "Kanał wersji jest niedostępny",
+  "error.update.feedTooLarge": "Kanał wersji jest za duży",
+  "error.update.noCompatibleRelease": "Brak zgodnej wersji",
+  "error.update.noReleaseForMachine": "Brak wersji dla tej maszyny",
 } as const satisfies PartialTranslation<typeof source>;

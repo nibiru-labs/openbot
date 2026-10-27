@@ -129,4 +129,10 @@ export const messages = {
   "error.team.signInRelayUsed": "Questo accesso è già stato inviato.",
   "error.team.signInRelayMismatch": "Questo indirizzo non appartiene a questo accesso.",
   "error.team.signInRelayLinkUnknown": "Nessun agente su questo server ha mostrato questo link di accesso.",
+  "error.team.directMessagesDisabled": "I messaggi diretti non sono attivi per questo client.",
+  "error.team.typingAgentRequired": "Per lo stato di digitazione serve un agente valido.",
+  "error.team.runtimeSnapshotUnsupported": "Gli snapshot del runtime non sono supportati dal protocollo Team v1.",
+  "error.team.directMessagesUnavailable": "I messaggi diretti non sono disponibili.",
+  "error.team.providerUnknown": "Provider sconosciuto.",
+  "error.team.logoVersionChanged": "La versione del logo del server non è aggiornata.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -6,6 +6,7 @@ import {
   type TeamPresenceSnapshot,
   type UpdateStatus,
 } from "@openbot/contracts/ipc";
+import { currentText } from "@openbot/ui/text";
 
 /**
  * What the renderer shows before main has answered, and what it falls back to
@@ -26,7 +27,10 @@ export const FALLBACK_STATUS: AgentStatus = {
     browser: "unavailable",
     computerUse: "unavailable",
   },
-  message: "Starting local agent CLIs…",
+  /** Read when the status is read, so the text follows the language the reader chose. */
+  get message() {
+    return currentText().t("status.agent.starting");
+  },
   fullAccess: true,
 };
 

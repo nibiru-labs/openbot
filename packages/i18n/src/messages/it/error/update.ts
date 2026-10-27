@@ -28,4 +28,10 @@ export const messages = {
     "Gli aggiornamenti dagli amministratori del server sono disattivati su questo computer.",
   "error.update.restartStarted": "OpenBot si sta già riavviando per installare l'aggiornamento.",
   "error.update.alreadyRestarting": "OpenBot si sta già riavviando.",
+  "error.update.downloadCancelled": "Il download è stato annullato.",
+  "error.update.noStagedRelease": "Il server non ha preparato nessuna versione.",
+  "error.update.feedUnavailable": "Feed delle versioni non disponibile",
+  "error.update.feedTooLarge": "Feed delle versioni troppo grande",
+  "error.update.noCompatibleRelease": "Nessuna versione compatibile",
+  "error.update.noReleaseForMachine": "Nessuna versione per questa macchina",
 } as const satisfies PartialTranslation<typeof source>;

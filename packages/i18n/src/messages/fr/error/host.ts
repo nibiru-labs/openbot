@@ -30,4 +30,9 @@ export const messages = {
     "L’arrêt des locataires a expiré. Aucun remplacement de l’application n’a démarré.",
   "error.host.tenantHealthMissing":
     "Les rapports d’état des locataires sont absents ou signalent un problème après le redémarrage. Examinez les sessions des locataires avant une autre mise à jour.",
+  "error.host.nameBeforeDevelopment": "Donnez un nom à cet OpenBot avant de lancer le développement local.",
+  "error.host.developmentNotReady": "L’hôte de développement local n’est pas prêt.",
+  "error.host.maintenanceConfigChanged": "La configuration de l’hôte a changé pendant la maintenance.",
+  "error.host.maintenanceMissingRelease": "Version préparée manquante.",
+  "error.host.maintenanceVersionMismatch": "La version installée ne correspond pas.",
 } as const satisfies PartialTranslation<typeof source>;

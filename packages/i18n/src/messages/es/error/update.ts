@@ -29,4 +29,10 @@ export const messages = {
     "Las actualizaciones por parte de administradores del servidor están desactivadas en este equipo.",
   "error.update.restartStarted": "OpenBot ya se está reiniciando para instalar la actualización.",
   "error.update.alreadyRestarting": "OpenBot ya se está reiniciando.",
+  "error.update.downloadCancelled": "Se canceló la descarga.",
+  "error.update.noStagedRelease": "El servidor no preparó ninguna versión.",
+  "error.update.feedUnavailable": "Canal de versiones no disponible",
+  "error.update.feedTooLarge": "Canal de versiones demasiado grande",
+  "error.update.noCompatibleRelease": "No hay ninguna versión compatible",
+  "error.update.noReleaseForMachine": "No hay ninguna versión para este equipo",
 } as const satisfies PartialTranslation<typeof source>;

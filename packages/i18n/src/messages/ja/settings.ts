@@ -47,6 +47,14 @@ export const messages = {
     "新しいメッセージはキューに入らず、エージェントの現在の作業に加わります。ChatGPT と Claude で使えます。",
   "settings.agentMemoryLimit.title": "エージェントごとのメモリー数",
   "settings.agentMemoryLimit.description": "このコンピューターの各エージェントが保存できるメモリーの数です。",
+  "settings.tokenBudget.hour.title": "1 時間あたりのトークン上限",
+  "settings.tokenBudget.hour.description":
+    "この上限に達すると、続けるまでエージェントは新しい作業を開始しません。実行中の作業はそのまま続きます。",
+  "settings.tokenBudget.turn.title": "1 ターンあたりのトークン上限",
+  "settings.tokenBudget.turn.description":
+    "この上限を超えたターンは、現在の手順の後に停止します。作業内容は保持され、続けることができます。",
+  "settings.tokenBudget.unlimited": "上限なし",
+  "settings.tokenBudget.option": "{amount} トークン",
   "settings.keepRemoteSessions.title": "サーバーへの高速接続",
   "settings.keepRemoteSessions.description":
     "参加しているサーバーへの接続を起動の間も維持します。OpenBot の起動が約 1 秒速くなります。OpenBot を終了しても、OpenBot サービスは接続を閉じません。",

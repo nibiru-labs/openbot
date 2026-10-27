@@ -1,5 +1,6 @@
 import { ATTACHMENT_LIMITS } from "@openbot/contracts/input-limits";
 import { type ConversationMessage, isImageGenerationAspectRatio } from "@openbot/contracts/ipc";
+import { sourceText } from "@openbot/i18n/source";
 import { getRecord, getString, type ThreadItem } from "../protocol";
 
 export function isImageGenerationItem(item: ThreadItem): boolean {
@@ -25,7 +26,7 @@ export function decodeGeneratedImage(value: string): Uint8Array {
   const payload = value.match(/^data:[^,]+,([\s\S]*)$/)?.[1] ?? value;
   const maxEncodedBytes = Math.ceil((ATTACHMENT_LIMITS.fileBytes * 4) / 3) + 8;
   if (payload.length > maxEncodedBytes || payload.length % 4 === 1) {
-    throw new Error("Generated image exceeds the 100 MB limit.");
+    throw new Error(sourceText("error.backend.generatedImageTooLarge"));
   }
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) {
     throw new Error("Generated image data is invalid.");
@@ -47,7 +48,7 @@ export function markIncompleteImageGeneration(
     return;
   }
   if (!message.attachments?.length) {
-    message.imageGeneration.error ??= "Image generation did not return an image.";
+    message.imageGeneration.error ??= sourceText("error.backend.generatedImageMissing");
     if (status === "completed") message.status = "failed";
   }
 }

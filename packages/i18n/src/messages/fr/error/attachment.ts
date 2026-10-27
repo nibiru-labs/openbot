@@ -13,4 +13,7 @@ export const messages = {
   "error.attachment.emlUnsupported":
     "Ce serveur ne prend pas en charge les pièces jointes EML. Mettez à jour OpenBot sur l’hôte, puis réessayez.",
   "error.attachment.previewTooLarge": "Le fichier dépasse la limite de 100 Mo.",
+  "error.attachment.notPrepared": "La pièce jointe n’a pas été préparée.",
+  "error.attachment.namedFileTooLarge": "« {name} » dépasse la limite de 100 Mo.",
+  "error.attachment.notAvailable": "La pièce jointe est indisponible.",
 } as const satisfies PartialTranslation<typeof source>;

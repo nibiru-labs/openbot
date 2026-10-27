@@ -21,6 +21,7 @@ export const messages = {
   "app.errorStatus.reorder": "Nie udało się zmienić kolejności kolejki",
   "app.errorStatus.queuePause": "Nie udało się wstrzymać ani wznowić kolejki",
   "app.errorStatus.runNow": "Nie udało się teraz uruchomić wiadomości",
+  "app.errorStatus.continuePause": "Nie udało się wznowić agenta",
   "app.errorStatus.stop": "Nie udało się zatrzymać agenta",
   "app.errorStatus.messageLoad": "Nie udało się wczytać wiadomości",
   "app.errorStatus.acknowledge": "Nie udało się zamknąć powiadomienia o błędzie",

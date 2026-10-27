@@ -328,4 +328,18 @@ export const messages = defineMessages("error.backend", {
   "error.backend.agentControlChain":
     "This turn started because a teammate interrupted you. Finish it before you interrupt another agent. Your message waits in its queue.",
   "error.backend.taskStartFailed": "OpenBot could not start the task. Do the work in this turn instead.",
+  "error.backend.requestedPathNotFile": "The requested path is not a file.",
+  "error.backend.sunshinePortsNotAllocated": "Sunshine ports have not been allocated yet.",
+  "error.backend.moonlightPortNotAllocated": "Moonlight port has not been allocated yet.",
+  "error.backend.moonlightPortsNotAllocated": "Moonlight ports have not been allocated yet.",
+  "error.backend.remoteDesktopExitedDuringPairing": "A remote desktop process exited during pairing.",
+  "error.backend.browserUploadInputLimit": "A browser tab can retain files for up to {n} inputs.",
+  "error.backend.browserUploadTabLimit": "A browser tab can retain up to {n} upload bytes.",
+  "error.backend.browserUploadTotalLimit": "Browser uploads can retain up to {n} bytes in total.",
+  "error.backend.generatedImageMissing": "Image generation did not return an image.",
+  "error.backend.channelAssignmentInactive": "The channel assignment is no longer active.",
+  "error.backend.channelAttachmentNotFound": "Attachment not found in this channel.",
+  "error.backend.routineHandoffDeliveryFailed": "Unable to create the routine handoff delivery.",
+  "error.backend.routineDeliveryNotCreated": "Unable to create the routine delivery.",
+  "error.backend.routineRunGone": "The routine run no longer exists.",
 });

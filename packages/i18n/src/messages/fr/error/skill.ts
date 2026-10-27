@@ -61,4 +61,6 @@ export const messages = {
   "error.skill.localMissingSkillFile": "Le dossier de la compétence doit contenir SKILL.md à sa racine.",
   "error.skill.pathSymlink": "Les chemins des compétences ne peuvent pas contenir de liens symboliques.",
   "error.skill.folderNotRead": "{provider} ne lit pas {folder}. Copiez ce dossier dans {target}.",
+  "error.skill.localChanged": "La compétence a changé. Lisez sa dernière révision avant de la réviser.",
+  "error.skill.archiveLimitsExceeded": "Les limites de l’archive sont dépassées.",
 } as const satisfies PartialTranslation<typeof source>;

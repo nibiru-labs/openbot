@@ -122,7 +122,7 @@ export class LocalSkillLibrary {
         const current = yield* this.get(id);
         if (current.version !== expectedRevision)
           return yield* new LocalSkillFailure({
-            cause: new Error("The skill changed. Read its latest revision before revising it."),
+            cause: new Error(sourceText("error.skill.localChanged")),
           });
         const bytes = yield* this.sourceEffect(agentId, sourcePath);
         if ((yield* localSync(() => inspectArchive(bytes))).slug !== current.slug)

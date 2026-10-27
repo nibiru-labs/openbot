@@ -12,4 +12,7 @@ export const messages = {
   "error.app.remoteIdentityUnavailable": "L’identité de l’hôte distant n’est pas disponible.",
   "error.app.iceServersMissing": "Remote Signal n’a pas encore fourni de serveurs ICE.",
   "error.app.finishLocalTest": "Terminez le test local avant de changer d’écran.",
+  "error.app.hostedServerSecretStorageUnavailable":
+    "Le serveur hébergé n’a pas de stockage de secrets pour sa session.",
+  "error.app.automationBindFailed": "Impossible de lier le serveur d’automatisation.",
 } as const satisfies PartialTranslation<typeof source>;

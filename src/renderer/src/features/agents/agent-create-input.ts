@@ -1,5 +1,6 @@
 import type { CreateAgentInput } from "@openbot/contracts/ipc";
 import type { FirstAgentDraft } from "@openbot/ui/features/agents/FirstAgentSetup";
+import { currentText } from "@openbot/ui/text";
 import { createAgentInitialMessage } from "./agent-initial-message";
 
 /** A new agent asked for from a short draft, such as the routine canvas's card. */
@@ -15,7 +16,7 @@ export type NewAgentDraft = Pick<FirstAgentDraft, "name" | "purpose" | "avatarSe
 export function newAgentInput(draft: NewAgentDraft, createModelSupported: boolean): CreateAgentInput {
   return {
     name: draft.name.trim(),
-    description: draft.purpose.trim() || "General-purpose assistant",
+    description: draft.purpose.trim() || currentText().t("agent.description.generalPurpose"),
     avatarSeed: draft.avatarSeed,
     avatarHue: draft.avatarHue,
     ...(createModelSupported && draft.provider && draft.model ? { provider: draft.provider, model: draft.model } : {}),

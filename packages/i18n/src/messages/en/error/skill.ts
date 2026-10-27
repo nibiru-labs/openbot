@@ -55,4 +55,6 @@ export const messages = defineMessages("error.skill", {
   "error.skill.localMissingSkillFile": "The skill folder needs SKILL.md at its root.",
   "error.skill.pathSymlink": "Skill paths cannot contain symbolic links.",
   "error.skill.folderNotRead": "{provider} does not read {folder}. Copy this folder to {target}.",
+  "error.skill.localChanged": "The skill changed. Read its latest revision before revising it.",
+  "error.skill.archiveLimitsExceeded": "Archive limits exceeded.",
 });

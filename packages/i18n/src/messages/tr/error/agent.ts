@@ -124,4 +124,19 @@ export const messages = {
   "error.agent.screenCaptureEmptyWindows":
     "Windows boş bir görüntü verdi. Kullanıcıdan bilgisayarın kilidini açmasını ve korumalı içeriği kapatmasını isteyin. Bir kuruluş ilkesi de ekran yakalamayı engelleyebilir.",
   "error.agent.screenCaptureFailed": "Ekran yakalama başarısız oldu. Tekrar deneyin.",
+  "error.agent.duplicationOtherSource": "Bu ajan kopyalama işlemi başka bir kaynak ajana ait.",
+  "error.agent.duplicationNotPending": "Bu ajan kopyalaması bekleyen bir işlem değil.",
+  "error.agent.duplicationUnavailable": "Bu ajan kopyalama işlemi kullanılamıyor.",
+  "error.agent.emojiInvalid": "Geçersiz emoji.",
+  "error.agent.avatarTooLarge":
+    "Avatar 512 KB sınırını aşıyor. Kopyayı kullanılabilir araçlarla yeniden boyutlandırın veya sıkıştırın, sonra yoluyla tekrar deneyin.",
+  "error.agent.avatarType": "Geçerli bir PNG, JPEG veya WebP avatar görseli seçin.",
+  "error.agent.avatarUnreadable": "OpenBot avatar dosyasını açamadı. Var olan bir yerel görsel yolu kullanın.",
+  "error.agent.avatarNotRegularFile": "Avatar yolu normal bir dosyayı göstermeli.",
+  "error.agent.nameRequired": "Ajan adı zorunludur.",
+  "error.agent.nameTooLong": "Ajan adı çok uzun.",
+  "error.agent.descriptionTooLong": "Ajan açıklaması çok uzun.",
+  "error.agent.titleTooLong": "Ajan başlığı çok uzun.",
+  "error.agent.usageNotSaved": "Kullanım verileri kaydedilemedi.",
+  "error.agent.providerChangeNotAtomic": "Sağlayıcı değiştirmek, sağlayıcı ve modelin birlikte seçilmesini gerektirir.",
 } as const satisfies PartialTranslation<typeof source>;

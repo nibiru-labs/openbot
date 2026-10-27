@@ -71,4 +71,7 @@ export const messages = {
     "{name}: z argumentów lub adresu usunięto wartości, które mogą zawierać sekret. Wpisz je ponownie w Ustawieniach.",
   "error.import.transferSharedKept":
     "Liczba plików z folderu współdzielonego, które już tu są: {number}. Zostają bez zmian.",
+  "error.import.uploadsUnavailable": "Przesyłanie plików przy imporcie agentów jest niedostępne.",
+  "error.import.transferUploadsUnavailable": "Przesyłanie plików przy przenoszeniu instancji jest niedostępne.",
+  "error.import.failed": "Import nie powiódł się.",
 } as const satisfies PartialTranslation<typeof source>;

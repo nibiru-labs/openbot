@@ -383,7 +383,7 @@ export class InstanceTransferService {
     input: ExportInstanceInput,
   ): Effect.fn.Return<string, ArchiveOperationError> {
     const directory = this.options.uploadDirectory;
-    if (!directory) return yield* archiveFailure(new Error("Instance transfer uploads are not available."));
+    if (!directory) return yield* archiveFailure(new Error(sourceText("error.import.transferUploadsUnavailable")));
     yield* this.#prepareUploadDirectory(directory);
     const path = join(directory, `${randomUUID()}.zip`);
     yield* this.exportTo(path, input, REMOTE_ARCHIVE).pipe(
@@ -466,7 +466,7 @@ export class InstanceTransferService {
     owner: string,
   ): Effect.fn.Return<InstanceTransferPreview, ArchiveOperationError> {
     const directory = this.options.uploadDirectory;
-    if (!directory) return yield* archiveFailure(new Error("Instance transfer uploads are not available."));
+    if (!directory) return yield* archiveFailure(new Error(sourceText("error.import.transferUploadsUnavailable")));
     const bytes = yield* archiveCall(() => read());
     yield* this.#prepareUploadDirectory(directory);
     const path = join(directory, `${randomUUID()}.zip`);
@@ -1175,7 +1175,7 @@ function failure(error: unknown): ArchiveOperationError {
 /** A service error keeps the original error as its cause. */
 function causeOf(error: unknown): Error {
   if (error instanceof Error && error.cause instanceof Error) return error.cause;
-  return error instanceof Error ? error : new Error("The import failed.");
+  return error instanceof Error ? error : new Error(sourceText("error.import.failed"));
 }
 
 function bounded(warnings: string[]): string[] {
@@ -1183,6 +1183,6 @@ function bounded(warnings: string[]): string[] {
 }
 
 function message(error: unknown): string {
-  const text = error instanceof Error ? error.message : "The import failed.";
+  const text = error instanceof Error ? error.message : sourceText("error.import.failed");
   return text.slice(0, AGENT_IMPORT_LIMITS.message);
 }

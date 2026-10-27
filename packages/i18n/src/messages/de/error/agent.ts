@@ -145,4 +145,20 @@ export const messages = {
   "error.agent.screenCaptureEmptyWindows":
     "Windows hat ein leeres Bild geliefert. Bitte den Benutzer, den Computer zu entsperren und geschützte Inhalte zu schließen. Auch eine Richtlinie der Organisation kann die Bildschirmaufnahme verhindern.",
   "error.agent.screenCaptureFailed": "Die Bildschirmaufnahme ist fehlgeschlagen. Versuche es erneut.",
+  "error.agent.duplicationOtherSource": "Dieser Dupliziervorgang des Agenten gehört zu einem anderen Quellagenten.",
+  "error.agent.duplicationNotPending": "Diese Duplizierung des Agenten steht nicht aus.",
+  "error.agent.duplicationUnavailable": "Dieser Dupliziervorgang des Agenten ist nicht verfügbar.",
+  "error.agent.emojiInvalid": "Ungültiges Emoji.",
+  "error.agent.avatarTooLarge":
+    "Das Avatarbild überschreitet 512 KB. Skaliere oder komprimiere eine Kopie mit deinen verfügbaren Werkzeugen und versuche es dann erneut mit dem Pfad.",
+  "error.agent.avatarType": "Wähle ein gültiges PNG-, JPEG- oder WebP-Bild als Avatar.",
+  "error.agent.avatarUnreadable":
+    "OpenBot konnte die Avatardatei nicht öffnen. Verwende einen vorhandenen lokalen Bildpfad.",
+  "error.agent.avatarNotRegularFile": "Der Avatarpfad muss auf eine reguläre Datei zeigen.",
+  "error.agent.nameRequired": "Ein Agentenname ist erforderlich.",
+  "error.agent.nameTooLong": "Der Agentenname ist zu lang.",
+  "error.agent.descriptionTooLong": "Die Agentenbeschreibung ist zu lang.",
+  "error.agent.titleTooLong": "Der Agententitel ist zu lang.",
+  "error.agent.usageNotSaved": "Die Nutzungsdaten konnten nicht gespeichert werden.",
+  "error.agent.providerChangeNotAtomic": "Ein Anbieterwechsel braucht eine atomare Auswahl von Anbieter und Modell.",
 } as const satisfies PartialTranslation<typeof source>;

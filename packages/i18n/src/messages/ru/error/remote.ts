@@ -189,4 +189,7 @@ export const messages = {
   "error.remote.remoteNotConfigured": "Удалённые подключения не настроены в этой службе OpenBot.",
   "error.remote.hostRefused": "Хост отклонил запрос ({status}).",
   "error.remote.hostedServerRemoval": "Чтобы удалить размещённый сервер, используйте раздел «Оплата».",
+  "error.remote.hostRequired": "Нужен корректный общедоступный хост.",
+  "error.remote.serverReturnedData": "Удалённый сервер вернул данные.",
+  "error.remote.developmentIdentityChanged": "Изменился идентификатор локального сервера разработки.",
 } as const satisfies PartialTranslation<typeof source>;

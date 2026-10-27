@@ -27,4 +27,9 @@ export const messages = {
   "error.host.tenantShutdownTimeout": "Upłynął limit czasu zamykania tenantów. Nie rozpoczęto zastępowania aplikacji.",
   "error.host.tenantHealthMissing":
     "Po ponownym uruchomieniu brakuje raportów stanu tenantów lub wskazują one problem. Sprawdź sesje tenantów przed kolejną aktualizacją.",
+  "error.host.nameBeforeDevelopment": "Nadaj nazwę temu OpenBot przed uruchomieniem lokalnego rozwoju.",
+  "error.host.developmentNotReady": "Host deweloperski nie jest gotowy.",
+  "error.host.maintenanceConfigChanged": "Konfiguracja hosta zmieniła się podczas konserwacji.",
+  "error.host.maintenanceMissingRelease": "Brak przygotowanej wersji.",
+  "error.host.maintenanceVersionMismatch": "Zainstalowana wersja się nie zgadza.",
 } as const satisfies PartialTranslation<typeof source>;

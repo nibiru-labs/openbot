@@ -116,7 +116,7 @@ export async function routeAgentConversation(
   if (method === "POST" && action === "reactions") {
     const body = await readJson(request);
     const emoji = body.emoji;
-    if (emoji !== null && !isMessageReaction(emoji)) throw new HttpError(400, "Invalid emoji.");
+    if (emoji !== null && !isMessageReaction(emoji)) throw new HttpError(400, sourceText("error.agent.emojiInvalid"));
     requireListedAgent(agents, agentId);
     await runCauseEffect(
       agents.setMessageReaction({

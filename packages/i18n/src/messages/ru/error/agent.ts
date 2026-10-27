@@ -125,4 +125,20 @@ export const messages = {
   "error.agent.screenCaptureEmptyWindows":
     "Windows вернула пустое изображение. Попросите пользователя разблокировать компьютер и закрыть защищённое содержимое. Снимки экрана также может запрещать политика организации.",
   "error.agent.screenCaptureFailed": "Не удалось сделать снимок экрана. Повторите попытку.",
+  "error.agent.duplicationOtherSource": "Эта операция дублирования агента относится к другому исходному агенту.",
+  "error.agent.duplicationNotPending": "Это дублирование агента не ожидает выполнения.",
+  "error.agent.duplicationUnavailable": "Эта операция дублирования агента недоступна.",
+  "error.agent.emojiInvalid": "Недопустимый эмодзи.",
+  "error.agent.avatarTooLarge":
+    "Аватар больше 512 КБ. Уменьшите или сожмите копию доступными средствами, затем повторите попытку с её путём.",
+  "error.agent.avatarType": "Выберите корректное изображение аватара PNG, JPEG или WebP.",
+  "error.agent.avatarUnreadable":
+    "OpenBot не смог открыть файл аватара. Используйте путь к существующему локальному изображению.",
+  "error.agent.avatarNotRegularFile": "Путь аватара должен указывать на обычный файл.",
+  "error.agent.nameRequired": "Имя агента обязательно.",
+  "error.agent.nameTooLong": "Имя агента слишком длинное.",
+  "error.agent.descriptionTooLong": "Описание агента слишком длинное.",
+  "error.agent.titleTooLong": "Заголовок агента слишком длинный.",
+  "error.agent.usageNotSaved": "Не удалось сохранить данные об использовании.",
+  "error.agent.providerChangeNotAtomic": "Смена провайдера требует единого выбора провайдера и модели.",
 } as const satisfies PartialTranslation<typeof source>;

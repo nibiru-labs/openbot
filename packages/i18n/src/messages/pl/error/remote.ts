@@ -188,4 +188,7 @@ export const messages = {
   "error.remote.remoteNotConfigured": "Zdalne połączenia nie są skonfigurowane w tej usłudze OpenBot.",
   "error.remote.hostRefused": "Host odrzucił żądanie ({status}).",
   "error.remote.hostedServerRemoval": "Użyj sekcji Rozliczenia, aby usunąć hostowany serwer.",
+  "error.remote.hostRequired": "Wymagany jest prawidłowy host publiczny.",
+  "error.remote.serverReturnedData": "Zdalny serwer zwrócił dane.",
+  "error.remote.developmentIdentityChanged": "Zmieniła się tożsamość lokalnego serwera deweloperskiego.",
 } as const satisfies PartialTranslation<typeof source>;
