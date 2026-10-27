@@ -1,9 +1,27 @@
 // @vitest-environment node
 
+import type { McpServerConfig } from "@openbot/contracts/ipc";
 import { redactText, registerSecretValue } from "@openbot/logging";
 import { describe, expect, it } from "vitest";
 import { redactAppServerDiagnostic } from "./app-server-client";
+import { mcpSecretValues, redactMcpValues } from "./mcp-redaction";
 import { createDiagnosticStream } from "./stderr-diagnostics";
+
+function httpMcpServer(url: string): McpServerConfig {
+  return {
+    id: "test-mcp",
+    name: "Test MCP",
+    transport: "http",
+    enabled: true,
+    command: "",
+    args: [],
+    env: [],
+    envPassthrough: [],
+    workingDirectory: "",
+    url,
+    headers: [],
+  };
+}
 
 function collect(limit?: number) {
   const messages: string[] = [];
@@ -21,13 +39,36 @@ function collect(limit?: number) {
  * string, and half a record reads as prose that happens to hold a credential.
  */
 describe("stderr diagnostics", () => {
-  it("keeps opaque app-server token masking and applies shared redaction", () => {
+  it("keeps opaque app-server token masking after shared redaction", () => {
     const registered = "custom-provider-secret-273cbf91";
+    const opaqueTokens = "sess-opaque-session-273cbf91 token-opaque-token-273cbf91";
     registerSecretValue(registered);
 
-    expect(redactAppServerDiagnostic(`sess-opaque-session-273cbf91 token-opaque-token-273cbf91 ${registered}`)).toBe(
-      "[redacted] [redacted] [redacted]",
+    expect(redactAppServerDiagnostic(opaqueTokens)).toBe("[redacted] [redacted]");
+
+    const sharedRedacted = redactMcpValues(`${opaqueTokens} ${registered}`, []);
+    expect(redactAppServerDiagnostic(sharedRedacted)).toBe("[redacted] [redacted] [redacted]");
+  });
+
+  it("masks every MCP URL query value before shared redaction", () => {
+    const url = "https://mcp.example.com/mcp?user_id=private-user-42&key=abcdef123456";
+    const message = redactAppServerDiagnostic(
+      redactMcpValues(`ERROR connecting ${url}`, mcpSecretValues([httpMcpServer(url)])),
     );
+
+    expect(message).toBe("ERROR connecting https://mcp.example.com/mcp?•••");
+    expect(message).not.toContain("private-user-42");
+    expect(message).not.toContain("abcdef123456");
+  });
+
+  it("masks a single MCP URL query value", () => {
+    const url = "https://mcp.example.com/mcp?key=abcdef123456";
+    const message = redactAppServerDiagnostic(
+      redactMcpValues(`ERROR connecting ${url}`, mcpSecretValues([httpMcpServer(url)])),
+    );
+
+    expect(message).toBe("ERROR connecting https://mcp.example.com/mcp?•••");
+    expect(message).not.toContain("abcdef123456");
   });
 
   it("redacts a record that arrives in two chunks", () => {

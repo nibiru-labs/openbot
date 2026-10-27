@@ -1,7 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { type DynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-values";
-import { redactText } from "@openbot/logging";
 import { Effect, Fiber } from "effect";
 import { type AgentProvider, RequestTimeoutError } from "./agent-client";
 import { cliSpawnTarget } from "./cli";
@@ -111,7 +110,8 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     // Whole records only. A chunk ends wherever the pipe filled up, and half a record is neither
     // readable nor reliably redactable.
     const diagnostics = createDiagnosticStream({
-      redact: redactAppServerDiagnostic,
+      // The runtime owns MCP values. Keep the full record until its exact-value redactor runs.
+      redact: (message) => message,
       emit: (message) => this.emit("diagnostic", message),
     });
     child.stderr.on("data", (chunk: Buffer) => diagnostics.push(chunk.toString("utf8")));
@@ -480,13 +480,12 @@ function freshCursor(
 }
 
 /**
- * Keep the app server's opaque token shapes, then apply shared rules for registered values and
- * structured credentials. The shared redactor cannot classify every `sess` or `token` value by
- * shape alone.
+ * Keep opaque app-server token shapes that the shared redactor may not classify. The caller applies
+ * this after MCP exact-value masking, so an MCP URL query stays whole until its configured value is
+ * removed.
  */
 export function redactAppServerDiagnostic(message: string): string {
-  const withKnownTokenShapes = message.replace(/(?:sk|sess|Bearer|token)[-_a-zA-Z0-9.=]{8,}/gi, "[redacted]");
-  return redactText(withKnownTokenShapes);
+  return message.replace(/(?:sk|sess|Bearer|token)[-_a-zA-Z0-9.=]{8,}/gi, "[redacted]");
 }
 
 /** Kept inside the adapter; public callers still receive the native protocol error. */
