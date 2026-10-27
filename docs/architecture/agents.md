@@ -44,6 +44,9 @@ Remote runs need matching local and remote repository entries in the openswarm f
 
 `bun scripts/dispatch-approval-e2e.ts` checks the approval gate with the real registry, grant store,
 dispatch service and a local executor stub. It writes `.openbot-build/dispatch-approval-e2e.json`.
+The report lists the M3 approval cases: a risky dispatch that is declined, one that times out with
+nobody answering, one that a standing grant allows, and one that asks again after the grant is
+revoked. Each case checks that only the allowed one starts an executor.
 `bun scripts/dispatch-e2e.ts --agent=<id> --allow-mutations` checks the approval card, executor start,
 result delivery and review in this worktree's running dev app. Use a test agent without an explicit
 auto-approve grant. The test answers the card through the existing approval response API.
