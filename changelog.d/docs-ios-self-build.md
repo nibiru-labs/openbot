@@ -1,3 +1,3 @@
 ### Fixed
 
-- Explain EAS project access and Personal Team provisioning expiry in the iOS self-build guide.
+- Explain iOS team identifiers, EAS authentication and project access, TestFlight distribution, and Personal Team provisioning expiry in the self-build guide.

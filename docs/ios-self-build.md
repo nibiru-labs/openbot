@@ -33,15 +33,22 @@ The default bundle identifier `run.openbot.mobile` requires official project cer
    - `expo-widgets`
    - `./plugins/with-notification-service`
    - `expo-notifications`
+   For a paid Apple Developer team, either make the same removals or register identifiers and capabilities with that team. Changing only the main bundle identifier is not enough. If you keep the extensions, update all of these plugin options in `expo.plugins` to identifiers registered with your team:
+
+   - `./plugins/with-share-target`: `ios.extensionBundleIdentifier` (`run.openbot.mobile.ShareExtension`) and `ios.appGroupId` (`group.run.openbot.mobile`).
+   - `expo-widgets`: `bundleIdentifier` (`run.openbot.mobile.ExpoWidgetsTarget`) and `groupIdentifier` (`group.run.openbot.mobile`).
+   - `./plugins/with-notification-service`: `bundleIdentifier` (`run.openbot.mobile.NotificationService`) and `groupIdentifier` (`group.run.openbot.mobile`).
+
+   Use the same team-registered App Group identifier in all three group options. Register each extension bundle identifier and enable the required capabilities for the app and extensions. Configure or remove Associated Domains and Push Notifications if your team cannot use them.
 4. Regenerate the iOS project so that old extension targets and entitlements do not remain. The clean prebuild deletes and recreates `apps/mobile/ios`; save any native changes first:
    ```bash
    cd apps/mobile
    bunx expo prebuild --platform ios --clean
    cd ../..
    ```
-5. Open `apps/mobile/ios/OpenBot.xcworkspace` in Xcode. Under the app target's **Signing & Capabilities**, select your personal team and remove any remaining capabilities that the team cannot sign, such as App Groups, Associated Domains, or Push Notifications.
+5. Open `apps/mobile/ios/OpenBot.xcworkspace` in Xcode. Under the app target's **Signing & Capabilities**, select your Apple team and remove any remaining capabilities that the team cannot sign, such as App Groups, Associated Domains, or Push Notifications.
 
-These changes disable the share extension, widgets, notification service extension, push notifications, associated links, and any removed capabilities. Changing the extension identifiers alone does not remove their App Group entitlement.
+The Personal Team removals disable the share extension, widgets, notification service extension, push notifications, associated links, and any removed capabilities. Changing the extension identifiers alone does not remove their App Group entitlement.
 
 ## 3. Development Build vs Release Build
 
@@ -72,7 +79,13 @@ For a Personal Team, the provisioning profile expires seven days after it is iss
 
 To create a local production `.ipa` for TestFlight, you need a paid Apple Developer Program membership and access to an EAS project. The checked-in `apps/mobile/app.json` points to the shared OpenBot project through `expo.owner` and `expo.extra.eas.projectId`. A paid Apple membership alone does not give you access to that project.
 
-Choose one of these options before the build:
+Sign in to your Expo account before you initialize a project or build. From `apps/mobile`, run:
+
+```bash
+bunx eas-cli@latest login
+```
+
+See the [EAS CLI reference](https://docs.expo.dev/eas/cli/). Then choose one of these options before the build:
 
 - Get the required access to the existing OpenBot Expo project and its signing credentials from its owner.
 - Use your own Expo account and project. In your local `apps/mobile/app.json`, set `expo.owner` to your Expo account, remove the existing `expo.extra.eas.projectId`, and remove the existing `expo.updates.url` so it does not point to the OpenBot project. From `apps/mobile`, run `bunx eas-cli@latest init` and follow the prompts to create or link your project. See the [EAS CLI reference](https://docs.expo.dev/eas/cli/#eas-projectinit).
@@ -93,7 +106,7 @@ Or from `apps/mobile`:
 bun run ios:build:local
 ```
 
-Upload the resulting `/private/tmp/openbot-testflight.ipa` to App Store Connect, then distribute it through TestFlight. Do not use this store-distribution IPA for direct device installation.
+The resulting `/private/tmp/openbot-testflight.ipa` is a local build artifact, not a TestFlight distribution. Upload it to App Store Connect, wait for Apple to process the build, and grant tester access through TestFlight. These are separate steps from the local build. Do not use this store-distribution IPA for direct device installation.
 
 ## 5. Connect to a Self-Hosted Server
 
