@@ -28,9 +28,14 @@ export type AgentAutoReadEntry =
   | { messageId: string; status: "pending"; optimisticState: ConversationReadState | null }
   | { messageId: string; status: "succeeded"; state: ConversationReadState };
 
+/** A dispatch result delivered through the mailbox is shown by its dispatch status card. */
+export function isDispatchMailboxDelivery(message: { itemType?: string | undefined; delivery?: unknown }): boolean {
+  return message.itemType === "dispatch" && message.delivery !== undefined;
+}
+
 /**
- * Routine, routine-run, hosted-site, model switch and Marketplace suggestion markers are
- * bookkeeping the agent writes about itself, so they never make a conversation
+ * Routine, routine-run, hosted-site, dispatch, model switch and Marketplace suggestion markers are
+ * bookkeeping the agent writes about its own work, so they never make a conversation
  * unread.
  */
 export function isRoutineEventItem(message: { itemType?: string | undefined }): boolean {
@@ -40,6 +45,7 @@ export function isRoutineEventItem(message: { itemType?: string | undefined }): 
     message.itemType?.startsWith(HOSTED_SITE_EVENT_ITEM_TYPE_PREFIX) === true ||
     message.itemType?.startsWith(SKILL_EVENT_ITEM_TYPE_PREFIX) === true ||
     message.itemType?.startsWith(MARKETPLACE_SUGGESTION_ITEM_TYPE_PREFIX) === true ||
+    message.itemType === "dispatch" ||
     message.itemType?.startsWith(MODEL_SWITCH_ITEM_TYPE_PREFIX) === true ||
     message.itemType === CONTEXT_RESET_ITEM_TYPE
   );
@@ -55,7 +61,7 @@ export function isRoutineEventItem(message: { itemType?: string | undefined }): 
  * its own entry point over this one rule rather than a predicate typed loosely
  * enough to accept both and silently take either spelling.
  */
-function isIncoming(message: { itemType?: string | undefined }, fromUser: boolean): boolean {
+function isIncoming(message: { itemType?: string | undefined; delivery?: unknown }, fromUser: boolean): boolean {
   return (
     !fromUser &&
     message.itemType !== "commentary" &&
@@ -64,6 +70,7 @@ function isIncoming(message: { itemType?: string | undefined }, fromUser: boolea
     message.itemType !== AGENT_EXCHANGE_ITEM_TYPE &&
     message.itemType !== "plan" &&
     message.itemType !== ROUTINE_QUIET_ANSWER_ITEM_TYPE &&
+    !isDispatchMailboxDelivery(message) &&
     !isRoutineEventItem(message)
   );
 }
@@ -72,6 +79,7 @@ function isIncoming(message: { itemType?: string | undefined }, fromUser: boolea
 function isIncomingConversationMessage(message: {
   author: ConversationMessageAuthor;
   itemType?: string | undefined;
+  delivery?: unknown;
 }): boolean {
   return isIncoming(message, message.author === "user");
 }
@@ -91,7 +99,7 @@ function isIncomingAgentMessage(message: AgentMessage): boolean {
 
 /** The newest message that could move the read boundary, or `undefined`. */
 export function latestIncomingConversationMessage<
-  Message extends { author: ConversationMessageAuthor; itemType?: string | undefined },
+  Message extends { author: ConversationMessageAuthor; itemType?: string | undefined; delivery?: unknown },
 >(messages: readonly Message[]): Message | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -113,7 +121,12 @@ export function latestVisibleAgentMessageId(messages: readonly AgentMessage[] | 
 /** Recounts a read state against the messages it applies to. */
 export function readStateForMessages(
   state: ConversationReadState,
-  messages: readonly { author: ConversationMessageAuthor; id: string; itemType?: string | undefined }[],
+  messages: readonly {
+    author: ConversationMessageAuthor;
+    id: string;
+    itemType?: string | undefined;
+    delivery?: unknown;
+  }[],
 ): ConversationReadState {
   const throughIndex = state.throughMessageId
     ? messages.findIndex((message) => message.id === state.throughMessageId)

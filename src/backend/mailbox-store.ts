@@ -69,6 +69,8 @@ export interface MessagingOrigin {
 }
 
 interface StoredMessage {
+  /** Private `message_json` routing metadata. The released queue sender stays `user`. */
+  dispatch?: DispatchDeliverySource;
   channelId?: string | undefined;
   messaging?: MessagingOrigin;
   /**
@@ -150,6 +152,7 @@ interface StoredReaction {
 }
 
 interface EnqueueInput {
+  dispatch?: DispatchDeliverySource;
   channelId?: string;
   messaging?: MessagingOrigin;
   messagingReturn?: MessagingOrigin;
@@ -180,8 +183,15 @@ export interface MailboxStoredFile {
 }
 
 export interface DeliveryContext {
+  dispatch?: DispatchDeliverySource;
   delivery: QueueDelivery;
   managedAttachments: Array<AttachmentSummary & { path: string }>;
+}
+
+interface DispatchDeliverySource {
+  runId: string;
+  host: string;
+  threadId: string;
 }
 
 const EMPTY_STATE: StoredState = {
@@ -494,6 +504,7 @@ export class MailboxStore {
       const committedByDraftId = new Map(drafts.map((draft, index) => [draft.id, attachments[index]] as const));
       const messaging = input.messaging ?? this.#answerReturn(input, recipients);
       const message: StoredMessage = {
+        ...(input.dispatch ? { dispatch: input.dispatch } : {}),
         ...(input.channelId === undefined ? {} : { channelId: input.channelId }),
         ...(messaging ? { messaging } : {}),
         ...(input.messagingReturn ? { messagingReturn: input.messagingReturn } : {}),
@@ -780,7 +791,7 @@ export class MailboxStore {
   #executionMessageIds(): Set<string> {
     const ids = new Set<string>();
     for (const message of this.#state.messages)
-      if (message.channelId || message.messaging || message.taskId) ids.add(message.id);
+      if (message.dispatch || message.channelId || message.messaging || message.taskId) ids.add(message.id);
     return ids;
   }
 
@@ -873,6 +884,7 @@ export class MailboxStore {
       const recipients = this.#state.deliveries.filter((candidate) => candidate.messageId === message.id);
       if (
         message.sender.kind !== "user" ||
+        message.dispatch ||
         message.channelId ||
         message.messaging ||
         message.taskId ||
@@ -950,7 +962,7 @@ export class MailboxStore {
     let completedCount = 0;
     for (let index = this.#state.messages.length - 1; index >= 0; index -= 1) {
       const message = this.#state.messages[index];
-      if (!message || message.channelId || message.messaging || message.taskId) continue;
+      if (!message || message.dispatch || message.channelId || message.messaging || message.taskId) continue;
       // A request the agent sent from a Slack thread belongs to that thread, not to its own chat.
       // The teammate it went to still sees it.
       if (message.messagingReturn && message.sender.kind === "agent" && message.sender.agentId === agentId) continue;
@@ -1179,6 +1191,7 @@ export class MailboxStore {
     const delivery = this.#queuedFor(agentId).find(
       (candidate) =>
         this.#taskIdOf(candidate, messages) === taskId &&
+        (!paused || !messages.get(candidate.messageId)?.dispatch) &&
         // A message run now starts at once, even when it is an answer that waits for a teammate.
         (this.#runNow.has(candidate.id) || !this.#isHeldReply(candidate)) &&
         (!executionMessageIds || executionMessageIds.has(candidate.messageId) || this.#runNow.has(candidate.id)),
@@ -2347,6 +2360,7 @@ export class MailboxStore {
   ): DeliveryContext {
     const message = this.#requireMessage(delivery.messageId, messages);
     return {
+      ...(message.dispatch ? { dispatch: message.dispatch } : {}),
       delivery: this.#publicDelivery(delivery, positions, message),
       managedAttachments: message.attachments.map((attachment) => ({
         ...toAttachmentSummary(attachment),
@@ -2714,6 +2728,11 @@ function isMessagingOrigin(value: unknown): value is MessagingOrigin {
 function isStoredMessage(value: unknown): value is StoredMessage {
   return (
     isRecord(value) &&
+    (value.dispatch === undefined ||
+      (isRecord(value.dispatch) &&
+        isString(value.dispatch.runId) &&
+        isString(value.dispatch.host) &&
+        isString(value.dispatch.threadId))) &&
     (value.channelId === undefined || isString(value.channelId)) &&
     (value.messaging === undefined || isMessagingOrigin(value.messaging)) &&
     (value.messagingReturn === undefined || isMessagingOrigin(value.messagingReturn)) &&

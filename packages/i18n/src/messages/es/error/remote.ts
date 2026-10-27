@@ -192,4 +192,7 @@ export const messages = {
   "error.remote.remoteNotConfigured": "Las conexiones remotas no están configuradas en este servicio de OpenBot.",
   "error.remote.hostRefused": "El host rechazó la solicitud ({status}).",
   "error.remote.hostedServerRemoval": "Usa Facturación para eliminar un servidor alojado.",
+  "error.remote.hostRequired": "Se necesita un host público válido.",
+  "error.remote.serverReturnedData": "El servidor remoto devolvió datos.",
+  "error.remote.developmentIdentityChanged": "Cambió la identidad del servidor de desarrollo local.",
 } as const satisfies PartialTranslation<typeof source>;

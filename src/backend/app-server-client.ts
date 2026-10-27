@@ -110,7 +110,8 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     // Whole records only. A chunk ends wherever the pipe filled up, and half a record is neither
     // readable nor reliably redactable.
     const diagnostics = createDiagnosticStream({
-      redact: redactDiagnostic,
+      // The runtime owns MCP values. Keep the full record until its exact-value redactor runs.
+      redact: (message) => message,
       emit: (message) => this.emit("diagnostic", message),
     });
     child.stderr.on("data", (chunk: Buffer) => diagnostics.push(chunk.toString("utf8")));
@@ -479,14 +480,12 @@ function freshCursor(
 }
 
 /**
- * The record as it leaves this client. It is not shortened here: the reader redacts the MCP
- * credentials this process handed the CLI, and a value cut in half by a bound applied first is a
- * value that redactor no longer recognises. `shortenDiagnostic` is applied there instead.
+ * Keep opaque app-server token shapes that the shared redactor may not classify. The caller applies
+ * this after MCP exact-value masking, so an MCP URL query stays whole until its configured value is
+ * removed.
  */
-function redactDiagnostic(message: string): string {
-  return message
-    .replace(/(?:sk|sess|Bearer|token)[-_a-zA-Z0-9.=]{8,}/gi, "[redacted]")
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]");
+export function redactAppServerDiagnostic(message: string): string {
+  return message.replace(/(?:sk|sess|Bearer|token)[-_a-zA-Z0-9.=]{8,}/gi, "[redacted]");
 }
 
 /** Kept inside the adapter; public callers still receive the native protocol error. */

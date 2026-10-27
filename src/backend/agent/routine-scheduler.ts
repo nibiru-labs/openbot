@@ -182,8 +182,10 @@ export class RoutineScheduler implements RoutineDueSource {
 
   /** The zone of the person whose message this turn runs, when their client sent one. */
   #turnSenderTimezone(agentId: string, turnId: string): string | undefined {
-    for (const { delivery } of this.#mailbox.findDeliveriesByTurn(agentId, turnId)) {
-      const timezone = delivery.sender.kind === "user" ? this.#deliveryTimezones.get(delivery.id) : undefined;
+    for (const context of this.#mailbox.findDeliveriesByTurn(agentId, turnId)) {
+      const { delivery } = context;
+      const timezone =
+        delivery.sender.kind === "user" && !context.dispatch ? this.#deliveryTimezones.get(delivery.id) : undefined;
       if (timezone !== undefined) return timezone;
     }
     return undefined;
@@ -890,7 +892,9 @@ export class RoutineScheduler implements RoutineDueSource {
       .pipe(Effect.mapError((failure) => new RoutineOperationFailed({ cause: failure.cause })));
     const deliveryId = receipt.deliveries[0]?.id;
     if (!deliveryId)
-      return yield* new RoutineOperationFailed({ cause: new Error("Unable to create the routine handoff delivery.") });
+      return yield* new RoutineOperationFailed({
+        cause: new Error(sourceText("error.backend.routineHandoffDeliveryFailed")),
+      });
     yield* routineStep(() => {
       const snapshot = this.#conversation.ensureSnapshot(agent.id, agent.threadId);
       this.#hooks.syncMailboxMessages(snapshot);
@@ -944,7 +948,9 @@ export class RoutineScheduler implements RoutineDueSource {
         .pipe(toRoutineOperationFailed);
       const deliveryId = receipt.deliveries[0]?.id;
       if (!deliveryId)
-        return yield* new RoutineOperationFailed({ cause: new Error("Unable to create the routine delivery.") });
+        return yield* new RoutineOperationFailed({
+          cause: new Error(sourceText("error.backend.routineDeliveryNotCreated")),
+        });
       const queued = yield* routineStep(() => {
         try {
           return this.#routines.attachDelivery(run.id, deliveryId);

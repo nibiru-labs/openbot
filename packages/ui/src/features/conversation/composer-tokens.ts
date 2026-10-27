@@ -289,7 +289,7 @@ export function syncMcpTokens(editor: HTMLDivElement, servers: ComposerMcpServer
     if (!id) continue;
     const server = available.get(id);
     if (server) updateMcpToken(token, server);
-    else updateUnavailableMcpToken(token, id, token.dataset.mcpName ?? "MCP server");
+    else updateUnavailableMcpToken(token, id, token.dataset.mcpName ?? currentText().t("composer.mcp.unnamedServer"));
   }
 }
 

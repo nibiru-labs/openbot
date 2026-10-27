@@ -15,6 +15,7 @@ const AUTH_SUCCESS_HOLD_MS = 600;
  */
 function authFailureCode(value: string | undefined): string {
   switch (value) {
+    case "admin_key_sign_in_failed":
     case "auth_api_error":
     case "code_recently_sent":
     case "email_delivery_failed":
@@ -162,6 +163,28 @@ const Auth = createSimpleContext({
       }
     }
 
+    /**
+     * Signs in with the admin key of the account service. The key is a credential of that service:
+     * it goes to the service and nowhere else, and the analytics carry only the outcome.
+     */
+    async function signInWithAdminKey(input: { email: string; adminKey: string }): Promise<void> {
+      const anonymousAnalytics = desktopAnalytics.anonymousScope();
+      try {
+        const state = await accountPort().auth.signInWithAdminKey(input);
+        applyCentralAuthState(state);
+        desktopAnalytics.track("account_sign_in_completed", {
+          result: state.status === "signed_in" ? "succeeded" : "failed",
+          ...("issue" in state ? { failure_code: authFailureCode(state.issue?.code) } : {}),
+        });
+      } catch (error) {
+        anonymousAnalytics.track("account_sign_in_completed", {
+          result: "failed",
+          failure_code: "request_failed",
+        });
+        throw error;
+      }
+    }
+
     async function logoutCentralAccount(): Promise<void> {
       const analytics = desktopAnalytics.scope();
       try {
@@ -279,6 +302,7 @@ const Auth = createSimpleContext({
       requestEmailCode,
       retryCentralAccount,
       verifyEmailCode,
+      signInWithAdminKey,
       logoutCentralAccount,
       updateAccountName,
       updateAccountAvatar,

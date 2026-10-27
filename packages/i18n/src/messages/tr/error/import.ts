@@ -69,4 +69,7 @@ export const messages = {
     "{name}: bağımsız değişkenlerinden veya adresinden gizli bilgi içerebilecek değerler kaldırıldı. Bunları Ayarlar'da yeniden girin.",
   "error.import.transferSharedKept":
     "Paylaşılan klasördeki {number} dosya zaten burada, bu yüzden oldukları gibi korunuyor.",
+  "error.import.uploadsUnavailable": "Ajan içe aktarma yüklemeleri kullanılamıyor.",
+  "error.import.transferUploadsUnavailable": "Örnek aktarma yüklemeleri kullanılamıyor.",
+  "error.import.failed": "İçe aktarma başarısız oldu.",
 } as const satisfies PartialTranslation<typeof source>;

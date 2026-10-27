@@ -73,4 +73,7 @@ export const messages = {
     "{name}: シークレットを含む可能性のある値が、引数またはアドレスから削除されました。設定で入力し直してください。",
   "error.import.transferSharedKept":
     "共有フォルダー内の {number} 個のファイルはすでにここにあるため、そのまま保持されます。",
+  "error.import.uploadsUnavailable": "エージェントのインポート用アップロードは利用できません。",
+  "error.import.transferUploadsUnavailable": "インスタンス転送用のアップロードは利用できません。",
+  "error.import.failed": "インポートに失敗しました。",
 } as const satisfies PartialTranslation<typeof source>;

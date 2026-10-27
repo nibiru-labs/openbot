@@ -511,13 +511,13 @@ export class SunshineMoonlightRuntime {
 
   #requireSunshineHttpPort(): number {
     const port = this.sunshineHttpPort;
-    if (port === null) throw new Error("Sunshine ports have not been allocated yet.");
+    if (port === null) throw new Error(sourceText("error.backend.sunshinePortsNotAllocated"));
     return port;
   }
 
   #requireSunshineHttpsPort(): number {
     const port = this.sunshineHttpsPort;
-    if (port === null) throw new Error("Sunshine ports have not been allocated yet.");
+    if (port === null) throw new Error(sourceText("error.backend.sunshinePortsNotAllocated"));
     return port;
   }
 
@@ -576,7 +576,7 @@ export class SunshineMoonlightRuntime {
           this.#selectedDisplayId = displays.find((display) => display.primary)?.id ?? displays[0]?.id ?? null;
         }
         const moonlightPort = this.#moonlightPort;
-        if (moonlightPort === null) throw new Error("Moonlight port has not been allocated yet.");
+        if (moonlightPort === null) throw new Error(sourceText("error.backend.moonlightPortNotAllocated"));
         yield* desktopSync(() => this.#throwIfStopRequested());
         yield* desktopSync(() => this.#startMoonlight(moonlightPort, iceEndpoint));
         yield* waitForHttpEffect(
@@ -594,7 +594,7 @@ export class SunshineMoonlightRuntime {
         // An exit during pairing precedes the exit watcher becoming active.
         if (childEnded(this.#sunshine) || childEnded(this.#moonlight)) {
           return yield* this.#failStart("pairing")(
-            desktopFailure(new Error("A remote desktop process exited during pairing.")),
+            desktopFailure(new Error(sourceText("error.backend.remoteDesktopExitedDuringPairing"))),
           );
         }
         this.#state = {
@@ -640,7 +640,8 @@ export class SunshineMoonlightRuntime {
     this: SunshineMoonlightRuntime,
   ): Effect.fn.Return<void, RemoteDesktopOperationError> {
     const basePort = this.#sunshineBasePort;
-    if (basePort === null) return yield* desktopFailure(new Error("Sunshine ports have not been allocated yet."));
+    if (basePort === null)
+      return yield* desktopFailure(new Error(sourceText("error.backend.sunshinePortsNotAllocated")));
     const values = [
       "sunshine_name = OpenBot Remote Desktop",
       // The base port: every other Sunshine port (GameStream HTTP/HTTPS, Web UI HTTPS, video,
@@ -681,7 +682,7 @@ export class SunshineMoonlightRuntime {
     const moonlightPort = this.#moonlightPort;
     const webRtcRange = this.#webRtcRange;
     if (moonlightPort === null || webRtcRange === null) {
-      return yield* desktopFailure(new Error("Moonlight ports have not been allocated yet."));
+      return yield* desktopFailure(new Error(sourceText("error.backend.moonlightPortsNotAllocated")));
     }
     const config = {
       data_storage: {

@@ -29,4 +29,9 @@ export const messages = {
     "テナントの停止がタイムアウトしました。アプリケーションの置き換えは開始されていません。",
   "error.host.tenantHealthMissing":
     "再起動後のテナントの正常性レポートがないか、異常です。次の更新の前に、テナントのセッションを確認してください。",
+  "error.host.nameBeforeDevelopment": "ローカル開発を始める前に、この OpenBot に名前を付けます。",
+  "error.host.developmentNotReady": "ローカル開発ホストの準備ができていません。",
+  "error.host.maintenanceConfigChanged": "メンテナンス中にホストの設定が変わりました。",
+  "error.host.maintenanceMissingRelease": "準備されたリリースがありません。",
+  "error.host.maintenanceVersionMismatch": "インストール済みバージョンが一致しません。",
 } as const satisfies PartialTranslation<typeof source>;

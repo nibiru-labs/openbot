@@ -26,4 +26,10 @@ export const messages = {
   "error.update.remoteDisabled": "Обновления от администраторов сервера отключены на этом компьютере.",
   "error.update.restartStarted": "OpenBot уже перезапускается для установки обновления.",
   "error.update.alreadyRestarting": "OpenBot уже перезапускается.",
+  "error.update.downloadCancelled": "Загрузка отменена.",
+  "error.update.noStagedRelease": "Сервер не подготовил ни одного релиза.",
+  "error.update.feedUnavailable": "Лента релизов недоступна",
+  "error.update.feedTooLarge": "Лента релизов слишком большая",
+  "error.update.noCompatibleRelease": "Нет совместимого релиза",
+  "error.update.noReleaseForMachine": "Нет релиза для этой машины",
 } as const satisfies PartialTranslation<typeof source>;

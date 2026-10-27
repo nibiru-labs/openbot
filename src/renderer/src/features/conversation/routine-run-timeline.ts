@@ -208,7 +208,8 @@ export function placeRoutineRunTurns(
 
 function routineRunOpenByDefault(marker: RoutineRunMarker, messages: readonly AgentMessage[]): boolean {
   if (marker.status === "queued" || marker.status === "running" || marker.status === "needs-attention") return true;
-  return messages.some((message) => message.itemType !== ROUTINE_QUIET_ANSWER_ITEM_TYPE);
+  // Process notes stay inside the run, but do not open a finished quiet run.
+  return messages.some((message) => message.kind !== "thinking" && message.itemType !== ROUTINE_QUIET_ANSWER_ITEM_TYPE);
 }
 
 /**

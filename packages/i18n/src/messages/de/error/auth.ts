@@ -26,4 +26,17 @@ export const messages = {
     "Die Verbindung wurde beendet, bevor OpenBot die Zustellung bestätigt hat. Prüfe die Zustellung, um keinen weiteren Code zu senden.",
   "error.auth.deliveryUnknown":
     "OpenBot konnte nicht bestätigen, ob der Anmeldecode gesendet wurde. Prüfe die Zustellung, bevor du ihn erneut sendest.",
+  "error.auth.adminKeyRequired": "Gib den Admin-Schlüssel des Kontodienstes ein.",
+  "error.auth.adminKeyRejected": "Der Kontodienst hat den Admin-Schlüssel nicht akzeptiert.",
+  "error.auth.sessionNotStorable":
+    "OpenBot kann die Anmeldesitzung auf diesem Computer nicht speichern und sich daher nicht mit einem Admin-Schlüssel anmelden.",
+  "error.auth.hostedServerNoAnswer": "Der Kontoserver hat am Anfang nicht geantwortet.",
+  "error.auth.hostedServerNoClaim": "Der gehostete Server ist abgemeldet und hat keinen Zugangsnachweis.",
+  "error.auth.hostedServerClaimMismatch": "Der Zugangsnachweis gehört zu einem anderen gehosteten Server.",
+  "error.auth.hostedServerHostMismatch":
+    "Der konfigurierte Host ist nicht der gehostete Server, für den diese VM erstellt wurde.",
+  "error.auth.hostedServerUnknown": "Der Kontoserver hat keinen Eintrag zu diesem gehosteten Server.",
+  "error.auth.invalidUser": "Der Kontodienst hat einen ungültigen Benutzer zurückgegeben.",
+  "error.auth.invalidHostedServerClaim": "Ungültiger Zugangsnachweis des gehosteten Servers.",
+  "error.auth.sessionNotStored": "Die Sitzung konnte nicht gespeichert werden.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -378,6 +378,18 @@ function ContextResetMarkerRow({ muted }: { muted: ViewStyle["backgroundColor"] 
   );
 }
 
+/** The status card of a coding dispatch: a muted line, as the desktop marker shows it. */
+function DispatchMarkerRow({ text, muted }: { text: string; muted: ViewStyle["backgroundColor"] }) {
+  const { sourceText } = useText();
+  return (
+    <View accessible className="items-center py-2">
+      <Typography.Paragraph type="body-sm" style={{ color: muted }}>
+        {sourceText(text)}
+      </Typography.Paragraph>
+    </View>
+  );
+}
+
 function playbackEligible(message: VisibleMessage) {
   return (
     message.kind === "message" && message.author === "agent" && (message.streaming || message.status === "completed")
@@ -506,6 +518,8 @@ const MessageRow = memo(function MessageRow({
       <RoutineMarkerRow key={message.id} message={message} muted={muted} />
     ) : message.kind === "context-reset" ? (
       <ContextResetMarkerRow key={message.id} muted={muted} />
+    ) : message.kind === "dispatch" ? (
+      <DispatchMarkerRow key={message.id} text={message.text} muted={muted} />
     ) : message.kind === "exchange-group" ? (
       <ChatExchangeGroup key={message.id} group={message} agentsById={agentsById} muted={muted} />
     ) : message.kind === "exchange" ? (

@@ -98,7 +98,7 @@ Its main jobs are:
 | Browser smoke | `ubuntu-latest` | `xvfb-run -a bun run test:browser` |
 | Tests (desktop 1/2, 2/2) | `ubuntu-latest` | `bun run test:desktop -- --shard=<n>/2` |
 | Signal E2E | `ubuntu-latest` | `bun run test:signal`, when `remote/` or `scripts/` changes |
-| Local scripts CLI E2E | `ubuntu-latest` | `bun run test:automation-cli` |
+| Local scripts CLI E2E | `ubuntu-latest` | `bun run test:automation-cli`, then `bun scripts/dispatch-approval-e2e.ts` |
 | Team API routes E2E | `ubuntu-latest` | `bun run test:team-api-routes`, when desktop code changes |
 | Team API and reverse actions E2E | `ubuntu-latest` | `test:team-legacy-clients`, `test:team-session-revoke`, `test:server-mute`, `test:routine-pause-resume`, `test:agent-hide-restore`, `test:messaging-pause-resume`, `test:messaging-discord-access` and `test:provider-update-busy`, each with `bun run` in its own step, when the `desktop` lane runs |
 | Surfaces | `ubuntu-latest` | Parallel groups described below, then `bun run remote:check:compose` |

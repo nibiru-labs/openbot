@@ -18,10 +18,11 @@ import { decodeHostReleaseStatus, type HostReleaseStatus } from "@openbot/contra
 // a browser preview that is not a bounded JPEG data URL) are covered where they are reached.
 
 import { emptyDecoder } from "@openbot/contracts/ipc-decoding";
+import { sourceText } from "@openbot/i18n/source";
 
 export type ResponseDecoder<T> = (value: unknown) => T;
 
-export const decodeVoid = emptyDecoder("The remote server returned data.");
+export const decodeVoid = emptyDecoder(sourceText("error.remote.serverReturnedData"));
 
 /** Discards the reply of a route whose team-protocol codec has already checked it. */
 export const acceptEmpty = (): undefined => undefined;

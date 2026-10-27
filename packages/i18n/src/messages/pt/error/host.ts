@@ -29,4 +29,9 @@ export const messages = {
     "O tempo para encerrar o ambiente de usuário esgotou. Nenhuma substituição do aplicativo foi iniciada.",
   "error.host.tenantHealthMissing":
     "Os relatórios de integridade dos ambientes de usuário estão ausentes ou indicam falhas após a reinicialização. Verifique as sessões dos ambientes de usuário antes de outra atualização.",
+  "error.host.nameBeforeDevelopment": "Dê um nome a este OpenBot antes de iniciar o desenvolvimento local.",
+  "error.host.developmentNotReady": "O computador anfitrião de desenvolvimento local não está pronto.",
+  "error.host.maintenanceConfigChanged": "A configuração do computador anfitrião mudou durante a manutenção.",
+  "error.host.maintenanceMissingRelease": "Falta a versão preparada.",
+  "error.host.maintenanceVersionMismatch": "A versão instalada não confere.",
 } as const satisfies PartialTranslation<typeof source>;

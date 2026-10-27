@@ -47,6 +47,14 @@ export const messages = {
     "Yeni mesajlar kuyruğa değil, ajanın mevcut işine eklenir. ChatGPT ve Claude ile çalışır.",
   "settings.agentMemoryLimit.title": "Ajan başına bellek",
   "settings.agentMemoryLimit.description": "Bu bilgisayardaki her ajanın tutabileceği bellek sayısı.",
+  "settings.tokenBudget.hour.title": "Saat başına token sınırı",
+  "settings.tokenBudget.hour.description":
+    "Bu sınıra ulaşıldığında, siz devam edene kadar ajan yeni işe başlamaz. Devam eden iş sürer.",
+  "settings.tokenBudget.turn.title": "Tur başına token sınırı",
+  "settings.tokenBudget.turn.description":
+    "Bu sınırı aşan tur, geçerli adımından sonra durur. İşi saklanır ve devam edebilirsiniz.",
+  "settings.tokenBudget.unlimited": "Sınır yok",
+  "settings.tokenBudget.option": "{amount} token",
   "settings.keepRemoteSessions.title": "Sunuculara hızlı bağlantı",
   "settings.keepRemoteSessions.description":
     "Katıldığınız sunuculara olan bağlantıyı açılışlar arasında koruyun. OpenBot yaklaşık bir saniye daha hızlı başlar. OpenBot'tan çıktığınızda OpenBot hizmeti bağlantıyı kapatmaz.",

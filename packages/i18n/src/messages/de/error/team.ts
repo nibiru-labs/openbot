@@ -128,4 +128,10 @@ export const messages = {
   "error.team.signInRelayUsed": "Diese Anmeldung wurde bereits gesendet.",
   "error.team.signInRelayMismatch": "Diese Adresse gehört nicht zu dieser Anmeldung.",
   "error.team.signInRelayLinkUnknown": "Kein Agent auf diesem Server hat diesen Anmeldelink angezeigt.",
+  "error.team.directMessagesDisabled": "Direktnachrichten sind für diesen Client nicht aktiviert.",
+  "error.team.typingAgentRequired": "Für den Tippstatus ist ein gültiger Agent erforderlich.",
+  "error.team.runtimeSnapshotUnsupported": "Laufzeit-Snapshots werden vom Team-Protokoll v1 nicht unterstützt.",
+  "error.team.directMessagesUnavailable": "Direktnachrichten sind nicht verfügbar.",
+  "error.team.providerUnknown": "Unbekannter Anbieter.",
+  "error.team.logoVersionChanged": "Die Version des Serverlogos ist nicht aktuell.",
 } as const satisfies PartialTranslation<typeof source>;

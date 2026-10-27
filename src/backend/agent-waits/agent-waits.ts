@@ -117,7 +117,9 @@ export class AgentWaits {
       });
     // The user's message comes first; a routine run that waits serves its own instruction.
     const request =
-      deliveries.findLast((context) => context.delivery.sender.kind === "user") ?? deliveries.at(0) ?? null;
+      deliveries.findLast((context) => context.delivery.sender.kind === "user" && !context.dispatch) ??
+      deliveries.find((context) => !context.dispatch) ??
+      null;
     if (!request) return openBotToolFailure(sourceText("error.backend.agentWaitNoRequest"));
     if (routineId && !this.#hooks.ownsRoutine(caller.agentId, routineId))
       return openBotToolFailure(sourceText("error.backend.agentWaitRoutineGone"));

@@ -122,4 +122,10 @@ export const messages = defineMessages("error.team", {
   "error.team.signInRelayUsed": "This sign-in was already sent.",
   "error.team.signInRelayMismatch": "This address is not from this sign-in.",
   "error.team.signInRelayLinkUnknown": "No agent on this server showed this sign-in link.",
+  "error.team.directMessagesDisabled": "Direct messages are not enabled for this client.",
+  "error.team.typingAgentRequired": "A valid agent is required for typing state.",
+  "error.team.runtimeSnapshotUnsupported": "Runtime snapshot is not supported by Team protocol v1.",
+  "error.team.directMessagesUnavailable": "Direct messages are unavailable.",
+  "error.team.providerUnknown": "Unknown provider.",
+  "error.team.logoVersionChanged": "Server logo version is not current.",
 });

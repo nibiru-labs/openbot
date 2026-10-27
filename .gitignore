@@ -64,3 +64,6 @@ keys
 
 # Persistent local development identity and migration recovery.
 .openbot/
+
+# Local self-hosted service secrets.
+/deploy/self-host/env/*.env

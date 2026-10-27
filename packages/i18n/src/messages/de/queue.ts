@@ -28,4 +28,24 @@ export const messages = {
   "queue.deleteHeld.title": "Nachricht aus der Warteschlange löschen?",
   "queue.deleteHeld.body": "Ein anderes Gerät bearbeitet diese Nachricht. Der Agent wird sie nicht erhalten.",
   "queue.deleteHeld.keep": "Behalten",
+  "queue.waiting.status": { one: "{count} Nachricht wartet", other: "{count} Nachrichten warten" },
+  "queue.paused.status": {
+    one: "Pausiert · {count} Nachricht behalten",
+    other: "Pausiert · {count} Nachrichten behalten",
+  },
+  "queue.pause": "Pausieren",
+  "queue.pause.tooltip":
+    "Starte keine Nachricht aus der Warteschlange, bevor du sie fortsetzt. Die aktuelle Arbeit läuft weiter, und nichts geht verloren.",
+  "queue.resume": "Fortsetzen",
+  "queue.resume.tooltip": "Starte die Nachrichten aus der Warteschlange wieder an, in Reihenfolge",
+  "queue.clearAll.label": "Alle Nachrichten in der Warteschlange löschen",
+  "queue.clearAll.tooltip": "Alle Nachrichten in der Warteschlange löschen",
+  "queue.clearAll.title": {
+    one: "{count} Nachricht aus der Warteschlange löschen?",
+    other: "{count} Nachrichten aus der Warteschlange löschen?",
+  },
+  "queue.clearAll.body": "Der Agent erhält sie nicht. Die aktuelle Arbeit läuft weiter.",
+  "queue.clearAll.confirm": "Alle löschen",
+  "queue.item.runNowLabel": "Aktuelle Arbeit stoppen und Nachricht {position} aus der Warteschlange jetzt ausführen",
+  "queue.item.runNowTooltip": "Jetzt ausführen: aktuelle Arbeit stoppen und diese Nachricht als Nächstes starten",
 } as const satisfies PartialTranslation<typeof source>;

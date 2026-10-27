@@ -1,6 +1,12 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("status.agent", {
+  "status.agent.dispatchApproval":
+    "This coding dispatch includes a risky operation. Review its card and arguments before approval.",
+  "status.agent.dispatchStarted": "Coding work started: {title}. Host: {host}. Run: {runId}.",
+  "status.agent.dispatchFinished":
+    "Coding work ended: {title}. Host: {host}. Result: {status}. Review the result before reporting success.",
+  "status.agent.dispatchNoResult": "The openswarm runner ended without a result file.",
   "status.agent.claudeWriteOutside":
     "Write {path}, outside the agent's workspace, the shared folder and the temporary folders.",
   "status.agent.contextCleared": "Context cleared. A new chat starts here.",
@@ -20,4 +26,5 @@ export const messages = defineMessages("status.agent", {
     "Capture the screen area at {x}, {y}, {width} × {height} points and send the image to the agent's model.",
   "status.agent.screenCaptureProgress": "Asking to capture the screen…",
   "status.agent.screenCaptureReviewing": "Reviewing the screen capture…",
+  "status.agent.starting": "Starting local agent CLIs…",
 });

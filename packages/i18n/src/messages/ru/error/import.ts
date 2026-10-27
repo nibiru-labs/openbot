@@ -70,4 +70,7 @@ export const messages = {
     "{name}: значения, которые могут содержать секрет, удалены из аргументов или адреса. Снова введите их в настройках.",
   "error.import.transferSharedKept":
     "Файлы в общей папке ({number}) уже есть здесь, поэтому они оставлены без изменений.",
+  "error.import.uploadsUnavailable": "Загрузка файлов для импорта агентов недоступна.",
+  "error.import.transferUploadsUnavailable": "Загрузка файлов для переноса экземпляра недоступна.",
+  "error.import.failed": "Импорт не удался.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -123,4 +123,10 @@ export const messages = {
   "error.team.signInRelayUsed": "Этот вход уже отправлен.",
   "error.team.signInRelayMismatch": "Этот адрес не относится к этому входу.",
   "error.team.signInRelayLinkUnknown": "Ни один агент на этом сервере не показывал эту ссылку для входа.",
+  "error.team.directMessagesDisabled": "Прямые сообщения не включены для этого клиента.",
+  "error.team.typingAgentRequired": "Для состояния набора текста нужен корректный агент.",
+  "error.team.runtimeSnapshotUnsupported": "Снимки среды выполнения не поддерживаются протоколом Team v1.",
+  "error.team.directMessagesUnavailable": "Прямые сообщения недоступны.",
+  "error.team.providerUnknown": "Неизвестный провайдер.",
+  "error.team.logoVersionChanged": "Версия логотипа сервера устарела.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -360,4 +360,5 @@ export const messages = {
   "mobile.chat.queue.addedOnPhone": "Auf diesem Telefon hinzugefügt",
   "mobile.chat.queue.addFiles": "Dateien hinzufügen",
   "mobile.chat.queue.addPhotos": "Fotos hinzufügen",
+  "mobile.chat.attachment.generatedImage": "Erzeugtes Bild",
 } as const satisfies PartialTranslation<typeof source>;

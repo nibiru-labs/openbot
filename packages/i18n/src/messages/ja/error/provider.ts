@@ -373,4 +373,5 @@ export const messages = {
     "エージェントのインストールに失敗しました。以前のインストールは変更されていません。",
   "error.provider.registryRemoveBusy":
     "削除する前に、エージェントのインストールと実行中の ACP の作業が終わるまでお待ちください。",
+  "error.provider.customAgentNoSwitch": "カスタムエージェントにはプロバイダーの切り替え機能がありません。",
 } as const satisfies PartialTranslation<typeof source>;

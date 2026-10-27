@@ -27,4 +27,24 @@ export const messages = {
   "queue.deleteHeld.title": "Kuyruktaki mesaj silinsin mi?",
   "queue.deleteHeld.body": "Başka bir cihaz bu mesajı düzenliyor. Ajan bu mesajı almayacak.",
   "queue.deleteHeld.keep": "Koru",
+  "queue.waiting.status": { one: "{count} mesaj bekliyor", other: "{count} mesaj bekliyor" },
+  "queue.paused.status": {
+    one: "Duraklatıldı · {count} mesaj saklandı",
+    other: "Duraklatıldı · {count} mesaj saklandı",
+  },
+  "queue.pause": "Duraklat",
+  "queue.pause.tooltip":
+    "Sürdürülene kadar kuyruktaki hiçbir mesajı başlatma. Mevcut iş devam eder ve hiçbir şey kaybolmaz.",
+  "queue.resume": "Sürdür",
+  "queue.resume.tooltip": "Kuyruktaki mesajları sırayla yeniden başlat",
+  "queue.clearAll.label": "Kuyruktaki tüm mesajları sil",
+  "queue.clearAll.tooltip": "Kuyruktaki tüm mesajları sil",
+  "queue.clearAll.title": {
+    one: "Kuyruktaki {count} mesaj silinsin mi?",
+    other: "Kuyruktaki {count} mesaj silinsin mi?",
+  },
+  "queue.clearAll.body": "Ajan bu mesajları almayacak. Mevcut iş devam eder.",
+  "queue.clearAll.confirm": "Tümünü sil",
+  "queue.item.runNowLabel": "Mevcut işi durdur ve kuyruktaki {position}. mesajı şimdi çalıştır",
+  "queue.item.runNowTooltip": "Şimdi çalıştır: mevcut işi durdur ve bu mesajı sıradaki başlat",
 } as const satisfies PartialTranslation<typeof source>;

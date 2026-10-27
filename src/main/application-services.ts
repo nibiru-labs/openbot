@@ -1390,6 +1390,8 @@ export async function createApplicationServices({
   performance.mark("openbot:services.computer-use");
   if (process.platform === "win32") await Effect.runPromise(sweepProviderTemp(providerTempDirectory));
   const service: AgentService = new AgentService({
+    openswarmSettings: () =>
+      providerDetectionSettings.get().openswarm ?? { binaryPath: "openswarm", defaultLane: "", defaultHost: "local" },
     store,
     mailbox,
     browser,
@@ -2120,7 +2122,7 @@ export async function createApplicationServices({
           surface: "desktop_host",
           app_version: app.getVersion(),
           platform: analyticsPlatform,
-          event_schema_version: 8,
+          event_schema_version: 7,
         },
       )
     : undefined;

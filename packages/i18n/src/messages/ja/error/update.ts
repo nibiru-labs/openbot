@@ -28,4 +28,10 @@ export const messages = {
   "error.update.remoteDisabled": "このコンピューターでは、サーバー管理者からのアップデートはオフになっています。",
   "error.update.restartStarted": "OpenBot はアップデートをインストールするため、すでに再起動しています。",
   "error.update.alreadyRestarting": "OpenBot はすでに再起動しています。",
+  "error.update.downloadCancelled": "ダウンロードはキャンセルされました。",
+  "error.update.noStagedRelease": "サーバーはリリースを準備しませんでした。",
+  "error.update.feedUnavailable": "リリースフィードを利用できません",
+  "error.update.feedTooLarge": "リリースフィードが大きすぎます",
+  "error.update.noCompatibleRelease": "互換性のあるリリースはありません",
+  "error.update.noReleaseForMachine": "このマシン向けのリリースはありません",
 } as const satisfies PartialTranslation<typeof source>;

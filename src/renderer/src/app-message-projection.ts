@@ -2,6 +2,7 @@ import type { AgentSummary, ConversationMessage, QueueDeliveryStatus } from "@op
 import {
   AGENT_PAUSE_ITEM_TYPE,
   CONVERSATION_PLAN_ITEM_TYPE,
+  dispatchConversationEvent,
   hostedSiteConversationEvent,
   isContextResetMarker,
   marketplaceSuggestionEvent,
@@ -23,7 +24,7 @@ import type {
 import { formatChatTimestamp } from "@openbot/ui/features/conversation/chat-timestamp";
 import type { TaskListItem } from "@openbot/ui/features/conversation/TaskList";
 import { currentText } from "@openbot/ui/text";
-import { isRoutineEventItem } from "./features/conversation/conversation-read-state";
+import { isDispatchMailboxDelivery, isRoutineEventItem } from "./features/conversation/conversation-read-state";
 
 export function toAgentProfile(stored: AgentSummary): AgentProfile {
   return {
@@ -62,7 +63,9 @@ export function toAgentMessage(message: ConversationMessage, ownerAgentId?: stri
   const hostedSiteEvent = hostedSiteConversationEvent(message);
   const actionMarker = chatActionMarker(message, ownerAgentId, routineEvent, routineRunEvent, hostedSiteEvent);
   const plan = messagePlan(message);
-  const senderMember = message.author === "user" ? message.senderMember : undefined;
+  const dispatchResult = message.itemType === "dispatch" && message.delivery !== undefined;
+  const isUserMessage = message.author === "user" && !dispatchResult;
+  const senderMember = isUserMessage ? message.senderMember : undefined;
   const status =
     message.exchange || message.routine
       ? undefined
@@ -78,8 +81,8 @@ export function toAgentMessage(message: ConversationMessage, ownerAgentId?: stri
   return {
     id: message.id,
     ...(message.turnId === undefined ? {} : { turnId: message.turnId }),
-    author: message.author === "user" ? "you" : "agent",
-    body: message.author === "user" ? message.text : cleanAgentMessageText(message.text),
+    author: isUserMessage ? "you" : "agent",
+    body: isUserMessage ? message.text : cleanAgentMessageText(message.text),
     time: formatMessageTime(message.createdAt),
     createdAt: message.createdAt,
     streaming: message.status === "streaming",
@@ -149,6 +152,7 @@ export function toAgentMessages(
   const result: AgentMessage[] = [];
   const thinkingByTurn = new Map<string, AgentMessage>();
   for (const [index, message] of messages.entries()) {
+    if (isDispatchMailboxDelivery(message)) continue;
     if ((message.delivery?.status === "queued" || message.delivery?.status === "cancelled") && !message.routine) {
       continue;
     }
@@ -164,6 +168,7 @@ export function toAgentMessages(
       existing.items = [...(existing.items ?? []), text];
       existing.itemIds = [...(existing.itemIds ?? []), message.id];
       existing.streaming = existing.streaming || message.status === "streaming";
+      if (message.status === "failed" || message.status === "interrupted") existing.status = message.status;
       continue;
     }
 
@@ -177,6 +182,7 @@ export function toAgentMessages(
       createdAt: message.createdAt,
       streaming: message.status === "streaming",
       itemType: "commentary",
+      status: message.status,
       kind: "thinking",
       items: [text],
       itemIds: [message.id],
@@ -267,6 +273,7 @@ function chatActionMarker(
   routineRunEvent: ReturnType<typeof routineRunConversationEvent>,
   hostedSiteEvent: ReturnType<typeof hostedSiteConversationEvent>,
 ): ChatActionMarkerModel | null {
+  if (isDispatchMailboxDelivery(message)) return null;
   if (message.exchange) {
     const targetDeliveries = message.exchange.deliveries.map((delivery) => ({
       agentId: delivery.recipientAgentId,
@@ -304,6 +311,14 @@ function chatActionMarker(
   if (skillEvent) return { ...skillEvent, kind: "skill-lifecycle", timestamp: message.createdAt };
   const suggestion = marketplaceSuggestionEvent(message);
   if (suggestion) return { kind: "marketplace-suggestion", appId: suggestion.appId, timestamp: message.createdAt };
+  const dispatchEvent = dispatchConversationEvent(message);
+  if (dispatchEvent)
+    return {
+      kind: "dispatch",
+      phase: dispatchEvent.phase,
+      text: message.text,
+      timestamp: message.createdAt,
+    };
   if (routineEvent) {
     return {
       kind: "routine-lifecycle",

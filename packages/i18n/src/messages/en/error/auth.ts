@@ -24,4 +24,16 @@ export const messages = defineMessages("error.auth", {
     "The connection ended before OpenBot confirmed delivery. Check delivery to avoid sending another code.",
   "error.auth.deliveryUnknown":
     "OpenBot could not confirm whether the sign-in code was sent. Check delivery before sending again.",
+  "error.auth.adminKeyRequired": "Enter the admin key of the account service.",
+  "error.auth.adminKeyRejected": "The account service did not accept the admin key.",
+  "error.auth.sessionNotStorable":
+    "OpenBot cannot store the sign-in session on this computer, so it cannot sign in with an admin key.",
+  "error.auth.hostedServerNoAnswer": "The account server did not answer at the start.",
+  "error.auth.hostedServerNoClaim": "The hosted server is signed out and has no claim.",
+  "error.auth.hostedServerClaimMismatch": "The claim is for a different hosted server.",
+  "error.auth.hostedServerHostMismatch": "The configured host is not the hosted server that this VM was created for.",
+  "error.auth.hostedServerUnknown": "The account server has no record of this hosted server.",
+  "error.auth.invalidUser": "The account service returned an invalid user.",
+  "error.auth.invalidHostedServerClaim": "Invalid hosted server claim.",
+  "error.auth.sessionNotStored": "The session could not be stored.",
 });

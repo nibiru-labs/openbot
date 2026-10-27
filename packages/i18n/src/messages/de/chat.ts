@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/chat";
 
 export const messages = {
+  "chat.process.running": "Denkt nach…",
+  "chat.process.completed": "Antwortverlauf",
+  "chat.process.stopped": "Prozess angehalten",
+  "chat.process.failed": "Prozess fehlgeschlagen",
+  "chat.process.waiting": "Warte auf Prozessdetails…",
+  "chat.process.unavailable": "Keine Prozessdetails vorhanden.",
   "chat.activity.workingOnIt": "Wird bearbeitet…",
   "chat.activity.thinking": "Wird durchdacht…",
   "chat.activity.connectingDots": "Zusammenhänge werden erkannt…",
@@ -72,6 +78,8 @@ export const messages = {
   "chat.marker.openRoutine": "Routine {name} öffnen",
   "chat.marker.unavailable": "Nicht verfügbar",
   "chat.marker.contextReset": "Neuer Chat gestartet",
+  "chat.marker.pause.continue": "Weiter",
+  "chat.marker.pause.continued": "Fortgesetzt",
   "chat.usageLimit.title": "Nutzungslimit von {provider} erreicht",
   "chat.usageLimit.onHold": "Nachricht wartet",
   "chat.usageLimit.bodyReset":

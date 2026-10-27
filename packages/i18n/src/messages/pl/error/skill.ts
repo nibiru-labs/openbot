@@ -55,4 +55,6 @@ export const messages = {
   "error.skill.localMissingSkillFile": "Folder umiejętności wymaga pliku SKILL.md w katalogu głównym.",
   "error.skill.pathSymlink": "Ścieżki umiejętności nie mogą zawierać dowiązań symbolicznych.",
   "error.skill.folderNotRead": "{provider} nie czyta folderu {folder}. Skopiuj ten folder do {target}.",
+  "error.skill.localChanged": "Umiejętność się zmieniła. Przeczytaj jej najnowszą wersję, zanim ją zmienisz.",
+  "error.skill.archiveLimitsExceeded": "Przekroczono limity archiwum.",
 } as const satisfies PartialTranslation<typeof source>;

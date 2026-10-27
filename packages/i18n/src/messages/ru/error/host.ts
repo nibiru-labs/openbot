@@ -28,4 +28,9 @@ export const messages = {
   "error.host.tenantShutdownTimeout": "Время остановки тенантов истекло. Замена приложения не начата.",
   "error.host.tenantHealthMissing":
     "После перезапуска отчёты о состоянии тенантов отсутствуют или показывают сбой. Проверьте сессии тенантов, прежде чем обновлять снова.",
+  "error.host.nameBeforeDevelopment": "Задайте имя этому OpenBot до запуска локальной разработки.",
+  "error.host.developmentNotReady": "Хост локальной разработки не готов.",
+  "error.host.maintenanceConfigChanged": "Конфигурация хоста изменилась во время обслуживания.",
+  "error.host.maintenanceMissingRelease": "Нет подготовленного релиза.",
+  "error.host.maintenanceVersionMismatch": "Установленная версия не совпадает.",
 } as const satisfies PartialTranslation<typeof source>;

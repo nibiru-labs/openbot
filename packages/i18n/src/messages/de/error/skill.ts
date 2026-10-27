@@ -61,4 +61,6 @@ export const messages = {
   "error.skill.localMissingSkillFile": "Der Fähigkeitsordner benötigt SKILL.md in seinem Stammverzeichnis.",
   "error.skill.pathSymlink": "Fähigkeitspfade dürfen keine symbolischen Links enthalten.",
   "error.skill.folderNotRead": "{provider} liest {folder} nicht. Kopiere diesen Ordner nach {target}.",
+  "error.skill.localChanged": "Die Fähigkeit hat sich geändert. Lies ihre neueste Fassung, bevor du sie überarbeitest.",
+  "error.skill.archiveLimitsExceeded": "Die Archivgrenzen wurden überschritten.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -28,4 +28,10 @@ export const messages = {
   "error.update.remoteDisabled": "Sunucu yöneticilerinden gelen güncellemeler bu bilgisayarda kapalı.",
   "error.update.restartStarted": "OpenBot, güncellemeyi yüklemek için zaten yeniden başlatılıyor.",
   "error.update.alreadyRestarting": "OpenBot zaten yeniden başlatılıyor.",
+  "error.update.downloadCancelled": "İndirme iptal edildi.",
+  "error.update.noStagedRelease": "Sunucu hiçbir sürüm hazırlamadı.",
+  "error.update.feedUnavailable": "Sürüm akışı kullanılamıyor",
+  "error.update.feedTooLarge": "Sürüm akışı çok büyük",
+  "error.update.noCompatibleRelease": "Uyumlu sürüm yok",
+  "error.update.noReleaseForMachine": "Bu makine için sürüm yok",
 } as const satisfies PartialTranslation<typeof source>;

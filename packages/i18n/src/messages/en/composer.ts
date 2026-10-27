@@ -119,4 +119,5 @@ export const messages = defineMessages("composer", {
   "composer.context.noAuto": "This agent does not compact its context.",
   "composer.context.lastCompaction": "Last compaction: {before} → {after} tokens",
   "composer.compaction.elapsed": "{minutes}:{seconds}",
+  "composer.mcp.unnamedServer": "MCP server",
 });

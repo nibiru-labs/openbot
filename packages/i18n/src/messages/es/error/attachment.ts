@@ -12,4 +12,7 @@ export const messages = {
   "error.attachment.emlUnsupported":
     "Este servidor no admite archivos adjuntos EML. Actualiza OpenBot en el host e inténtalo de nuevo.",
   "error.attachment.previewTooLarge": "El archivo supera el límite de 100 MB.",
+  "error.attachment.notPrepared": "El archivo adjunto no se preparó.",
+  "error.attachment.namedFileTooLarge": '"{name}" supera el límite de 100 MB.',
+  "error.attachment.notAvailable": "El archivo adjunto no está disponible.",
 } as const satisfies PartialTranslation<typeof source>;

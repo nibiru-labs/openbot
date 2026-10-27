@@ -28,4 +28,8 @@ export const messages = {
   "error.site.fileType": "この種類のファイルは使用できません: {path}",
   "error.site.fileOutsideRoot": "サイトのファイルはソースのルート内にある必要があります: {path}",
   "error.site.fileTooLarge": "1 MB の上限を超えるファイルがあります: {path}",
+  "error.site.listInvalid": "ホストが不正なサイト一覧を返しました。",
+  "error.site.listResponseInvalid": "サイト一覧の応答が不正です。",
+  "error.site.hostingUnavailable": "OpenBot のサイトホスティングは利用できません。",
+  "error.site.hostedSiteNotFound": "ホスト型サイトが見つかりませんでした。",
 } as const satisfies PartialTranslation<typeof source>;

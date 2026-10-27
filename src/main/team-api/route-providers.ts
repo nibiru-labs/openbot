@@ -231,7 +231,7 @@ interface WireProviderRuntimeSnapshot extends Omit<ProviderRuntimeSnapshot, "pro
 
 function provider(body: DynamicRecord): WireProviderId {
   const id = parseProviderId(body.provider);
-  if (!isOneOf(WIRE_PROVIDERS, id)) throw new Error("Unknown provider.");
+  if (!isOneOf(WIRE_PROVIDERS, id)) throw new Error(sourceText("error.team.providerUnknown"));
   return id;
 }
 
@@ -240,7 +240,7 @@ type SignInProviderId = (typeof PROVIDERS_SIGN_IN_V3_PROVIDERS)[number];
 /** The providers `providers-v3` signs in. */
 function signInProvider(body: DynamicRecord): SignInProviderId {
   const id = parseProviderId(body.provider);
-  if (!isOneOf(PROVIDERS_SIGN_IN_V3_PROVIDERS, id)) throw new Error("Unknown provider.");
+  if (!isOneOf(PROVIDERS_SIGN_IN_V3_PROVIDERS, id)) throw new Error(sourceText("error.team.providerUnknown"));
   return id;
 }
 
@@ -262,7 +262,7 @@ type SignInProviderIdV4 = (typeof PROVIDERS_V4_SIGN_IN_PROVIDERS)[number];
 /** The providers `providers-v4` signs in. */
 function signInProviderV4(body: DynamicRecord): SignInProviderIdV4 {
   const id = parseProviderId(body.provider);
-  if (!isOneOf(PROVIDERS_V4_SIGN_IN_PROVIDERS, id)) throw new Error("Unknown provider.");
+  if (!isOneOf(PROVIDERS_V4_SIGN_IN_PROVIDERS, id)) throw new Error(sourceText("error.team.providerUnknown"));
   return id;
 }
 
@@ -272,7 +272,7 @@ function codeSubmitInputV4(body: DynamicRecord): { provider: SignInProviderIdV4;
 
 function wireApiKeyInput(body: DynamicRecord) {
   const input = parseProviderApiKeyInput(body);
-  if (!isOneOf(WIRE_PROVIDERS, input.provider)) throw new Error("Unknown provider.");
+  if (!isOneOf(WIRE_PROVIDERS, input.provider)) throw new Error(sourceText("error.team.providerUnknown"));
   return input;
 }
 
@@ -297,7 +297,7 @@ interface WireProviderRuntimeSnapshotV2 extends Omit<ProviderRuntimeSnapshot, "p
 function managedProviderV2(body: DynamicRecord): WireProviderIdV2 {
   const id = parseProviderId(body.provider);
   if (!isManagedRuntimeProvider(id)) throw new Error(sourceText("error.team.providerNotManaged"));
-  if (!isOneOf(WIRE_PROVIDERS_V2, id)) throw new Error("Unknown provider.");
+  if (!isOneOf(WIRE_PROVIDERS_V2, id)) throw new Error(sourceText("error.team.providerUnknown"));
   return id;
 }
 
@@ -311,7 +311,7 @@ interface WireProviderRuntimeSnapshotV4 extends Omit<ProviderRuntimeSnapshot, "p
 function managedProviderV4(body: DynamicRecord): WireProviderIdV4 {
   const id = parseProviderId(body.provider);
   if (!isManagedRuntimeProvider(id)) throw new Error(sourceText("error.team.providerNotManaged"));
-  if (!isOneOf(PROVIDERS_V4_RUNTIME_PROVIDERS, id)) throw new Error("Unknown provider.");
+  if (!isOneOf(PROVIDERS_V4_RUNTIME_PROVIDERS, id)) throw new Error(sourceText("error.team.providerUnknown"));
   return id;
 }
 
@@ -361,7 +361,7 @@ function wireStatus(status: ProviderRuntimeStatus): ProviderRuntimeStatus {
 
 function managedProviderV5(body: DynamicRecord): ManagedProviderId {
   const id = parseProviderId(body.provider);
-  if (!isOneOf(PROVIDERS_V5_RUNTIME_PROVIDERS, id)) throw new Error("Unknown provider.");
+  if (!isOneOf(PROVIDERS_V5_RUNTIME_PROVIDERS, id)) throw new Error(sourceText("error.team.providerUnknown"));
   return id;
 }
 function wireSnapshotV5(snapshot: ProviderRuntimeSnapshot): ProviderRuntimeSnapshot {

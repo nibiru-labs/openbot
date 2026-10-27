@@ -24,7 +24,7 @@ import { classifyUserError } from "@openbot/user-errors";
 import { Deferred, Effect, Exit, Result, Schema, Scope, Semaphore } from "effect";
 import { startAcpAuthentication } from "./../acp-sign-in";
 import { type AgentClient, AgentProcessExitError, type AgentProvider } from "./../agent-client";
-import { CodexAppServerClient } from "./../app-server-client";
+import { CodexAppServerClient, redactAppServerDiagnostic } from "./../app-server-client";
 import { type AgentCliInfo, type BundledProviderExecutables, CodexCliError } from "./../cli";
 import { causeHelpers } from "../effect-boundary";
 import { McpHandoffLog } from "./../mcp-handoff-log";
@@ -2914,6 +2914,10 @@ export class ProviderRuntime implements ProviderPort {
     // Taken before `start()`, which is where the CLI reads the endpoint files.
     this.#configRevisions.set(client, this.#hooks.captureConfigRevision());
     this.#hooks.bindClient(client);
+    const redactDiagnostic = (text: string): string => {
+      const redacted = this.#redactMcp(text);
+      return client.provider === "codex" ? redactAppServerDiagnostic(redacted) : redacted;
+    };
     const readAcpRequestEcho = createAcpRequestEchoReader();
     client.on("diagnostic", (raw, origin) => {
       const echo = readAcpRequestEcho(raw);
@@ -2922,7 +2926,7 @@ export class ProviderRuntime implements ProviderPort {
           stderrLogger.warn("A provider logged an error that it also sent as a reply.", {
             provider: client.provider,
             method: echo.method,
-            message: echo.error === null ? null : shortenDiagnostic(this.#redactMcp(echo.error)),
+            message: echo.error === null ? null : shortenDiagnostic(redactDiagnostic(echo.error)),
           });
         }
         return;
@@ -2932,7 +2936,7 @@ export class ProviderRuntime implements ProviderPort {
       // what it sent, so an API key or an inherited credential is in the line that is about to be
       // logged or turned into a renderer error event. Shortened after that, because a value cut in
       // half is a value the redactor does not match.
-      const message = shortenDiagnostic(this.#redactMcp(raw));
+      const message = shortenDiagnostic(redactDiagnostic(raw));
       // An agent that tears down its sessions while OpenBot stops it (idle release, restart, quit)
       // can write an error for each one. It is not a failure the user can act on, so it goes to the log.
       if (origin?.duringStop) {

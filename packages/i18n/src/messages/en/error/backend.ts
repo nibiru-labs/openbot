@@ -1,6 +1,27 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("error.backend", {
+  "error.backend.dispatchCommand":
+    "Could not complete the openswarm request. Check the executor settings and run status before trying again.",
+  "error.backend.dispatchOwnChat": "Dispatch coding work from your own chat only.",
+  "error.backend.dispatchLaneOptions":
+    "A lane uses its configured backend and model. Omit backend and model when you select a lane.",
+  "error.backend.dispatchUnknown": "This chat does not own that coding run.",
+  "error.backend.dispatchHostRequired":
+    "More than one coding run has this ID. Include the host returned by dispatch_work.",
+  "error.backend.dispatchVerifyWorkspace":
+    "The verify command runs on the executor host, outside this agent's workspace limit. A Workspace-only agent cannot set verify.",
+  "error.backend.dispatchExecutorWorkspace":
+    "A Workspace-only agent can only use the Codex executor, because other executors do not limit where they write. Omit lane and backend.",
+  "error.backend.dispatchRepository": "Configure matching local and executor repository paths in openswarm fleet.json.",
+  "error.backend.dispatchSpawnFailed": "openswarm could not be started.",
+  "error.backend.dispatchExitCode": "openswarm exited with code {code}.",
+  "error.backend.dispatchExited": "openswarm stopped before it returned a result.",
+  "error.backend.dispatchTimeout": "openswarm did not respond before the time limit.",
+  "error.backend.dispatchOutputUnreadable": "openswarm output could not be read.",
+  "error.backend.dispatchSaveFailed": "The openswarm request could not be saved.",
+  "error.backend.dispatchApprovalDenied": "The person denied this coding dispatch. Nothing was started.",
+  "error.backend.dispatchApprovalMissing": "This coding dispatch has no approval. Nothing was started.",
   "error.backend.eventsUnavailable": "Events are not available on this host.",
   "error.backend.databaseIntegrity": "OpenBot database failed its integrity check.",
   "error.backend.webhookRouteLimit": "A host can have at most {limit} webhook routines.",
@@ -307,4 +328,18 @@ export const messages = defineMessages("error.backend", {
   "error.backend.agentControlChain":
     "This turn started because a teammate interrupted you. Finish it before you interrupt another agent. Your message waits in its queue.",
   "error.backend.taskStartFailed": "OpenBot could not start the task. Do the work in this turn instead.",
+  "error.backend.requestedPathNotFile": "The requested path is not a file.",
+  "error.backend.sunshinePortsNotAllocated": "Sunshine ports have not been allocated yet.",
+  "error.backend.moonlightPortNotAllocated": "Moonlight port has not been allocated yet.",
+  "error.backend.moonlightPortsNotAllocated": "Moonlight ports have not been allocated yet.",
+  "error.backend.remoteDesktopExitedDuringPairing": "A remote desktop process exited during pairing.",
+  "error.backend.browserUploadInputLimit": "A browser tab can retain files for up to {n} inputs.",
+  "error.backend.browserUploadTabLimit": "A browser tab can retain up to {n} upload bytes.",
+  "error.backend.browserUploadTotalLimit": "Browser uploads can retain up to {n} bytes in total.",
+  "error.backend.generatedImageMissing": "Image generation did not return an image.",
+  "error.backend.channelAssignmentInactive": "The channel assignment is no longer active.",
+  "error.backend.channelAttachmentNotFound": "Attachment not found in this channel.",
+  "error.backend.routineHandoffDeliveryFailed": "Unable to create the routine handoff delivery.",
+  "error.backend.routineDeliveryNotCreated": "Unable to create the routine delivery.",
+  "error.backend.routineRunGone": "The routine run no longer exists.",
 });

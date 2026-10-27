@@ -489,7 +489,7 @@ const collectFiles = Effect.fn("HostedSite.collectFiles")(function* (
 
 function decodeSiteList(value: unknown): HostedSiteList {
   const list = parseHostedSiteList(value);
-  if (!list) throw new Error("The site list response is invalid.");
+  if (!list) throw new Error(sourceText("error.site.listResponseInvalid"));
   return list;
 }
 

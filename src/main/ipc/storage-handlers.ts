@@ -53,7 +53,7 @@ export interface StorageIpcDependencies extends Omit<OpenAttachmentDependencies,
 /** Delete and clear answer an empty object. The transport codec has already checked its shape. */
 function decodeStorageChange(value: unknown): undefined {
   if (value !== undefined && value !== null && !(isDynamicRecord(value) && Object.keys(value).length === 0))
-    throw new Error("The remote server returned data.");
+    throw new Error(sourceText("error.remote.serverReturnedData"));
   return undefined;
 }
 

@@ -130,4 +130,21 @@ export const messages = {
   "error.agent.screenCaptureEmptyWindows":
     "Windows devolvió una imagen vacía. Pide al usuario que desbloquee el equipo y cierre el contenido protegido. Una directiva de la organización también puede impedir la captura de pantalla.",
   "error.agent.screenCaptureFailed": "La captura de pantalla falló. Inténtalo de nuevo.",
+  "error.agent.duplicationOtherSource": "Esta operación de duplicación de agente pertenece a otro agente de origen.",
+  "error.agent.duplicationNotPending": "Esta duplicación de agente no está pendiente.",
+  "error.agent.duplicationUnavailable": "Esta operación de duplicación de agente no está disponible.",
+  "error.agent.emojiInvalid": "Emoji no válido.",
+  "error.agent.avatarTooLarge":
+    "El avatar supera 512 KB. Reduce o comprime una copia con las herramientas disponibles e inténtalo de nuevo con su ruta.",
+  "error.agent.avatarType": "Elige una imagen de avatar PNG, JPEG o WebP válida.",
+  "error.agent.avatarUnreadable":
+    "OpenBot no pudo abrir el archivo del avatar. Usa la ruta de una imagen local que ya exista.",
+  "error.agent.avatarNotRegularFile": "La ruta del avatar debe señalar a un archivo regular.",
+  "error.agent.nameRequired": "El nombre del agente es obligatorio.",
+  "error.agent.nameTooLong": "El nombre del agente es demasiado largo.",
+  "error.agent.descriptionTooLong": "La descripción del agente es demasiado larga.",
+  "error.agent.titleTooLong": "El título del agente es demasiado largo.",
+  "error.agent.usageNotSaved": "No se pudieron guardar los datos de uso.",
+  "error.agent.providerChangeNotAtomic":
+    "Cambiar de proveedor requiere elegir el proveedor y el modelo de forma atómica.",
 } as const satisfies PartialTranslation<typeof source>;

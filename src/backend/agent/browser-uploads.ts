@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { ATTACHMENT_LIMITS } from "@openbot/contracts/input-limits";
+import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, redactText } from "@openbot/logging";
 import { Effect, Exit, Fiber, Scope } from "effect";
 import {
@@ -374,21 +375,21 @@ export class BrowserUploads {
     const reservedNewInputs = [...reservations.values()].filter((value) => !roots?.has(value.inputId)).length;
     const additionalInput = roots?.has(reservation.inputId) ? 0 : 1;
     if ((roots?.size ?? 0) + reservedNewInputs + additionalInput > MAX_BROWSER_UPLOAD_INPUTS_PER_TAB) {
-      throw new Error(`A browser tab can retain files for up to ${MAX_BROWSER_UPLOAD_INPUTS_PER_TAB} inputs.`);
+      throw new Error(sourceText("error.backend.browserUploadInputLimit", { n: MAX_BROWSER_UPLOAD_INPUTS_PER_TAB }));
     }
     // Reassigning an input keeps what it held, so nothing is subtracted here: those bytes are still on
     // disk for as long as the page could read them, and the quota is what bounds the accumulation.
     const retainedBytes = [...(roots?.values() ?? [])].flat().reduce((total, root) => total + root.bytes, 0);
     const reservedBytes = [...reservations.values()].reduce((total, value) => total + value.bytes, 0);
     if (retainedBytes + reservedBytes + reservation.bytes > MAX_BROWSER_UPLOAD_BYTES_PER_TAB) {
-      throw new Error(`A browser tab can retain up to ${MAX_BROWSER_UPLOAD_BYTES_PER_TAB} upload bytes.`);
+      throw new Error(sourceText("error.backend.browserUploadTabLimit", { n: MAX_BROWSER_UPLOAD_BYTES_PER_TAB }));
     }
     const totalRetainedBytes = this.#totalBytes(this.#roots, (inputRoots) =>
       inputRoots.reduce((total, root) => total + root.bytes, 0),
     );
     const totalReservedBytes = this.#totalBytes(this.#reservations, (value) => value.bytes);
     if (totalRetainedBytes + totalReservedBytes + reservation.bytes > MAX_BROWSER_UPLOAD_BYTES_TOTAL) {
-      throw new Error(`Browser uploads can retain up to ${MAX_BROWSER_UPLOAD_BYTES_TOTAL} bytes in total.`);
+      throw new Error(sourceText("error.backend.browserUploadTotalLimit", { n: MAX_BROWSER_UPLOAD_BYTES_TOTAL }));
     }
     reservations.set(id, reservation);
     this.#reservations.set(tabId, reservations);

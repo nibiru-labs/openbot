@@ -137,4 +137,20 @@ export const messages = {
   "error.agent.screenCaptureEmptyWindows":
     "Windows a renvoyé une image vide. Demandez à l’utilisateur de déverrouiller l’ordinateur et de fermer le contenu protégé. Une stratégie de l’organisation peut aussi bloquer la capture d’écran.",
   "error.agent.screenCaptureFailed": "La capture d’écran a échoué. Réessayez.",
+  "error.agent.duplicationOtherSource": "Cette opération de duplication d’agent appartient à un autre agent source.",
+  "error.agent.duplicationNotPending": "Cette duplication d’agent n’est pas en attente.",
+  "error.agent.duplicationUnavailable": "Cette opération de duplication d’agent est indisponible.",
+  "error.agent.emojiInvalid": "Emoji invalide.",
+  "error.agent.avatarTooLarge":
+    "L’avatar dépasse 512 Ko. Redimensionnez ou compressez une copie avec les outils disponibles, puis réessayez avec son chemin.",
+  "error.agent.avatarType": "Choisissez une image d’avatar PNG, JPEG ou WebP valide.",
+  "error.agent.avatarUnreadable":
+    "OpenBot n’a pas pu ouvrir le fichier de l’avatar. Utilisez le chemin d’une image locale existante.",
+  "error.agent.avatarNotRegularFile": "Le chemin de l’avatar doit désigner un fichier ordinaire.",
+  "error.agent.nameRequired": "Le nom de l’agent est obligatoire.",
+  "error.agent.nameTooLong": "Le nom de l’agent est trop long.",
+  "error.agent.descriptionTooLong": "La description de l’agent est trop longue.",
+  "error.agent.titleTooLong": "Le titre de l’agent est trop long.",
+  "error.agent.usageNotSaved": "Impossible d’enregistrer les données d’utilisation.",
+  "error.agent.providerChangeNotAtomic": "Changer de fournisseur exige un choix atomique du fournisseur et du modèle.",
 } as const satisfies PartialTranslation<typeof source>;

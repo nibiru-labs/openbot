@@ -20,4 +20,5 @@ export const messages = {
   "error.voice.cloud.streamEnded": "音声入力の送信が終了しました。もう一度録音してください。",
   "error.voice.cloud.tooLong": "録音が長すぎます。",
   "error.voice.cloud.keySaveFailed": "ElevenLabs の API キーを保存できませんでした。",
+  "error.voice.transcriptTooLong": "音声の文字起こしが長すぎます。",
 } as const satisfies PartialTranslation<typeof source>;

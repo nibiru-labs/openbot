@@ -75,6 +75,8 @@ export const messages = {
   "composer.send.voice": "Wyślij wiadomość głosową",
   "composer.send.message": "Wyślij wiadomość",
   "composer.send.stop": "Zatrzymaj agenta",
+  "composer.send.stopAndSend": "Zatrzymaj i wyślij",
+  "composer.send.stopAndSendTooltip": "Zatrzymaj bieżącą pracę i wyślij to teraz",
   "composer.send.hint.enter": "Wyślij (Enter). Shift+Enter dodaje nowy wiersz.",
   "composer.send.hint.modEnterMac": "Wyślij (⌘Enter). Enter dodaje nowy wiersz.",
   "composer.send.hint.modEnterWin": "Wyślij (Ctrl+Enter). Enter dodaje nowy wiersz.",
@@ -119,4 +121,5 @@ export const messages = {
   "composer.context.noAuto": "Ten agent nie kompaktuje swojego kontekstu.",
   "composer.context.lastCompaction": "Ostatnie kompaktowanie: {before} → {after} tokenów",
   "composer.compaction.elapsed": "{minutes}:{seconds}",
+  "composer.mcp.unnamedServer": "Serwer MCP",
 } as const satisfies PartialTranslation<typeof source>;

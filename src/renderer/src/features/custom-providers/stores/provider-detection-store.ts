@@ -245,6 +245,7 @@ export function createProviderDetectionStore(options: ProviderDetectionStoreOpti
   /** The switch and the lists. A new place to look scans again once the change is saved. */
   function setSettings(value: ProviderDetectionSettingsValue): void {
     const next: ProviderDetectionSettings = {
+      ...(value.openswarm ? { openswarm: { ...value.openswarm } } : {}),
       enabled: value.enabled,
       addresses: [...value.addresses],
       folders: [...value.folders],

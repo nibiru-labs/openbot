@@ -361,4 +361,5 @@ export const messages = {
   "error.provider.registryInstallFailed": "A instalação do agente falhou. A instalação anterior permanece inalterada.",
   "error.provider.registryRemoveBusy":
     "Aguarde a instalação do agente e o trabalho ACP ativo terminarem antes de removê-lo.",
+  "error.provider.customAgentNoSwitch": "Agentes personalizados não têm troca de provedor integrada.",
 } as const satisfies PartialTranslation<typeof source>;

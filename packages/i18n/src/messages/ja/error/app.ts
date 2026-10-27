@@ -12,4 +12,7 @@ export const messages = {
   "error.app.remoteIdentityUnavailable": "リモートホストの ID を利用できません。",
   "error.app.iceServersMissing": "Remote Signal からまだ ICE サーバーが提供されていません。",
   "error.app.finishLocalTest": "ディスプレイを切り替える前に、ローカルテストを終了してください。",
+  "error.app.hostedServerSecretStorageUnavailable":
+    "ホスト型サーバーにセッション用のシークレット保存場所がありません。",
+  "error.app.automationBindFailed": "自動化サーバーをバインドできませんでした。",
 } as const satisfies PartialTranslation<typeof source>;

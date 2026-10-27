@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { z } from "zod";
 import type { AgentStore } from "../agent-store";
 import type { ProviderSession } from "../database/provider-sessions";
+import { dispatchResultPromptText } from "./delivery-content";
 import { openBotToolResult } from "./routine-tools";
 import { type ToolOperationFailed, toolStep } from "./tool-operation";
 
@@ -138,7 +139,8 @@ export class HistoryTools {
         break;
       }
       const message = row.message;
-      const text = redact(message.text);
+      const dispatchResult = message.itemType === "dispatch" && message.delivery !== undefined;
+      const text = redact(dispatchResult ? dispatchResultPromptText(message.text) : message.text);
       const match = search ? text.toLowerCase().indexOf(search.query.toLowerCase()) : 0;
       if (match < 0) {
         result.nextCursor = nextCursor(message.id);
@@ -150,7 +152,7 @@ export class HistoryTools {
       const excerpt = text.slice(offset, offset + (search ? 400 : 12000));
       const entry: HistoryEntry = {
         messageId: message.id,
-        author: message.author,
+        author: dispatchResult ? "system" : message.author,
         createdAt: message.createdAt,
         text: excerpt,
         offset,

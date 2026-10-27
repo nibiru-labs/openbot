@@ -72,4 +72,7 @@ export const messages = {
   "error.import.transferValuesCleared":
     "{name}: valores que podem conter um segredo foram removidos dos argumentos ou do endereço. Digite-os de novo em Configurações.",
   "error.import.transferSharedKept": "{number} arquivos da pasta Shared já estão aqui, então são mantidos como estão.",
+  "error.import.uploadsUnavailable": "Os envios da importação de agentes não estão disponíveis.",
+  "error.import.transferUploadsUnavailable": "Os envios da transferência de instância não estão disponíveis.",
+  "error.import.failed": "A importação falhou.",
 } as const satisfies PartialTranslation<typeof source>;

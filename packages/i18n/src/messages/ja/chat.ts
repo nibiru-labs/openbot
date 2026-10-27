@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/chat";
 
 export const messages = {
+  "chat.process.running": "思考中…",
+  "chat.process.completed": "回答の過程",
+  "chat.process.stopped": "プロセスを停止しました",
+  "chat.process.failed": "プロセスに失敗しました",
+  "chat.process.waiting": "プロセスの詳細を待っています…",
+  "chat.process.unavailable": "プロセスの詳細はありませんでした。",
   "chat.activity.workingOnIt": "作業しています…",
   "chat.activity.thinking": "よく考えています…",
   "chat.activity.connectingDots": "点と点をつないでいます…",
@@ -69,6 +75,8 @@ export const messages = {
   "chat.marker.openRoutine": "ルーティン {name} を開く",
   "chat.marker.unavailable": "利用不可",
   "chat.marker.contextReset": "新しいチャットを開始しました",
+  "chat.marker.pause.continue": "続行",
+  "chat.marker.pause.continued": "再開済み",
   "chat.usageLimit.title": "{provider} の使用量の上限に達しました",
   "chat.usageLimit.onHold": "メッセージを保留中",
   "chat.usageLimit.bodyReset":

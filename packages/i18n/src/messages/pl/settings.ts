@@ -48,6 +48,14 @@ export const messages = {
     "Nowe wiadomości dołączają do bieżącej pracy agenta, a nie do kolejki. Działa z ChatGPT i Claude.",
   "settings.agentMemoryLimit.title": "Wspomnienia na agenta",
   "settings.agentMemoryLimit.description": "Ile wspomnień może przechowywać każdy agent na tym komputerze.",
+  "settings.tokenBudget.hour.title": "Limit tokenów na godzinę",
+  "settings.tokenBudget.hour.description":
+    "Po osiągnięciu tego limitu agent nie zaczyna nowej pracy, dopóki nie zostaniesz wznowiony. Trwająca praca idzie dalej.",
+  "settings.tokenBudget.turn.title": "Limit tokenów na turę",
+  "settings.tokenBudget.turn.description":
+    "Tura, która przekroczy ten limit, zatrzymuje się po bieżącym kroku. Jej praca zostaje zachowana i możesz ją wznowić.",
+  "settings.tokenBudget.unlimited": "Bez limitu",
+  "settings.tokenBudget.option": "{amount} tokenów",
   "settings.keepRemoteSessions.title": "Szybkie połączenie z serwerami",
   "settings.keepRemoteSessions.description":
     "Zachowuj połączenie z dołączonymi serwerami między uruchomieniami. OpenBot startuje około sekundy szybciej. Gdy zamkniesz OpenBot, usługa OpenBot nie zamyka połączenia.",

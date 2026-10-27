@@ -13,6 +13,7 @@
 
 import { parseHostedServerList } from "@openbot/contracts/hosted-servers";
 import type { CentralAuthState, CentralAuthUser } from "@openbot/contracts/ipc";
+import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import type { CentralAuthManager } from "./central-auth-manager";
 import { RemoteWorkflowError, toRemoteWorkflowError } from "./remote-service-effects";
@@ -68,19 +69,19 @@ export const applyHostedServerAccount = Effect.fn("HostedServer.applyAccount")(f
     // The account server did not answer. A stored session can still exist and the claim can be spent,
     // so the claim waits for an answer. The start retry signs in again.
     if (state.status === "error")
-      return yield* new RemoteWorkflowError({ cause: new Error("The account server did not answer at the start.") });
+      return yield* new RemoteWorkflowError({ cause: new Error(sourceText("error.auth.hostedServerNoAnswer")) });
     if (!environment.claim)
-      return yield* new RemoteWorkflowError({ cause: new Error("The hosted server is signed out and has no claim.") });
+      return yield* new RemoteWorkflowError({ cause: new Error(sourceText("error.auth.hostedServerNoClaim")) });
     // The claim works one time. With no secret storage the session would end at the next start, and
     // the server could not sign in again. Keep the claim for a start that has a keyring.
     if (!centralAuth.canPersistSession())
       return yield* new RemoteWorkflowError({
-        cause: new Error("The hosted server has no secret storage for its session."),
+        cause: new Error(sourceText("error.app.hostedServerSecretStorageUnavailable")),
       });
     const claim = environment.claim;
     const redeemed = yield* centralAuth.redeemHostedServerClaim(claim).pipe(toRemoteWorkflowError);
     if (redeemed.hostId !== environment.hostId)
-      return yield* new RemoteWorkflowError({ cause: new Error("The claim is for a different hosted server.") });
+      return yield* new RemoteWorkflowError({ cause: new Error(sourceText("error.auth.hostedServerClaimMismatch")) });
     user = redeemed.user;
     serverName = redeemed.name;
   }
@@ -94,7 +95,7 @@ export const applyHostedServerAccount = Effect.fn("HostedServer.applyAccount")(f
   const identity = teamStore.getIdentity();
   if (identity?.serverId !== environment.hostId) {
     return yield* new RemoteWorkflowError({
-      cause: new Error("The configured host is not the hosted server that this VM was created for."),
+      cause: new Error(sourceText("error.auth.hostedServerHostMismatch")),
     });
   }
   if (!identity.enabledOnLaunch) yield* teamStore.setEnabledOnLaunch(identity.serverId, true);
@@ -114,7 +115,7 @@ const hostedServerName = Effect.fn("HostedServer.name")(function* (
   const server = list.servers.find((entry) => entry.serverId === hostId);
   if (!server)
     return yield* new RemoteWorkflowError({
-      cause: new Error("The account server has no record of this hosted server."),
+      cause: new Error(sourceText("error.auth.hostedServerUnknown")),
     });
   return server.name;
 });

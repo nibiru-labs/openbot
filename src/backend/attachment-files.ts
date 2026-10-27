@@ -237,7 +237,7 @@ export class AttachmentFiles {
             yield* attachmentCall(() => rm(targetDirectory, { recursive: true, force: true })).pipe(
               Effect.uninterruptible,
             );
-            throw new Error(`${name} exceeds the 100 MB limit.`);
+            throw new Error(sourceText("error.attachment.namedFileTooLarge", { name }));
           }
           total += copied.size;
           if (total > MAX_TOTAL_BYTES) {
@@ -260,7 +260,7 @@ export class AttachmentFiles {
         for (const item of data) {
           const bytes = normalizeBytes(item.bytes);
           if (bytes.byteLength > MAX_FILE_BYTES) {
-            throw new Error(`${item.name} exceeds the 100 MB limit.`);
+            throw new Error(sourceText("error.attachment.namedFileTooLarge", { name: item.name }));
           }
           total += bytes.byteLength;
           if (total > MAX_TOTAL_BYTES) throw new Error(sourceText("error.attachment.totalTooLarge"));
@@ -344,7 +344,7 @@ export class AttachmentFiles {
           const id = randomUUID();
           const targetPath = join(temporaryRoot, name);
           const copied = yield* attachmentCall(() => stat(targetPath));
-          if (copied.size > MAX_FILE_BYTES) throw new Error(`${name} exceeds the 100 MB limit.`);
+          if (copied.size > MAX_FILE_BYTES) throw new Error(sourceText("error.attachment.namedFileTooLarge", { name }));
           total += copied.size;
           if (total > MAX_TOTAL_BYTES) throw new Error(sourceText("error.attachment.totalTooLarge"));
           attachments.push(
@@ -404,7 +404,9 @@ export class AttachmentFiles {
               new Error(sourceText("error.backend.attachmentNotFile", { path: source.path })),
             );
           if (metadata.size > MAX_FILE_BYTES)
-            return yield* attachmentFailure(new Error(`${basename(source.path)} exceeds the 100 MB limit.`));
+            return yield* attachmentFailure(
+              new Error(sourceText("error.attachment.namedFileTooLarge", { name: basename(source.path) })),
+            );
           yield* attachmentSync(() => assertSupportedAttachmentName(source.path));
           return { ...source, size: metadata.size };
         }),
@@ -433,7 +435,8 @@ export class AttachmentFiles {
           );
           yield* copyOpenedFileEffect(entry.source.handle, entry.targetPath, entry.name, MAX_TOTAL_BYTES - copiedTotal);
           const copied = yield* attachmentCall(() => stat(entry.targetPath));
-          if (copied.size > MAX_FILE_BYTES) throw new Error(`${entry.name} exceeds the 100 MB limit.`);
+          if (copied.size > MAX_FILE_BYTES)
+            throw new Error(sourceText("error.attachment.namedFileTooLarge", { name: entry.name }));
           copiedTotal += copied.size;
           if (copiedTotal > MAX_TOTAL_BYTES) throw new Error(sourceText("error.attachment.totalTooLarge"));
           const attachment: StoredGeneratedAttachment = {
@@ -645,7 +648,9 @@ const inspectSourceEffect = Effect.fn("Attachments.inspectSource")(function* (
       new Error(sourceText("error.backend.attachmentNotRegularFile", { name: basename(path) })),
     );
   if (metadata.size > MAX_FILE_BYTES)
-    return yield* attachmentFailure(new Error(`${basename(path)} exceeds the 100 MB limit.`));
+    return yield* attachmentFailure(
+      new Error(sourceText("error.attachment.namedFileTooLarge", { name: basename(path) })),
+    );
   return { path, size: metadata.size };
 });
 
@@ -758,7 +763,7 @@ const copyOpenedFileEffect = Effect.fn("Attachments.copyOpenedFile")(
             if (bytesRead === 0) return;
             const nextPosition = position + bytesRead;
             if (nextPosition > MAX_FILE_BYTES)
-              return yield* attachmentFailure(new Error(`${name} exceeds the 100 MB limit.`));
+              return yield* attachmentFailure(new Error(sourceText("error.attachment.namedFileTooLarge", { name })));
             if (nextPosition > remainingTotalBytes)
               return yield* attachmentFailure(new Error(sourceText("error.attachment.totalTooLarge")));
             let written = 0;

@@ -12,6 +12,7 @@ import {
   latestTurnAnswer,
 } from "@openbot/contracts/ipc";
 import { isString } from "@openbot/contracts/runtime-values";
+import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger } from "@openbot/logging";
 import { classifyFailure } from "@openbot/telemetry";
 import { Cause, Deferred, Effect, Exit, Schema, Scope } from "effect";
@@ -384,7 +385,7 @@ export class TurnLifecycle {
         try {
           added = collectProviderUsage(this.#store.database.usage, agent, session, notification.method, params);
         } catch {
-          this.#hooks.emitError("usage_collection_failed", new Error("Usage data could not be saved."), agentId);
+          this.#hooks.emitError("usage_collection_failed", new Error(sourceText("error.agent.usageNotSaved")), agentId);
         }
         // The budget counts what the database stored, so a report that repeats an earlier one adds nothing.
         if (added > 0) yield* this.#tokenBudget.spent(agentId, getString(params, "turnId"), added);
@@ -1145,7 +1146,9 @@ export class TurnLifecycle {
       message = newAssistantMessage(item.id, turnId);
       snapshot.messages.push(message);
     }
-    if (isString(item.text)) message.text = item.text;
+    // Some providers complete reasoning with no summary after the notes streamed.
+    const emptyCommentary = (item.phase ?? message.itemType) === "commentary" && !item.text?.trim();
+    if (isString(item.text) && !emptyCommentary) message.text = item.text;
     if (isString(item.phase)) message.itemType = item.phase;
     message.status = completed ? "completed" : "streaming";
     this.#itemTurns.set(item.id, turnId);

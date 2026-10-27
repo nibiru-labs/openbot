@@ -76,6 +76,8 @@ export const messages = {
   "composer.send.voice": "Отправить голосовое сообщение",
   "composer.send.message": "Отправить сообщение",
   "composer.send.stop": "Остановить агента",
+  "composer.send.stopAndSend": "Остановить и отправить",
+  "composer.send.stopAndSendTooltip": "Остановить текущую работу и отправить это сейчас",
   "composer.send.hint.enter": "Отправить (Enter). Shift+Enter — новая строка.",
   "composer.send.hint.modEnterMac": "Отправить (⌘Enter). Enter — новая строка.",
   "composer.send.hint.modEnterWin": "Отправить (Ctrl+Enter). Enter — новая строка.",
@@ -121,4 +123,5 @@ export const messages = {
   "composer.context.noAuto": "Этот агент не сжимает свой контекст.",
   "composer.context.lastCompaction": "Последнее сжатие: {before} → {after} токенов",
   "composer.compaction.elapsed": "{minutes}:{seconds}",
+  "composer.mcp.unnamedServer": "Сервер MCP",
 } as const satisfies PartialTranslation<typeof source>;

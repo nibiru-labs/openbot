@@ -13,4 +13,7 @@ export const messages = {
   "error.attachment.emlUnsupported":
     "Bu sunucu EML eklerini desteklemiyor. Ana makinedeki OpenBot'u güncelleyin ve tekrar deneyin.",
   "error.attachment.previewTooLarge": "Dosya 100 MB sınırını aşıyor.",
+  "error.attachment.notPrepared": "Ek hazırlanmadı.",
+  "error.attachment.namedFileTooLarge": '"{name}" 100 MB sınırını aşıyor.',
+  "error.attachment.notAvailable": "Ek kullanılamıyor.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -166,7 +166,7 @@ export class AutomationServer {
     registerSecretValue(token);
     const server = createServer((request, response) => void this.#handle(request, response));
     const port = yield* automationIO(() =>
-      listenLoopback(server, () => new Error("Unable to bind the automation server.")),
+      listenLoopback(server, () => new Error(sourceText("error.app.automationBindFailed"))),
     );
     this.#server = server;
     this.#port = port;

@@ -126,4 +126,20 @@ export const messages = {
   "error.agent.screenCaptureEmptyWindows":
     "Windows zwrócił pusty obraz. Poproś użytkownika, aby odblokował komputer i zamknął chronione treści. Przechwytywanie ekranu może też blokować zasada organizacji.",
   "error.agent.screenCaptureFailed": "Przechwycenie ekranu nie powiodło się. Spróbuj ponownie.",
+  "error.agent.duplicationOtherSource": "Ta operacja duplikowania agenta należy do innego agenta źródłowego.",
+  "error.agent.duplicationNotPending": "To duplikowanie agenta nie jest w toku.",
+  "error.agent.duplicationUnavailable": "Ta operacja duplikowania agenta jest niedostępna.",
+  "error.agent.emojiInvalid": "Nieprawidłowy emoji.",
+  "error.agent.avatarTooLarge":
+    "Awatar przekracza 512 KB. Zmniejsz lub skompresuj kopię dostępnymi narzędziami, a potem spróbuj ponownie z tą ścieżką.",
+  "error.agent.avatarType": "Wybierz prawidłowy obraz awatara PNG, JPEG lub WebP.",
+  "error.agent.avatarUnreadable":
+    "OpenBot nie mógł otworzyć pliku awatara. Użyj ścieżki istniejącego lokalnego obrazu.",
+  "error.agent.avatarNotRegularFile": "Ścieżka awatara musi wskazywać zwykły plik.",
+  "error.agent.nameRequired": "Nazwa agenta jest wymagana.",
+  "error.agent.nameTooLong": "Nazwa agenta jest za długa.",
+  "error.agent.descriptionTooLong": "Opis agenta jest za długi.",
+  "error.agent.titleTooLong": "Tytuł agenta jest za długi.",
+  "error.agent.usageNotSaved": "Nie udało się zapisać danych użycia.",
+  "error.agent.providerChangeNotAtomic": "Zmiana dostawcy wymaga jednorazowego wyboru dostawcy i modelu.",
 } as const satisfies PartialTranslation<typeof source>;

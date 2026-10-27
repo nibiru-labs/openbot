@@ -131,4 +131,11 @@ export const messages = {
   "error.team.signInRelayUsed": "Cette connexion a déjà été envoyée.",
   "error.team.signInRelayMismatch": "Cette adresse ne vient pas de cette connexion.",
   "error.team.signInRelayLinkUnknown": "Aucun agent de ce serveur n’a affiché ce lien de connexion.",
+  "error.team.directMessagesDisabled": "Les messages directs ne sont pas activés pour ce client.",
+  "error.team.typingAgentRequired": "Un agent valide est requis pour l’état de saisie.",
+  "error.team.runtimeSnapshotUnsupported":
+    "L’instantané d’exécution n’est pas pris en charge par le protocole Team v1.",
+  "error.team.directMessagesUnavailable": "Les messages directs sont indisponibles.",
+  "error.team.providerUnknown": "Fournisseur inconnu.",
+  "error.team.logoVersionChanged": "La version du logo du serveur n’est pas à jour.",
 } as const satisfies PartialTranslation<typeof source>;

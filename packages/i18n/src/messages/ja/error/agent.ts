@@ -133,4 +133,20 @@ export const messages = {
   "error.agent.screenCaptureEmptyWindows":
     "Windows が空の画像を返しました。コンピューターのロックを解除し、保護されたコンテンツを閉じるようユーザーに依頼してください。組織のポリシーによって画面キャプチャが止められている場合もあります。",
   "error.agent.screenCaptureFailed": "画面キャプチャに失敗しました。もう一度お試しください。",
+  "error.agent.duplicationOtherSource": "このエージェントの複製操作は、別の複製元エージェントのものです。",
+  "error.agent.duplicationNotPending": "このエージェントの複製は保留中ではありません。",
+  "error.agent.duplicationUnavailable": "このエージェントの複製操作は利用できません。",
+  "error.agent.emojiInvalid": "絵文字が無効です。",
+  "error.agent.avatarTooLarge":
+    "アバターが 512 KB を超えています。使えるツールでコピーのサイズを小さくするか圧縮してから、そのパスでもう一度お試しください。",
+  "error.agent.avatarType": "有効な PNG、JPEG、または WebP のアバター画像を選んでください。",
+  "error.agent.avatarUnreadable":
+    "OpenBot はアバターフイルを開けませんでした。すでにあるローカル画像のパスを使ってください。",
+  "error.agent.avatarNotRegularFile": "アバターのパスは通常ファイルを指す必要があります。",
+  "error.agent.nameRequired": "エージェント名は必須です。",
+  "error.agent.nameTooLong": "エージェント名が長すぎます。",
+  "error.agent.descriptionTooLong": "エージェントの説明が長すぎます。",
+  "error.agent.titleTooLong": "エージェントのタイトルが長すぎます。",
+  "error.agent.usageNotSaved": "使用データを保存できませんでした。",
+  "error.agent.providerChangeNotAtomic": "プロバイダーの変更には、プロバイダーとモデルの一括選択が必要です。",
 } as const satisfies PartialTranslation<typeof source>;

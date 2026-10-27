@@ -11,4 +11,6 @@ export const messages = defineMessages("error.app", {
   "error.app.remoteIdentityUnavailable": "The remote host identity is unavailable.",
   "error.app.iceServersMissing": "Remote Signal has not supplied ICE servers yet.",
   "error.app.finishLocalTest": "Finish the local test before switching displays.",
+  "error.app.hostedServerSecretStorageUnavailable": "The hosted server has no secret storage for its session.",
+  "error.app.automationBindFailed": "Unable to bind the automation server.",
 });

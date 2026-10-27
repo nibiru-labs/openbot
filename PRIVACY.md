@@ -89,6 +89,14 @@ A script can send the data elsewhere under its own configuration.
 
 ## Agent and host usage
 
+When an agent dispatches coding work, OpenBot sends the task card and the local repository path to
+the selected openswarm executor host. A local run uses this computer. A remote run uses the named
+fleet host over its configured transport. The executor can read and change files in its worktree,
+and its selected model provider receives the task and the code context that it needs. The run id,
+host, status, branch, commit, summary, and verify result stay in the local OpenBot app data and chat.
+OpenBot does not send this data to the account service or product analytics. Do not put secrets in a
+task card. Review the returned branch and verify evidence before reporting success.
+
 The Usage view stores numeric token counts, activity counts, provider and model identifiers,
 internal session and turn identifiers, timestamps, and cost estimates in the host's local SQLite
 database. Collection starts when this feature is installed. It does not import old provider
@@ -280,6 +288,12 @@ The service does not store plaintext one-time codes, account session tokens, or 
 tickets in D1. It returns a new plaintext secret only to the client that requested it. The desktop
 app encrypts its account session token with the operating-system storage protection before it writes
 the token to disk.
+
+The desktop app can sign in to an account service with the admin key of that service, instead of an
+email code. The key goes to that account service and nowhere else. The service uses it to make a
+one-time sign-in claim for the account, and the app exchanges the claim for a session. The app keeps
+the key in memory for that sign-in only. It writes the key to no file, and sends it in no log and no
+analytics event. The service keeps only the hash of the claim, not the admin key.
 
 The desktop app also keeps, for each joined server, the ID of its logical remote session and the
 Signal address, so that the next start asks only for a new ticket. The file

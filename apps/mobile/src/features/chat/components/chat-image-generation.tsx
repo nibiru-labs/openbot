@@ -68,7 +68,11 @@ export function ChatImageGeneration({
   // view shows its image at once: the reveal is news, and old news should not repeat.
   const [watched, setWatched] = useState(status === "generating");
   if (status === "generating" && !watched) setWatched(true);
-  const file = useAttachmentFile(serverId, attachment ?? PLACEHOLDER, status === "completed" && Boolean(attachment));
+  const file = useAttachmentFile(
+    serverId,
+    attachment ?? placeholderAttachment(t("mobile.chat.attachment.generatedImage")),
+    status === "completed" && Boolean(attachment),
+  );
   const unavailable = status === "completed" && !attachment;
   const downloadFailed = Boolean(file.query.error) || previewError;
   const failed = status === "failed" || status === "interrupted" || unavailable || downloadFailed;
@@ -233,15 +237,18 @@ export function ChatImageGeneration({
   );
 }
 
-const PLACEHOLDER: AttachmentSummary = {
-  id: "image-generation-placeholder",
-  name: "Generated image",
-  size: 0,
-  kind: "image",
-  mimeType: "image/png",
-  previewKind: "image",
-  previewUrl: null,
-};
+/** The name of an image that is still generating. */
+function placeholderAttachment(name: string): AttachmentSummary {
+  return {
+    id: "image-generation-placeholder",
+    name,
+    size: 0,
+    kind: "image",
+    mimeType: "image/png",
+    previewKind: "image",
+    previewUrl: null,
+  };
+}
 
 /**
  * The image arrives through a feathered circle that grows from the centre of the canvas, where the

@@ -866,6 +866,9 @@ export function createConversationViewScope(props: ConversationProps) {
         );
         if (!target) return;
         lastHandledMessageFocusNonce = request.nonce;
+        if (target.classList.contains("response-process")) {
+          target.querySelector<HTMLButtonElement>('button[aria-expanded="false"][aria-controls]')?.click();
+        }
         stickToLatest = false;
         // A page that loaded just before the request queued a scroll to the latest message. That scroll
         // must not move the transcript away from the message the user picked, so it is cancelled and

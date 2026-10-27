@@ -125,4 +125,10 @@ export const messages = {
   "error.team.signInRelayUsed": "このサインインはすでに送信されています。",
   "error.team.signInRelayMismatch": "このアドレスはこのサインインのものではありません。",
   "error.team.signInRelayLinkUnknown": "このサーバーのエージェントはこのサインインリンクを表示していません。",
+  "error.team.directMessagesDisabled": "このクライアントではダイレクトメッセージが有効になっていません。",
+  "error.team.typingAgentRequired": "入力状態には有効なエージェントが必要です。",
+  "error.team.runtimeSnapshotUnsupported": "Team プロトコル v1 はランタイムのスナップショットに対応していません。",
+  "error.team.directMessagesUnavailable": "ダイレクトメッセージは利用できません。",
+  "error.team.providerUnknown": "不明なプロバイダーです。",
+  "error.team.logoVersionChanged": "サーバーロゴのバージョンが最新ではありません。",
 } as const satisfies PartialTranslation<typeof source>;

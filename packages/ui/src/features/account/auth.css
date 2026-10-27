@@ -241,6 +241,12 @@
   width: auto;
 }
 
+/* The admin key is the second way in, so it sits under the primary button as a text action. */
+.account-login-alternative {
+  width: auto;
+  justify-self: center;
+}
+
 .account-login-code-action-change {
   justify-content: flex-start;
 }

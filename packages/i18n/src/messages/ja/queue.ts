@@ -28,4 +28,17 @@ export const messages = {
   "queue.deleteHeld.body":
     "別のデバイスがこのメッセージを編集しています。エージェントはこのメッセージを受け取りません。",
   "queue.deleteHeld.keep": "残す",
+  "queue.waiting.status": { other: "{count} 件のメッセージが待機中" },
+  "queue.paused.status": { other: "一時停止 · {count} 件のメッセージを保持" },
+  "queue.pause": "一時停止",
+  "queue.pause.tooltip": "再開するまでキュー内のメッセージを開始しません。現在の作業は続き、何も失われません。",
+  "queue.resume": "再開",
+  "queue.resume.tooltip": "キュー内のメッセージを順番に再開します",
+  "queue.clearAll.label": "キュー内のすべてのメッセージを削除",
+  "queue.clearAll.tooltip": "キュー内のすべてのメッセージを削除",
+  "queue.clearAll.title": { other: "キュー内の {count} 件のメッセージを削除しますか？" },
+  "queue.clearAll.body": "エージェントはそのメッセージを受け取りません。現在の作業は続きます。",
+  "queue.clearAll.confirm": "すべて削除",
+  "queue.item.runNowLabel": "現在の作業を停止して、キュー内のメッセージ {position} を今すぐ実行",
+  "queue.item.runNowTooltip": "今すぐ実行: 現在の作業を停止して、このメッセージを次に開始します",
 } as const satisfies PartialTranslation<typeof source>;

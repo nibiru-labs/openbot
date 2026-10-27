@@ -2,6 +2,28 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/backend";
 
 export const messages = {
+  "error.backend.dispatchCommand":
+    "Die openswarm-Anfrage konnte nicht abgeschlossen werden. Prüfe die Ausführer-Einstellungen und den Laufstatus, bevor du es erneut versuchst.",
+  "error.backend.dispatchOwnChat": "Sende Code-Arbeit nur aus deinem eigenen Chat.",
+  "error.backend.dispatchLaneOptions":
+    "Eine Lane nutzt ihr konfiguriertes Backend und Modell. Lasse Backend und Modell weg, wenn du eine Lane auswählst.",
+  "error.backend.dispatchUnknown": "Dieser Chat gehört nicht zu diesem Code-Lauf.",
+  "error.backend.dispatchHostRequired":
+    "Mehrere Code-Läufe haben diese ID. Gib den Host an, den dispatch_work zurückgegeben hat.",
+  "error.backend.dispatchVerifyWorkspace":
+    "Der Verify-Befehl läuft auf dem Ausführer-Host, außerhalb der Arbeitsbereichsgrenze dieses Agenten. Ein Agent mit „Nur Arbeitsbereich“ kann kein Verify festlegen.",
+  "error.backend.dispatchExecutorWorkspace":
+    "Ein Agent mit „Nur Arbeitsbereich“ kann nur den Codex-Ausführer nutzen, weil andere Ausführer nicht begrenzen, wohin sie schreiben. Lasse Lane und Backend weg.",
+  "error.backend.dispatchRepository":
+    "Trage in openswarm fleet.json übereinstimmende Pfade für lokale und Ausführer-Repositorys ein.",
+  "error.backend.dispatchSpawnFailed": "openswarm konnte nicht gestartet werden.",
+  "error.backend.dispatchExitCode": "openswarm wurde mit Code {code} beendet.",
+  "error.backend.dispatchExited": "openswarm wurde beendet, bevor ein Ergebnis zurückgegeben wurde.",
+  "error.backend.dispatchTimeout": "openswarm hat nicht innerhalb des Zeitlimits geantwortet.",
+  "error.backend.dispatchOutputUnreadable": "Die Ausgabe von openswarm konnte nicht gelesen werden.",
+  "error.backend.dispatchSaveFailed": "Die openswarm-Anfrage konnte nicht gespeichert werden.",
+  "error.backend.dispatchApprovalDenied": "Die Person hat diesen Code-Auftrag abgelehnt. Es wurde nichts gestartet.",
+  "error.backend.dispatchApprovalMissing": "Dieser Code-Auftrag hat keine Freigabe. Es wurde nichts gestartet.",
   "error.backend.eventsUnavailable": "Auf diesem Host sind keine Ereignisse verfügbar.",
   "error.backend.databaseIntegrity": "Die OpenBot-Datenbank hat die Integritätsprüfung nicht bestanden.",
   "error.backend.webhookRouteLimit": "Ein Host kann höchstens {limit} Webhook-Routinen haben.",
@@ -274,6 +296,8 @@ export const messages = {
   "error.backend.steerQueuedOnly": "Nur Nachrichten in der Warteschlange können gesteuert werden.",
   "error.backend.promptInactive": "Diese Rückfrage ist nicht mehr aktiv.",
   "error.backend.promptAnswerMismatch": "Eine Antwort passt zu keiner aktiven Frage.",
+  "error.backend.uiBlockAnswerInvalid": "Diese Antwort passt nicht zum Block des Agenten.",
+  "error.backend.uiBlockActionNotAllowed": "Nur der Servereigentümer oder ein Administrator kann diese Aktion wählen.",
   "error.backend.approvalInactive": "Diese Genehmigung ist nicht mehr aktiv.",
   "error.backend.takeoverInactive": "Diese Browserübernahme ist nicht mehr aktiv.",
   "error.backend.authSubmitting": "Die Authentifizierung wird bereits übermittelt.",
@@ -331,6 +355,30 @@ export const messages = {
   "error.backend.taskOpenLimitReached":
     "Dieser Agent hat {count} offene Aufgaben. Schließe eine Aufgabe und starte oder öffne dann eine andere.",
   "error.backend.taskRemoteUnsupported": "Aufgaben sind nur für Agenten auf diesem Computer verfügbar.",
+  "error.backend.queueControlRemoteUnsupported":
+    "Pausieren und Sofort ausführen sind nur für Agenten auf diesem Computer verfügbar.",
+  "error.backend.runNowQueuedOnly": "Nur eine Nachricht in der Warteschlange kann sofort ausgeführt werden.",
+  "error.backend.agentControlCooldown":
+    "Du hast diesen Agenten vor weniger als einer Minute unterbrochen. Deine Nachricht wartet in seiner Warteschlange.",
+  "error.backend.agentControlLimit":
+    "Teammitglieder haben diesen Agenten in den letzten Minuten zu oft unterbrochen. Deine Nachricht wartet in seiner Warteschlange.",
+  "error.backend.agentControlChain":
+    "Dieser Durchlauf begann, weil ein Teammitglied dich unterbrochen hat. Beende ihn, bevor du einen anderen Agenten unterbrichst. Deine Nachricht wartet in seiner Warteschlange.",
   "error.backend.taskStartFailed":
     "OpenBot konnte die Aufgabe nicht starten. Erledige die Arbeit stattdessen in diesem Durchlauf.",
+  "error.backend.requestedPathNotFile": "Der angeforderte Pfad ist keine Datei.",
+  "error.backend.sunshinePortsNotAllocated": "Die Sunshine-Ports wurden noch nicht zugewiesen.",
+  "error.backend.moonlightPortNotAllocated": "Der Moonlight-Port wurde noch nicht zugewiesen.",
+  "error.backend.moonlightPortsNotAllocated": "Die Moonlight-Ports wurden noch nicht zugewiesen.",
+  "error.backend.remoteDesktopExitedDuringPairing":
+    "Ein Prozess des entfernten Desktops wurde während der Kopplung beendet.",
+  "error.backend.browserUploadInputLimit": "Ein Browser-Tab kann Dateien für bis zu {n} Eingaben behalten.",
+  "error.backend.browserUploadTabLimit": "Ein Browser-Tab kann bis zu {n} Upload-Bytes behalten.",
+  "error.backend.browserUploadTotalLimit": "Browser-Uploads können insgesamt bis zu {n} Bytes behalten.",
+  "error.backend.generatedImageMissing": "Die Bilderzeugung hat kein Bild zurückgegeben.",
+  "error.backend.channelAssignmentInactive": "Die Kanal-Zuweisung ist nicht mehr aktiv.",
+  "error.backend.channelAttachmentNotFound": "Anhang in diesem Kanal nicht gefunden.",
+  "error.backend.routineHandoffDeliveryFailed": "Die Übergabe-Zustellung der Routine konnte nicht erstellt werden.",
+  "error.backend.routineDeliveryNotCreated": "Die Zustellung der Routine konnte nicht erstellt werden.",
+  "error.backend.routineRunGone": "Der Routinenlauf existiert nicht mehr.",
 } as const satisfies PartialTranslation<typeof source>;

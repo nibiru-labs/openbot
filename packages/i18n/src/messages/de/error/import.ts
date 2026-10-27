@@ -74,4 +74,7 @@ export const messages = {
     "{name}: Werte, die ein Geheimnis enthalten können, wurden aus den Argumenten oder der Adresse entfernt. Gib sie in den Einstellungen erneut ein.",
   "error.import.transferSharedKept":
     "{number} Dateien im gemeinsamen Ordner sind hier schon vorhanden und bleiben unverändert.",
+  "error.import.uploadsUnavailable": "Uploads für den Agentenimport sind nicht verfügbar.",
+  "error.import.transferUploadsUnavailable": "Uploads für die Instanzübertragung sind nicht verfügbar.",
+  "error.import.failed": "Der Import ist fehlgeschlagen.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -101,7 +101,11 @@ export function AgentActivityIndicator(props: {
         })}
       />
       <section class="agent-activity-content" aria-label={t("chat.activity.current")}>
-        <AgentAvatar agent={props.agent} mood="working" class="agent-activity-avatar" />
+        <AgentAvatar
+          agent={props.agent}
+          mood={props.phase === "exiting" ? "idle" : "working"}
+          class="agent-activity-avatar"
+        />
         <span class="agent-activity-label">{label()}</span>
         <Show when={elapsed()}>{(time) => <span class="agent-activity-elapsed">{time()}</span>}</Show>
       </section>

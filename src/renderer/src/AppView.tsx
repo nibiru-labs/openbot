@@ -79,6 +79,7 @@ export function AppAccessGate() {
                     onRetry={auth.retryCentralAccount}
                     onRequestEmailCode={auth.requestEmailCode}
                     onVerifyEmailCode={auth.verifyEmailCode}
+                    onSignInWithAdminKey={auth.signInWithAdminKey}
                     onReset={auth.logoutCentralAccount}
                   />
                 }

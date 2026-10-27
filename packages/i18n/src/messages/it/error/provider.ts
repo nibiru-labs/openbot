@@ -364,4 +364,5 @@ export const messages = {
     "Installazione dell'agente non riuscita. L'installazione precedente è invariata.",
   "error.provider.registryRemoveBusy":
     "Attendi che l'installazione dell'agente e il lavoro ACP attivo finiscano prima di rimuoverlo.",
+  "error.provider.customAgentNoSwitch": "Gli agenti personalizzati non hanno un Cambio di provider integrato.",
 } as const satisfies PartialTranslation<typeof source>;

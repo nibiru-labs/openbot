@@ -359,4 +359,5 @@ export const messages = {
   "error.provider.registryInstallFailed": "Ajan kurulumu başarısız oldu. Önceki kurulum değişmedi.",
   "error.provider.registryRemoveBusy":
     "Kaldırmadan önce ajan kurulumunun ve etkin ACP çalışmasının bitmesini bekleyin.",
+  "error.provider.customAgentNoSwitch": "Özel ajanların yerleşik sağlayıcı değiştirmesi yoktur.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -1,5 +1,5 @@
 import type { AgentProfile } from "@openbot/ui/data";
-import { type AgentActivityLabel, nextAgentActivityLabel } from "@openbot/ui/features/conversation/AgentActivity";
+import type { AgentActivityLabel } from "@openbot/ui/features/conversation/AgentActivity";
 import {
   agentActivityExitDelay,
   agentActivityExitDuration,
@@ -60,29 +60,13 @@ export function createActivityStore(deps: ActivityStoreDeps) {
     if (current?.agent?.id === agentId) return current.activityId;
     return `${agentId}:message:${streamingMessage.id}`;
   });
-  const latestActiveCommentary = createMemo(() => {
-    const activeTurnId = deps.props.activeTurnId;
-    if (!activeTurnId) return null;
-    const streamingMessage = streamingAgentMessage();
-    if (streamingMessage && streamingMessage.itemType !== "commentary") return null;
-    for (let index = deps.props.messages.length - 1; index >= 0; index -= 1) {
-      const message = deps.props.messages[index];
-      if (message?.turnId !== activeTurnId || message.itemType !== "commentary") continue;
-      const items = message.items ?? [message.body];
-      for (let itemIndex = items.length - 1; itemIndex >= 0; itemIndex -= 1) {
-        const detail = items[itemIndex]?.trim();
-        if (detail) return detail;
-      }
-    }
-    return null;
-  });
   const activeActivityDetail = createMemo(() => {
     const hold = heldByOwnChannelWork();
     if (hold) return currentText().t("chat.activity.workingIn", { channel: hold.channelName });
     const progress = deps.props.activityDetail?.trim();
-    // The agent's own commentary is shown as it is; the host's progress text is in the host's source
-    // English and is read here in the user's language.
-    return latestActiveCommentary() ?? (progress ? currentText().sourceText(progress) : null);
+    // Detailed process notes have their own disclosure. Keep this status line short and use the
+    // host's tool progress when it is available.
+    return progress ? currentText().sourceText(progress) : null;
   });
   const agentActivity = createMemo<"Working" | null>(() => (activeActivityId() ? "Working" : null));
   const activityLabel = createMemo<AgentActivityLabel | null>(() => {
@@ -91,7 +75,7 @@ export function createActivityStore(deps: ActivityStoreDeps) {
     if (!agentId || !activityId) return null;
     const previous = deps.agentActivityLabels.get(agentId);
     if (previous?.activityId === activityId) return previous.label;
-    const label = nextAgentActivityLabel(previous?.label);
+    const label: AgentActivityLabel = "Working on it…";
     deps.agentActivityLabels.set(agentId, { activityId, label });
     return label;
   });

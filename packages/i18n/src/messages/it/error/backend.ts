@@ -2,6 +2,28 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/backend";
 
 export const messages = {
+  "error.backend.dispatchCommand":
+    "Impossibile completare la richiesta openswarm. Controlla le impostazioni dell'esecutore e lo stato dell'esecuzione prima di riprovare.",
+  "error.backend.dispatchOwnChat": "Invia il lavoro di programmazione solo dalla tua chat.",
+  "error.backend.dispatchLaneOptions":
+    "Una lane usa il backend e il modello che le sono stati configurati. Ometti il backend e il modello quando selezioni una lane.",
+  "error.backend.dispatchUnknown": "Questa chat non appartiene a quella esecuzione di codice.",
+  "error.backend.dispatchHostRequired":
+    "Più esecuzioni di codice hanno questo ID. Includi l'host restituito da dispatch_work.",
+  "error.backend.dispatchVerifyWorkspace":
+    "Il comando di verifica viene eseguito sull'host esecutore, fuori dal limite del workspace di questo agente. Un agente Solo workspace non può impostare la verifica.",
+  "error.backend.dispatchExecutorWorkspace":
+    "Un agente Solo workspace può usare solo l'esecutore Codex, perché gli altri esecutori non limitano dove scrivono. Ometti lane e backend.",
+  "error.backend.dispatchRepository":
+    "Configura in openswarm fleet.json percorsi di repository locali e dell'esecutore corrispondenti.",
+  "error.backend.dispatchSpawnFailed": "Impossibile avviare openswarm.",
+  "error.backend.dispatchExitCode": "openswarm è terminato con il codice {code}.",
+  "error.backend.dispatchExited": "openswarm si è fermato prima di restituire un risultato.",
+  "error.backend.dispatchTimeout": "openswarm non ha risposto entro il limite di tempo.",
+  "error.backend.dispatchOutputUnreadable": "Impossibile leggere l’output di openswarm.",
+  "error.backend.dispatchSaveFailed": "Impossibile salvare la richiesta openswarm.",
+  "error.backend.dispatchApprovalDenied": "La persona ha negato questo invio di codice. Non è stato avviato nulla.",
+  "error.backend.dispatchApprovalMissing": "Questo invio di codice non ha un'approvazione. Non è stato avviato nulla.",
   "error.backend.eventsUnavailable": "Gli eventi non sono disponibili su questo host.",
   "error.backend.databaseIntegrity": "Il database di OpenBot non ha superato il controllo di integrità.",
   "error.backend.webhookRouteLimit": "Un host può avere al massimo {limit} routine webhook.",
@@ -263,6 +285,9 @@ export const messages = {
   "error.backend.steerQueuedOnly": "Si possono indirizzare solo i messaggi in coda.",
   "error.backend.promptInactive": "Questo prompt non è più attivo.",
   "error.backend.promptAnswerMismatch": "La risposta al prompt non corrisponde a una domanda attiva.",
+  "error.backend.uiBlockAnswerInvalid": "Questa risposta non è adatta al blocco dell'agente.",
+  "error.backend.uiBlockActionNotAllowed":
+    "Solo il proprietario del server o un amministratore può scegliere questa azione.",
   "error.backend.approvalInactive": "Questa approvazione non è più attiva.",
   "error.backend.takeoverInactive": "Questo intervento nel browser non è più attivo.",
   "error.backend.authSubmitting": "L'invio dell'autenticazione è già in corso.",
@@ -318,6 +343,29 @@ export const messages = {
   "error.backend.taskOpenLimitReached":
     "Questo agente ha {count} attività aperte. Chiudi un'attività, poi avviane o aprine un'altra.",
   "error.backend.taskRemoteUnsupported": "Le attività sono disponibili solo per gli agenti su questo computer.",
+  "error.backend.queueControlRemoteUnsupported":
+    "Mettere in pausa ed Esegui ora sono disponibili solo per gli agenti su questo computer.",
+  "error.backend.runNowQueuedOnly": "Solo un messaggio in coda può essere eseguito adesso.",
+  "error.backend.agentControlCooldown":
+    "Hai interrotto questo agente meno di un minuto fa. Il tuo messaggio aspetta nella sua coda.",
+  "error.backend.agentControlLimit":
+    "I colleghi hanno interrotto questo agente troppo spesso negli ultimi minuti. Il tuo messaggio aspetta nella sua coda.",
+  "error.backend.agentControlChain":
+    "Questo turno è iniziato perché un collega ti ha interrotto. Finiscilo prima di interrompere un altro agente. Il tuo messaggio aspetta nella sua coda.",
   "error.backend.taskStartFailed":
     "OpenBot non è riuscito ad avviare l'attività. Esegui invece il lavoro in questo turno.",
+  "error.backend.requestedPathNotFile": "Il percorso richiesto non è un file.",
+  "error.backend.sunshinePortsNotAllocated": "Le porte Sunshine non sono ancora state assegnate.",
+  "error.backend.moonlightPortNotAllocated": "La porta Moonlight non è ancora stata assegnata.",
+  "error.backend.moonlightPortsNotAllocated": "Le porte Moonlight non sono ancora state assegnate.",
+  "error.backend.remoteDesktopExitedDuringPairing": "Un processo del desktop remoto è terminato durante l'abbinamento.",
+  "error.backend.browserUploadInputLimit": "Una scheda del browser può conservare file per fino a {n} input.",
+  "error.backend.browserUploadTabLimit": "Una scheda del browser può conservare fino a {n} byte di caricamento.",
+  "error.backend.browserUploadTotalLimit": "I caricamenti del browser possono conservare in totale fino a {n} byte.",
+  "error.backend.generatedImageMissing": "La generazione di immagini non ha restituito alcuna immagine.",
+  "error.backend.channelAssignmentInactive": "L'assegnazione del canale non è più attiva.",
+  "error.backend.channelAttachmentNotFound": "Allegato non trovato in questo canale.",
+  "error.backend.routineHandoffDeliveryFailed": "Impossibile creare la consegna del passaggio di lavoro della routine.",
+  "error.backend.routineDeliveryNotCreated": "Impossibile creare la consegna della routine.",
+  "error.backend.routineRunGone": "L'esecuzione della routine non esiste più.",
 } as const satisfies PartialTranslation<typeof source>;

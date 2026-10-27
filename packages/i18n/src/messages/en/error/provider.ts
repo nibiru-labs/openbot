@@ -346,4 +346,5 @@ export const messages = defineMessages("error.provider", {
   "error.provider.registryInstallFailed": "The agent installation failed. The previous installation is unchanged.",
   "error.provider.registryRemoveBusy":
     "Wait for the agent installation and active ACP work to finish before you remove it.",
+  "error.provider.customAgentNoSwitch": "Custom agents do not have a built-in provider switch.",
 });

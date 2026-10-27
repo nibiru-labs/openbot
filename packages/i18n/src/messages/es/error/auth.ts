@@ -26,4 +26,16 @@ export const messages = {
     "La conexión terminó antes de que OpenBot confirmara la entrega. Comprueba la entrega para evitar enviar otro código.",
   "error.auth.deliveryUnknown":
     "OpenBot no pudo confirmar si se envió el código de inicio de sesión. Comprueba la entrega antes de enviarlo de nuevo.",
+  "error.auth.adminKeyRequired": "Introduce la clave de administración del servicio de cuentas.",
+  "error.auth.adminKeyRejected": "El servicio de cuentas no aceptó la clave de administración.",
+  "error.auth.sessionNotStorable":
+    "OpenBot no puede guardar la sesión de inicio de sesión en este equipo, así que no puede iniciar sesión con una clave de administración.",
+  "error.auth.hostedServerNoAnswer": "El servidor de cuentas no respondió al principio.",
+  "error.auth.hostedServerNoClaim": "El servidor alojado no ha iniciado sesión y no tiene credencial de acceso.",
+  "error.auth.hostedServerClaimMismatch": "La credencial de acceso es para otro servidor alojado.",
+  "error.auth.hostedServerHostMismatch": "El host configurado no es el servidor alojado para el que se creó esta VM.",
+  "error.auth.hostedServerUnknown": "El servidor de cuentas no tiene ningún registro de este servidor alojado.",
+  "error.auth.invalidUser": "El servicio de cuentas devolvió un usuario no válido.",
+  "error.auth.invalidHostedServerClaim": "Credencial de acceso no válida del servidor alojado.",
+  "error.auth.sessionNotStored": "No se pudo guardar la sesión.",
 } as const satisfies PartialTranslation<typeof source>;

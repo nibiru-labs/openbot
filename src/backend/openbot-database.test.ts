@@ -660,8 +660,8 @@ describe("OpenBotDatabase", () => {
     );
 
     const search = database.searchConversationMessages("pagination needle", agent.id, undefined, 100);
-    expect(search.total).toBe(1);
-    expect(search.results.map((result) => result.message.id)).toEqual(["message-00234"]);
+    expect(search.total).toBe(2);
+    expect(search.results.map((result) => result.message.id)).toEqual(["message-00235", "message-00234"]);
     expect(search.nextCursor).toBeNull();
     expect(database.searchConversationMessages("pagination needle")).toEqual(search);
     database.close();

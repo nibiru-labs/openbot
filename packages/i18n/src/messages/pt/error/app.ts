@@ -11,4 +11,7 @@ export const messages = {
   "error.app.remoteIdentityUnavailable": "A identidade do computador anfitrião remoto está indisponível.",
   "error.app.iceServersMissing": "O Remote Signal ainda não forneceu servidores ICE.",
   "error.app.finishLocalTest": "Conclua o teste local antes de trocar de tela.",
+  "error.app.hostedServerSecretStorageUnavailable":
+    "O servidor hospedado não tem armazenamento de segredos para a sessão dele.",
+  "error.app.automationBindFailed": "Não foi possível vincular o servidor de automação.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -27,4 +27,33 @@ export const messages = {
   "queue.deleteHeld.title": "Удалить сообщение из очереди?",
   "queue.deleteHeld.body": "Это сообщение редактируется на другом устройстве. Агент его не получит.",
   "queue.deleteHeld.keep": "Оставить",
+  "queue.waiting.status": {
+    one: "{count} сообщение ожидает",
+    few: "{count} сообщения ожидают",
+    many: "{count} сообщений ожидают",
+    other: "{count} сообщения ожидают",
+  },
+  "queue.paused.status": {
+    one: "Приостановлено · {count} сообщение сохранено",
+    few: "Приостановлено · {count} сообщения сохранено",
+    many: "Приостановлено · {count} сообщений сохранено",
+    other: "Приостановлено · {count} сообщения сохранено",
+  },
+  "queue.pause": "Приостановить",
+  "queue.pause.tooltip":
+    "Не запускайте сообщения из очереди, пока не возобновите. Текущая работа продолжается, и ничего не теряется.",
+  "queue.resume": "Возобновить",
+  "queue.resume.tooltip": "Запустите сообщения из очереди снова, по порядку",
+  "queue.clearAll.label": "Удалить все сообщения из очереди",
+  "queue.clearAll.tooltip": "Удалить все сообщения из очереди",
+  "queue.clearAll.title": {
+    one: "Удалить {count} сообщение из очереди?",
+    few: "Удалить {count} сообщения из очереди?",
+    many: "Удалить {count} сообщений из очереди?",
+    other: "Удалить {count} сообщения из очереди?",
+  },
+  "queue.clearAll.body": "Агент их не получит. Текущая работа продолжается.",
+  "queue.clearAll.confirm": "Удалить все",
+  "queue.item.runNowLabel": "Остановить текущую работу и выполнить сейчас сообщение {position} из очереди",
+  "queue.item.runNowTooltip": "Выполнить сейчас: остановить текущую работу и запустить это сообщение следующим",
 } as const satisfies PartialTranslation<typeof source>;

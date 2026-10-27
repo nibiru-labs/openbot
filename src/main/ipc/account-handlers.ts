@@ -5,7 +5,7 @@ import { runCauseEffect } from "../../backend/effect-boundary";
 import type { CentralAuthManager } from "../central-auth-manager";
 import type { HostService } from "../host-service";
 import { createHostedMobileConnect, createHostedMobileConnectLink } from "../mobile-connect-host";
-import { parseEmailCodeVerification, parseProfileName } from "./app-inputs";
+import { parseAdminKeySignIn, parseEmailCodeVerification, parseProfileName } from "./app-inputs";
 import { parseAvatarImage } from "./avatar-inputs";
 import { handler, type IpcGroupHandlers, payloadHandler } from "./define-ipc-group";
 import { stringPayload } from "./validation";
@@ -25,6 +25,9 @@ export function accountIpcHandlers({ centralAuth, host }: AccountIpcDependencies
       ),
       verifyEmailCode: payloadHandler(parseEmailCodeVerification, (verification) =>
         runCauseEffect(centralAuth.verifyEmailCode(verification.challengeId, verification.code)),
+      ),
+      signInWithAdminKey: payloadHandler(parseAdminKeySignIn, (signIn) =>
+        runCauseEffect(centralAuth.signInWithAdminKey(signIn)),
       ),
       updateName: payloadHandler(parseProfileName, (name) => runCauseEffect(centralAuth.updateName(name))),
       updateAvatar: payloadHandler(parseAvatarImage, (parsed) => runCauseEffect(centralAuth.updateAvatar(parsed))),

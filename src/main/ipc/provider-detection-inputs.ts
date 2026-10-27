@@ -6,6 +6,7 @@ import {
   customProviderEndpointKey,
   isCustomProviderId,
   isDetectionFolder,
+  isOpenswarmSettings,
   PROVIDER_DETECTION_LIMITS,
 } from "@openbot/contracts/ipc";
 import { isBoolean, isString } from "@openbot/contracts/runtime-values";
@@ -54,7 +55,10 @@ const HIDDEN_ID_PATTERN = /^(models|agent):/;
 
 export function parseProviderDetectionSettings(input: unknown): ProviderDetectionSettings {
   if (!isObject(input) || !isBoolean(input.enabled)) throw new Error("Invalid detection settings.");
+  if (input.openswarm !== undefined && !isOpenswarmSettings(input.openswarm))
+    throw new Error("Invalid openswarm settings.");
   return {
+    ...(input.openswarm ? { openswarm: { ...input.openswarm } } : {}),
     enabled: input.enabled,
     addresses: parseList(input.addresses, PROVIDER_DETECTION_LIMITS.entries, isScanAddress),
     folders: parseList(input.folders, PROVIDER_DETECTION_LIMITS.entries, isDetectionFolder),

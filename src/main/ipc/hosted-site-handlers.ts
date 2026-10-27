@@ -23,7 +23,7 @@ import { scopedHandler, scopedQueryHandler } from "./scoped-handler";
 
 function decodeRemoteSiteList(value: unknown): HostedSiteList {
   const list = parseHostedSiteList(value);
-  if (!list) throw new Error("The host returned an invalid site list.");
+  if (!list) throw new Error(sourceText("error.site.listInvalid"));
   return list;
 }
 

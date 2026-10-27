@@ -321,6 +321,24 @@ export function modelSwitchReason(message: ConversationMessage): ModelSwitchReas
   return null;
 }
 
+/** The item type of the status card that a coding dispatch posts in the chat when a run starts or ends. */
+export const DISPATCH_ITEM_TYPE = "dispatch";
+
+export type DispatchConversationPhase = "started" | "result";
+
+/** A dispatch status card in the chat. Mailbox JSON deliveries use the same item type but carry `delivery`. */
+export interface DispatchConversationEvent {
+  phase: DispatchConversationPhase;
+}
+
+export function dispatchConversationEvent(message: ConversationMessage): DispatchConversationEvent | null {
+  if (message.author !== "system" || message.source !== "system" || message.status !== "completed") return null;
+  if (message.itemType !== DISPATCH_ITEM_TYPE || message.delivery !== undefined) return null;
+  if (message.id.endsWith("-started")) return { phase: "started" };
+  if (message.id.endsWith("-result")) return { phase: "result" };
+  return { phase: "result" };
+}
+
 /**
  * The item type of a message that one agent sends to another, in the sender's thread and in the
  * recipient's thread. It is traffic between agents, not a message to the user.

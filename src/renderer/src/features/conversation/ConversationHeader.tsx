@@ -1,5 +1,7 @@
+import type { AvatarMood } from "@openbot/ui/bloub-avatar";
 import { isAgentTaskActive } from "@openbot/ui/features/conversation/AgentTasks";
 import { ConversationHeader as SharedConversationHeader } from "@openbot/ui/features/conversation/ConversationHeader";
+import { createMemo } from "solid-js";
 import { useConversationViewScope } from "./conversation-scope";
 
 const loadAgentSettingsPanel = () => import("./AgentSettingsPanel");
@@ -24,9 +26,18 @@ export function ConversationHeader() {
     toggleSidePanel,
   } = useConversationViewScope();
   const runningTasks = () => props.tasks?.snapshot?.tasks.filter(isAgentTaskActive).length ?? 0;
+  // The avatar's animation reads its mood from an effect. Create the derived state here so that
+  // this read never creates a reactive primitive inside that animation effect.
+  const avatarMood = createMemo<AvatarMood>(() => {
+    if (props.prompt || props.approval || props.browserTakeover) return "waiting";
+    if (agentActivity() === "Working" || props.tasks?.snapshot?.tasks.some((task) => task.state === "running"))
+      return "working";
+    return "idle";
+  });
   return (
     <SharedConversationHeader
       agent={props.agent}
+      avatarMood={avatarMood()}
       onSettingsIntent={() => void loadAgentSettingsPanel()}
       onOpenSettings={() => setActiveRightPanel("settings")}
       modelPicker={{

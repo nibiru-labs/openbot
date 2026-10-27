@@ -27,4 +27,33 @@ export const messages = {
   "queue.deleteHeld.title": "Usunąć wiadomość z kolejki?",
   "queue.deleteHeld.body": "Inne urządzenie edytuje tę wiadomość. Agent jej nie otrzyma.",
   "queue.deleteHeld.keep": "Zachowaj",
+  "queue.waiting.status": {
+    one: "{count} wiadomość czeka",
+    few: "{count} wiadomości czekają",
+    many: "{count} wiadomości czeka",
+    other: "{count} wiadomości czeka",
+  },
+  "queue.paused.status": {
+    one: "Wstrzymano · {count} wiadomość zachowana",
+    few: "Wstrzymano · {count} wiadomości zachowane",
+    many: "Wstrzymano · {count} wiadomości zachowanych",
+    other: "Wstrzymano · {count} wiadomości zachowane",
+  },
+  "queue.pause": "Wstrzymaj",
+  "queue.pause.tooltip":
+    "Nie uruchamiaj żadnej wiadomości z kolejki, dopóki jej nie wznowisz. Bieżąca praca trwa i nic nie ginie.",
+  "queue.resume": "Wznów",
+  "queue.resume.tooltip": "Uruchom ponownie wiadomości z kolejki, w kolejności",
+  "queue.clearAll.label": "Usuń wszystkie wiadomości z kolejki",
+  "queue.clearAll.tooltip": "Usuń wszystkie wiadomości z kolejki",
+  "queue.clearAll.title": {
+    one: "Usunąć {count} wiadomość z kolejki?",
+    few: "Usunąć {count} wiadomości z kolejki?",
+    many: "Usunąć {count} wiadomości z kolejki?",
+    other: "Usunąć {count} wiadomości z kolejki?",
+  },
+  "queue.clearAll.body": "Agent ich nie otrzyma. Bieżąca praca trwa.",
+  "queue.clearAll.confirm": "Usuń wszystko",
+  "queue.item.runNowLabel": "Zatrzymaj bieżącą pracę i uruchom teraz wiadomość {position} z kolejki",
+  "queue.item.runNowTooltip": "Uruchom teraz: zatrzymaj bieżącą pracę i uruchom tę wiadomość następną",
 } as const satisfies PartialTranslation<typeof source>;

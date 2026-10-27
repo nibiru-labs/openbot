@@ -108,7 +108,7 @@ export async function routeFiles(
         }),
       ),
     );
-    if (!attachment) throw new Error("The attachment was not prepared.");
+    if (!attachment) throw new Error(sourceText("error.attachment.notPrepared"));
     return json(201, attachment);
   }
   const attachmentMatch = url.pathname.match(/^\/v1\/attachments\/([^/]+)$/);
@@ -190,7 +190,7 @@ export async function sendFile(
   let head: OutgoingHttpHeaders;
   try {
     const metadata = await file.stat();
-    if (!metadata.isFile()) throw new Error("The requested path is not a file.");
+    if (!metadata.isFile()) throw new Error(sourceText("error.backend.requestedPathNotFile"));
     if (tooLarge !== null && metadata.size > ATTACHMENT_LIMITS.fileBytes) throw new HttpError(413, tooLarge);
     size = metadata.size;
     head = headers(size);

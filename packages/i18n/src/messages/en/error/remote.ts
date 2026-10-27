@@ -187,4 +187,7 @@ export const messages = defineMessages("error.remote", {
   "error.remote.remoteNotConfigured": "Remote connections are not set up on this OpenBot service.",
   "error.remote.hostRefused": "The host refused the request ({status}).",
   "error.remote.hostedServerRemoval": "Use Billing to delete a hosted server.",
+  "error.remote.hostRequired": "A valid public host is required.",
+  "error.remote.serverReturnedData": "The remote server returned data.",
+  "error.remote.developmentIdentityChanged": "The local development server identity changed.",
 });
