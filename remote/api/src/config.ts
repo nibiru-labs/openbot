@@ -146,7 +146,7 @@ export function readRemoteApiConfig(environment: Record<string, string | undefin
   if (!ticketJwks && !ticketJwksUrl)
     throw new Error("REMOTE_TICKET_PUBLIC_KEYS or REMOTE_TICKET_JWKS_URL is required.");
   return {
-    host: environment.REMOTE_SIGNAL_HOST ?? "0.0.0.0",
+    host: environment.REMOTE_SIGNAL_HOST ?? "127.0.0.1",
     port: positiveInteger(environment.REMOTE_SIGNAL_PORT, tlsDisabled ? 8081 : 8443),
     healthPort: positiveInteger(environment.REMOTE_HEALTH_PORT, 8080),
     tlsCertificatePath: tlsDisabled ? null : required(environment.REMOTE_TLS_CERT_PATH, "REMOTE_TLS_CERT_PATH"),

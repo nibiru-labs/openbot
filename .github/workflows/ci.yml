@@ -140,6 +140,10 @@ jobs:
         if: env.CODE == 'true'
         run: bun run check:desktop:static
 
+      - name: Check development LAN guard
+        if: env.CODE == 'true'
+        run: bun run test:dev-lan-guard
+
       - parallel:
           - name: Check translation catalogs
             if: env.CODE == 'true'
