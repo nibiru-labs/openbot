@@ -27,4 +27,24 @@ export const messages = {
   "queue.deleteHeld.title": "Supprimer le message en attente ?",
   "queue.deleteHeld.body": "Un autre appareil modifie ce message. L’agent ne le recevra pas.",
   "queue.deleteHeld.keep": "Conserver",
+  "queue.waiting.status": { one: "{count} message attend", other: "{count} messages attendent" },
+  "queue.paused.status": {
+    one: "En pause · {count} message conservé",
+    other: "En pause · {count} messages conservés",
+  },
+  "queue.pause": "Mettre en pause",
+  "queue.pause.tooltip":
+    "Ne lancez aucun message en attente avant de reprendre. Le travail en cours continue et rien n’est perdu.",
+  "queue.resume": "Reprendre",
+  "queue.resume.tooltip": "Relancez les messages en attente, dans l’ordre",
+  "queue.clearAll.label": "Supprimer tous les messages en attente",
+  "queue.clearAll.tooltip": "Supprimer tous les messages en attente",
+  "queue.clearAll.title": {
+    one: "Supprimer {count} message en attente ?",
+    other: "Supprimer {count} messages en attente ?",
+  },
+  "queue.clearAll.body": "L’agent ne les recevra pas. Le travail en cours continue.",
+  "queue.clearAll.confirm": "Tout supprimer",
+  "queue.item.runNowLabel": "Arrêter le travail en cours et exécuter maintenant le message en attente {position}",
+  "queue.item.runNowTooltip": "Exécuter maintenant : arrêter le travail en cours et lancer ce message ensuite",
 } as const satisfies PartialTranslation<typeof source>;

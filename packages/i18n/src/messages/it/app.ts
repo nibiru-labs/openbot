@@ -20,6 +20,8 @@ export const messages = {
   "app.errorStatus.steer": "Impossibile indirizzare l'agente",
   "app.errorStatus.edit": "Impossibile modificare il messaggio in coda",
   "app.errorStatus.reorder": "Impossibile riordinare la coda",
+  "app.errorStatus.queuePause": "Impossibile mettere in pausa o riprendere la coda",
+  "app.errorStatus.runNow": "Impossibile eseguire il messaggio adesso",
   "app.errorStatus.stop": "Impossibile fermare l'agente",
   "app.errorStatus.messageLoad": "Impossibile caricare i messaggi",
   "app.errorStatus.acknowledge": "Impossibile chiudere l'avviso di errore",

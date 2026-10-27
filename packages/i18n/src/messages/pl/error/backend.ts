@@ -263,6 +263,8 @@ export const messages = {
   "error.backend.steerQueuedOnly": "Pokierować można tylko wiadomościami w kolejce.",
   "error.backend.promptInactive": "Ten prompt nie jest już aktywny.",
   "error.backend.promptAnswerMismatch": "Odpowiedź na prompt nie pasuje do aktywnego pytania.",
+  "error.backend.uiBlockAnswerInvalid": "Ta odpowiedź nie pasuje do bloku agenta.",
+  "error.backend.uiBlockActionNotAllowed": "Tę akcję może wybrać tylko właściciel serwera lub administrator.",
   "error.backend.approvalInactive": "To zatwierdzenie nie jest już aktywne.",
   "error.backend.takeoverInactive": "To przejęcie przeglądarki nie jest już aktywne.",
   "error.backend.authSubmitting": "Wysyłanie uwierzytelnienia już trwa.",
@@ -315,5 +317,14 @@ export const messages = {
   "error.backend.taskOpenLimitReached":
     "Liczba otwartych zadań tego agenta: {count}. Zamknij zadanie, a potem rozpocznij lub otwórz inne.",
   "error.backend.taskRemoteUnsupported": "Zadania są dostępne tylko dla agentów na tym komputerze.",
+  "error.backend.queueControlRemoteUnsupported":
+    "Wstrzymywanie i Uruchom teraz są dostępne tylko dla agentów na tym komputerze.",
+  "error.backend.runNowQueuedOnly": "Tylko wiadomość z kolejki można uruchomić teraz.",
+  "error.backend.agentControlCooldown":
+    "Przerwałeś tego agenta mniej niż minutę temu. Twoja wiadomość czeka w jego kolejce.",
+  "error.backend.agentControlLimit":
+    "Członkowie zespołu przerwali tego agenta zbyt często w ostatnich minutach. Twoja wiadomość czeka w jego kolejce.",
+  "error.backend.agentControlChain":
+    "Ta tura zaczęła się, bo przerwał cię członek zespołu. Zakończ ją, zanim przerwiesz innego agenta. Twoja wiadomość czeka w jego kolejce.",
   "error.backend.taskStartFailed": "OpenBot nie może rozpocząć zadania. Zamiast tego wykonaj pracę w tej turze.",
 } as const satisfies PartialTranslation<typeof source>;

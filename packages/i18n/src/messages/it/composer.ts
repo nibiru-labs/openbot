@@ -75,6 +75,8 @@ export const messages = {
   "composer.send.voice": "Invia messaggio vocale",
   "composer.send.message": "Invia messaggio",
   "composer.send.stop": "Ferma l'agente",
+  "composer.send.stopAndSend": "Ferma e invia",
+  "composer.send.stopAndSendTooltip": "Ferma il lavoro in corso e invia subito questo messaggio",
   "composer.send.hint.enter": "Invia (Invio). Maiusc+Invio va a capo.",
   "composer.send.hint.modEnterMac": "Invia (⌘Invio). Invio va a capo.",
   "composer.send.hint.modEnterWin": "Invia (Ctrl+Invio). Invio va a capo.",

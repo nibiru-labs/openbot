@@ -20,6 +20,8 @@ export const messages = {
   "app.errorStatus.steer": "エージェントの方向を修正できませんでした",
   "app.errorStatus.edit": "キュー内のメッセージを編集できませんでした",
   "app.errorStatus.reorder": "キューを並べ替えられませんでした",
+  "app.errorStatus.queuePause": "キューを一時停止または再開できませんでした",
+  "app.errorStatus.runNow": "メッセージを今すぐ実行できませんでした",
   "app.errorStatus.stop": "エージェントを停止できませんでした",
   "app.errorStatus.messageLoad": "メッセージを読み込めませんでした",
   "app.errorStatus.acknowledge": "エラー通知を閉じられませんでした",

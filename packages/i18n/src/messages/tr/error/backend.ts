@@ -255,6 +255,8 @@ export const messages = {
   "error.backend.steerQueuedOnly": "Yalnızca kuyruğa alınmış mesajlar yönlendirilebilir.",
   "error.backend.promptInactive": "Bu istem artık etkin değil.",
   "error.backend.promptAnswerMismatch": "Bir istem yanıtı etkin bir soruyla eşleşmiyor.",
+  "error.backend.uiBlockAnswerInvalid": "Bu yanıt ajanın bloğuna uymuyor.",
+  "error.backend.uiBlockActionNotAllowed": "Bu eylemi yalnızca sunucu sahibi veya bir yönetici seçebilir.",
   "error.backend.approvalInactive": "Bu onay artık etkin değil.",
   "error.backend.takeoverInactive": "Bu tarayıcı devralması artık etkin değil.",
   "error.backend.authSubmitting": "Kimlik doğrulama gönderimi zaten devam ediyor.",
@@ -310,5 +312,14 @@ export const messages = {
   "error.backend.taskOpenLimitReached":
     "Bu ajanın {count} açık görevi var. Bir görevi kapatın, ardından başka bir görev başlatın veya açın.",
   "error.backend.taskRemoteUnsupported": "Görevler yalnızca bu bilgisayardaki ajanlar için kullanılabilir.",
+  "error.backend.queueControlRemoteUnsupported":
+    "Duraklat ve Şimdi çalıştır yalnızca bu bilgisayardaki ajanlar için kullanılabilir.",
+  "error.backend.runNowQueuedOnly": "Yalnızca kuyruktaki bir mesaj şimdi çalıştırılabilir.",
+  "error.backend.agentControlCooldown":
+    "Bu ajanı bir dakikadan kısa süre önce durdurdunuz. Mesajınız onun kuyruğunda bekliyor.",
+  "error.backend.agentControlLimit":
+    "Ekip arkadaşları bu ajanı son birkaç dakika içinde fazla sık durdurdu. Mesajınız onun kuyruğunda bekliyor.",
+  "error.backend.agentControlChain":
+    "Bu tur, bir ekip arkadaşınız sizi durdurduğu için başladı. Başka bir ajanı durdurmadan önce bu turu bitirin. Mesajınız onun kuyruğunda bekliyor.",
   "error.backend.taskStartFailed": "OpenBot görevi başlatamadı. Bunun yerine işi bu turda yapın.",
 } as const satisfies PartialTranslation<typeof source>;

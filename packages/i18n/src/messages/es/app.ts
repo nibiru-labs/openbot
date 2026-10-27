@@ -19,6 +19,8 @@ export const messages = {
   "app.errorStatus.steer": "No se pudo orientar al agente",
   "app.errorStatus.edit": "No se pudo editar el mensaje en cola",
   "app.errorStatus.reorder": "No se pudo reordenar la cola",
+  "app.errorStatus.queuePause": "No se pudo pausar ni reanudar la cola",
+  "app.errorStatus.runNow": "No se pudo ejecutar el mensaje ahora",
   "app.errorStatus.stop": "No se pudo detener al agente",
   "app.errorStatus.messageLoad": "No se pudieron cargar los mensajes",
   "app.errorStatus.acknowledge": "No se pudo descartar el aviso de error",

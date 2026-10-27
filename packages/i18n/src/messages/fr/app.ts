@@ -20,6 +20,8 @@ export const messages = {
   "app.errorStatus.steer": "Impossible de réorienter l’agent",
   "app.errorStatus.edit": "Impossible de modifier le message en file d’attente",
   "app.errorStatus.reorder": "Impossible de réordonner la file d’attente",
+  "app.errorStatus.queuePause": "Impossible de mettre en pause ou de reprendre la file d’attente",
+  "app.errorStatus.runNow": "Impossible d’exécuter le message maintenant",
   "app.errorStatus.stop": "Impossible d’arrêter l’agent",
   "app.errorStatus.messageLoad": "Impossible de charger les messages",
   "app.errorStatus.acknowledge": "Impossible de fermer l’avis d’échec",

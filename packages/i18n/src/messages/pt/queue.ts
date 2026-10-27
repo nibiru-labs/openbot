@@ -27,4 +27,23 @@ export const messages = {
   "queue.deleteHeld.title": "Excluir mensagem na fila?",
   "queue.deleteHeld.body": "Outro dispositivo está editando esta mensagem. O agente não vai recebê-la.",
   "queue.deleteHeld.keep": "Manter",
+  "queue.waiting.status": { one: "{count} mensagem espera", other: "{count} mensagens esperam" },
+  "queue.paused.status": {
+    one: "Pausado · {count} mensagem mantida",
+    other: "Pausado · {count} mensagens mantidas",
+  },
+  "queue.pause": "Pausar",
+  "queue.pause.tooltip": "Não inicie nenhuma mensagem da fila até retomar. O trabalho atual continua e nada se perde.",
+  "queue.resume": "Retomar",
+  "queue.resume.tooltip": "Inicie as mensagens da fila de novo, na ordem",
+  "queue.clearAll.label": "Excluir todas as mensagens da fila",
+  "queue.clearAll.tooltip": "Excluir todas as mensagens da fila",
+  "queue.clearAll.title": {
+    one: "Excluir {count} mensagem da fila?",
+    other: "Excluir {count} mensagens da fila?",
+  },
+  "queue.clearAll.body": "O agente não vai recebê-las. O trabalho atual continua.",
+  "queue.clearAll.confirm": "Excluir tudo",
+  "queue.item.runNowLabel": "Parar o trabalho atual e executar agora a mensagem {position} da fila",
+  "queue.item.runNowTooltip": "Executar agora: pare o trabalho atual e inicie esta mensagem a seguir",
 } as const satisfies PartialTranslation<typeof source>;
