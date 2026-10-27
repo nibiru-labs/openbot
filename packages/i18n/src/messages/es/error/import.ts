@@ -72,4 +72,7 @@ export const messages = {
     "{name}: se quitaron de sus argumentos o de su dirección los valores que pueden contener un secreto. Vuelve a introducirlos en Ajustes.",
   "error.import.transferSharedKept":
     "{number} archivos de la carpeta compartida ya están aquí, así que se conservan tal como están.",
+  "error.import.uploadsUnavailable": "Las subidas para importar agentes no están disponibles.",
+  "error.import.transferUploadsUnavailable": "Las subidas para transferir instancias no están disponibles.",
+  "error.import.failed": "La importación falló.",
 } as const satisfies PartialTranslation<typeof source>;

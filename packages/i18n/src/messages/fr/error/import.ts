@@ -74,4 +74,7 @@ export const messages = {
     "{name} : les valeurs qui peuvent contenir un secret ont été retirées de ses arguments ou de son adresse. Saisissez-les de nouveau dans les réglages.",
   "error.import.transferSharedKept":
     "{number} fichiers du dossier partagé sont déjà présents ici. Ils restent tels quels.",
+  "error.import.uploadsUnavailable": "Les téléversements pour l’import d’agents ne sont pas disponibles.",
+  "error.import.transferUploadsUnavailable": "Les téléversements pour le transfert d’instance ne sont pas disponibles.",
+  "error.import.failed": "L’import a échoué.",
 } as const satisfies PartialTranslation<typeof source>;

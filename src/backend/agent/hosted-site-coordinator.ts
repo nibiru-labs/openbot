@@ -14,6 +14,7 @@ import type {
 } from "@openbot/contracts/ipc";
 import { hostedSiteConversationEventItemType, hostedSiteConversationEventText } from "@openbot/contracts/ipc";
 import { isBoolean } from "@openbot/contracts/runtime-values";
+import { sourceText } from "@openbot/i18n/source";
 import { Effect, Result, Schema } from "effect";
 import type { AgentClient } from "../agent-client";
 import type { AgentStore } from "../agent-store";
@@ -233,7 +234,7 @@ export class HostedSiteCoordinator {
   }
 
   #requireHostedSites(): AgentHostedSites {
-    if (!this.#hostedSites) throw new Error("OpenBot site hosting is unavailable.");
+    if (!this.#hostedSites) throw new Error(sourceText("error.site.hostingUnavailable"));
     return this.#hostedSites;
   }
 
@@ -287,7 +288,7 @@ export class HostedSiteCoordinator {
     const host = yield* siteStep(() => this.#requireHostedSites());
     const { sites } = yield* host.list();
     for (const site of sites) if (site.id === siteId) return site;
-    return yield* new HostedSiteOperationFailed({ cause: new Error("The hosted site was not found.") });
+    return yield* new HostedSiteOperationFailed({ cause: new Error(sourceText("error.site.hostedSiteNotFound")) });
   });
 
   readonly #executeMutationEffect = Effect.fn("HostedSiteCoordinator.executeMutation")(function* (

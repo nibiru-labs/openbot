@@ -27,4 +27,8 @@ export const messages = {
   "error.site.fileType": "Bu dosya türüne izin verilmez: {path}",
   "error.site.fileOutsideRoot": "Site dosyaları kaynak kökünün içinde kalmalıdır: {path}",
   "error.site.fileTooLarge": "Bir dosya 1 MB sınırını aşıyor: {path}",
+  "error.site.listInvalid": "Ana makine geçersiz bir site listesi döndürdü.",
+  "error.site.listResponseInvalid": "Site listesi yanıtı geçersiz.",
+  "error.site.hostingUnavailable": "OpenBot site barındırma kullanılamıyor.",
+  "error.site.hostedSiteNotFound": "Barındırılan site bulunamadı.",
 } as const satisfies PartialTranslation<typeof source>;

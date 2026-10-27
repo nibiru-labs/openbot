@@ -801,7 +801,9 @@ export class RemoteServerManager extends EventEmitter<RemoteServerEvents> {
         return yield* remoteDecode(() => requiredServerSummary(this.list(), input.serverId));
       const verifiedIdentity = yield* this.#client.verifyIdentity(input.apiUrl, input.serverId, input.fingerprint);
       if (verifiedIdentity.publicKey !== input.publicKey || verifiedIdentity.serverName !== input.serverName) {
-        return yield* new RemoteWorkflowError({ cause: new Error("The local development server identity changed.") });
+        return yield* new RemoteWorkflowError({
+          cause: new Error(sourceText("error.remote.developmentIdentityChanged")),
+        });
       }
       const stored: StoredRemoteServer = {
         id: input.serverId,
@@ -1804,7 +1806,7 @@ export class RemoteServerManager extends EventEmitter<RemoteServerEvents> {
 
       const server = yield* remoteDecode(() => this.#store.require(serverId));
       if (server.logoVersion !== version)
-        return yield* new RemoteWorkflowError({ cause: new Error("Server logo version is not current.") });
+        return yield* new RemoteWorkflowError({ cause: new Error(sourceText("error.team.logoVersionChanged")) });
       if (server.transport === "webrtc-v2" && transport) {
         const logo = yield* transport.downloadHostLogo(serverId, version);
         if (!isValidAvatarImage(logo.mimeType, logo.bytes))

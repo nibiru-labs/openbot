@@ -149,7 +149,7 @@ export function publicHttpBaseUrl(request: IncomingMessage): string {
   const forwardedHost = firstHeaderValue(request.headers["x-forwarded-host"]);
   const host = forwardedHost || request.headers.host;
   if (!host || !/^[A-Za-z0-9.:[\]-]+$/.test(host)) {
-    throw new HttpError(400, "A valid public host is required.");
+    throw new HttpError(400, sourceText("error.remote.hostRequired"));
   }
   const forwardedProtocol = firstHeaderValue(request.headers["x-forwarded-proto"]);
   const protocol = forwardedProtocol === "https" ? "https" : "http";

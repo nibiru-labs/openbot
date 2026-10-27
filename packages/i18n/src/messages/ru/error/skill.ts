@@ -56,4 +56,6 @@ export const messages = {
   "error.skill.localMissingSkillFile": "В корне папки навыка нужен SKILL.md.",
   "error.skill.pathSymlink": "Пути навыков не могут содержать символические ссылки.",
   "error.skill.folderNotRead": "{provider} не читает {folder}. Скопируйте эту папку в {target}.",
+  "error.skill.localChanged": "Навык изменился. Прочитайте его последнюю редакцию перед изменением.",
+  "error.skill.archiveLimitsExceeded": "Превышены пределы архива.",
 } as const satisfies PartialTranslation<typeof source>;

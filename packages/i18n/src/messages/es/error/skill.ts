@@ -56,4 +56,6 @@ export const messages = {
   "error.skill.localMissingSkillFile": "La carpeta de habilidades necesita SKILL.md en su raíz.",
   "error.skill.pathSymlink": "Las rutas de habilidades no pueden contener enlaces simbólicos.",
   "error.skill.folderNotRead": "{provider} no lee {folder}. Copia esta carpeta a {target}.",
+  "error.skill.localChanged": "La habilidad cambió. Lee su última revisión antes de revisarla.",
+  "error.skill.archiveLimitsExceeded": "Se superaron los límites del archivo.",
 } as const satisfies PartialTranslation<typeof source>;

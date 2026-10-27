@@ -237,7 +237,7 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
         return this.getState();
       if (user.id !== state.user.id)
         return yield* new CentralAuthOperationError({
-          cause: new Error("The account service returned an invalid user."),
+          cause: new Error(sourceText("error.auth.invalidUser")),
         });
       const resolved = yield* authDecode(() => this.#resolveUserAvatar(user));
       if (
@@ -1490,7 +1490,7 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ claim }) },
         (value) => {
           const parsed = parseHostedServerClaim(value);
-          if (!parsed) throw new Error("Invalid hosted server claim.");
+          if (!parsed) throw new Error(sourceText("error.auth.invalidHostedServerClaim"));
           return parsed;
         },
       );
@@ -1806,7 +1806,7 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
     if (!this.#options.canPersist()) {
       yield* authCall(() => rm(this.#options.storagePath, { force: true }));
       if (required)
-        return yield* new CentralAuthOperationError({ cause: new Error("The session could not be stored.") });
+        return yield* new CentralAuthOperationError({ cause: new Error(sourceText("error.auth.sessionNotStored")) });
       return;
     }
     const temporaryPath = `${this.#options.storagePath}.${randomUUID()}.tmp`;

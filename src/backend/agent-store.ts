@@ -311,8 +311,17 @@ export class AgentStore {
       if (this.#state.agents.length >= INPUT_LIMITS.agents) {
         throw new Error(sourceText("error.agent.hostLimit", { limit: INPUT_LIMITS.agents }));
       }
-      const name = requiredText(input.name, "Agent name", INPUT_LIMITS.agentName);
-      const description = limitedText(input.description, "Agent description", INPUT_LIMITS.agentDescription);
+      const name = requiredText(
+        input.name,
+        "error.agent.nameRequired",
+        "error.agent.nameTooLong",
+        INPUT_LIMITS.agentName,
+      );
+      const description = limitedText(
+        input.description,
+        "error.agent.descriptionTooLong",
+        INPUT_LIMITS.agentDescription,
+      );
       if (!isAvatarSeed(input.avatarSeed)) throw new Error("Invalid avatar seed.");
       if (input.avatarHue !== null && !isAvatarHue(input.avatarHue)) throw new Error("Invalid avatar hue.");
       const record = this.#createRecord(`agent-${randomUUID()}`, name, "", description);
@@ -640,13 +649,22 @@ export class AgentStore {
       const agent = this.#requireAgent(input.agentId);
       const next = { ...agent };
       if (input.name !== undefined) {
-        next.name = requiredText(input.name, "Agent name", INPUT_LIMITS.agentName);
+        next.name = requiredText(
+          input.name,
+          "error.agent.nameRequired",
+          "error.agent.nameTooLong",
+          INPUT_LIMITS.agentName,
+        );
       }
       if (input.title !== undefined) {
-        next.title = limitedText(input.title, "Agent title", INPUT_LIMITS.agentTitle);
+        next.title = limitedText(input.title, "error.agent.titleTooLong", INPUT_LIMITS.agentTitle);
       }
       if (input.description !== undefined) {
-        next.description = limitedText(input.description, "Agent description", INPUT_LIMITS.agentDescription);
+        next.description = limitedText(
+          input.description,
+          "error.agent.descriptionTooLong",
+          INPUT_LIMITS.agentDescription,
+        );
       }
       if (input.notifications !== undefined) next.notifications = input.notifications;
       // Checked here and not only in the IPC decoder, because the caller closest to the data is not a
@@ -1560,16 +1578,25 @@ export class AgentStore {
   }
 }
 
-function requiredText(value: string, label: string, maxLength: number): string {
+/** The English of a field error names the field, so every field has its own key. */
+type AgentRequiredErrorKey = "error.agent.nameRequired";
+type AgentTooLongErrorKey = "error.agent.nameTooLong" | "error.agent.descriptionTooLong" | "error.agent.titleTooLong";
+
+function requiredText(
+  value: string,
+  requiredKey: AgentRequiredErrorKey,
+  tooLongKey: AgentTooLongErrorKey,
+  maxLength: number,
+): string {
   const trimmed = value.trim();
-  if (!trimmed) throw new Error(`${label} is required.`);
-  if (trimmed.length > maxLength) throw new Error(`${label} is too long.`);
+  if (!trimmed) throw new Error(sourceText(requiredKey));
+  if (trimmed.length > maxLength) throw new Error(sourceText(tooLongKey));
   return trimmed;
 }
 
-function limitedText(value: string, label: string, maxLength: number): string {
+function limitedText(value: string, tooLongKey: AgentTooLongErrorKey, maxLength: number): string {
   const trimmed = value.trim();
-  if (trimmed.length > maxLength) throw new Error(`${label} is too long.`);
+  if (trimmed.length > maxLength) throw new Error(sourceText(tooLongKey));
   return trimmed;
 }
 

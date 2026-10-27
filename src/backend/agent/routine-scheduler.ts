@@ -892,7 +892,9 @@ export class RoutineScheduler implements RoutineDueSource {
       .pipe(Effect.mapError((failure) => new RoutineOperationFailed({ cause: failure.cause })));
     const deliveryId = receipt.deliveries[0]?.id;
     if (!deliveryId)
-      return yield* new RoutineOperationFailed({ cause: new Error("Unable to create the routine handoff delivery.") });
+      return yield* new RoutineOperationFailed({
+        cause: new Error(sourceText("error.backend.routineHandoffDeliveryFailed")),
+      });
     yield* routineStep(() => {
       const snapshot = this.#conversation.ensureSnapshot(agent.id, agent.threadId);
       this.#hooks.syncMailboxMessages(snapshot);
@@ -946,7 +948,9 @@ export class RoutineScheduler implements RoutineDueSource {
         .pipe(toRoutineOperationFailed);
       const deliveryId = receipt.deliveries[0]?.id;
       if (!deliveryId)
-        return yield* new RoutineOperationFailed({ cause: new Error("Unable to create the routine delivery.") });
+        return yield* new RoutineOperationFailed({
+          cause: new Error(sourceText("error.backend.routineDeliveryNotCreated")),
+        });
       const queued = yield* routineStep(() => {
         try {
           return this.#routines.attachDelivery(run.id, deliveryId);

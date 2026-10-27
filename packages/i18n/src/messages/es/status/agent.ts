@@ -7,6 +7,12 @@ export const messages = {
   "status.agent.contextCleared": "Contexto borrado. Aquí empieza un nuevo chat.",
   "status.agent.modelSwitchedForLimit": "Límite de uso alcanzado. Se cambió a {model}.",
   "status.agent.modelReturnedAfterLimit": "El límite de uso terminó. Se volvió a {model}.",
+  "status.agent.pausedHourBudget":
+    "Límite de tokens alcanzado: {used} tokens en la última hora (límite {limit}). El trabajo nuevo espera hasta que continúes.",
+  "status.agent.pausedTurnBudget":
+    "Detenido después de un paso: este turno usó {used} tokens (límite {limit}). El trabajo se conserva. Continúa para seguir.",
+  "status.agent.pausedPlanLimit":
+    "El límite del plan detuvo este turno. El trabajo se conserva y sigue cuando termina el límite.",
   "status.agent.marketplaceSuggested": "Se sugirió una aplicación de Marketplace: {app}.",
   "status.agent.screenCaptureScreen": "Capturar la pantalla principal y enviar la imagen al modelo del agente.",
   "status.agent.screenCaptureDisplay": "Capturar la pantalla {name} y enviar la imagen al modelo del agente.",
@@ -15,4 +21,5 @@ export const messages = {
     "Capturar el área de la pantalla en {x}, {y}, de {width} × {height} puntos, y enviar la imagen al modelo del agente.",
   "status.agent.screenCaptureProgress": "Pidiendo permiso para capturar la pantalla…",
   "status.agent.screenCaptureReviewing": "Revisando la captura de pantalla…",
+  "status.agent.starting": "Iniciando las CLI de los agentes locales…",
 } as const satisfies PartialTranslation<typeof source>;

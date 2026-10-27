@@ -76,7 +76,8 @@ export function normalizedFiles(bytes: Uint8Array): Record<string, Uint8Array> {
       filter: (file) => {
         fileCount += 1;
         expandedSize += file.originalSize;
-        if (fileCount > MAX_FILES || expandedSize > MAX_BYTES) throw new Error("Archive limits exceeded.");
+        if (fileCount > MAX_FILES || expandedSize > MAX_BYTES)
+          throw new Error(sourceText("error.skill.archiveLimitsExceeded"));
         return true;
       },
     });

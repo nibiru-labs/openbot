@@ -19,4 +19,5 @@ export const messages = {
   "error.voice.cloud.streamEnded": "Передача диктовки прервалась. Запишите ещё раз.",
   "error.voice.cloud.tooLong": "Запись слишком длинная.",
   "error.voice.cloud.keySaveFailed": "Не удалось сохранить API-ключ ElevenLabs.",
+  "error.voice.transcriptTooLong": "Расшифровка голоса слишком длинная.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -381,4 +381,5 @@ export const messages = {
     "Die Installation des Agenten ist fehlgeschlagen. Die vorherige Installation ist unverändert.",
   "error.provider.registryRemoveBusy":
     "Warte, bis die Installation des Agenten und laufende ACP-Arbeit abgeschlossen sind, bevor du ihn entfernst.",
+  "error.provider.customAgentNoSwitch": "Eigene Agenten haben keinen eingebauten Anbieterwechsel.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -68,4 +68,7 @@ export const messages = defineMessages("error.import", {
     "{name}: values that can hold a secret were removed from its arguments or address. Enter them again in Settings.",
   "error.import.transferSharedKept":
     "{number} files in the Shared folder are already here, so they are kept as they are.",
+  "error.import.uploadsUnavailable": "Agent import uploads are not available.",
+  "error.import.transferUploadsUnavailable": "Instance transfer uploads are not available.",
+  "error.import.failed": "The import failed.",
 });

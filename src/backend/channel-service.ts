@@ -1771,7 +1771,7 @@ export class ChannelService {
       (item) => item.agentId === agentId && item.turnId === turnId && activeAssignment(item),
     );
     if (!assignment || channel.archived)
-      return yield* channelFailure(new Error("The channel assignment is no longer active."));
+      return yield* channelFailure(new Error(sourceText("error.backend.channelAssignmentInactive")));
     const tasks = yield* channelSync(() => this.store.tasks(channelId));
     const task = tasks.find((item) => item.id === assignment.taskId);
     if (!task || task.revision !== assignment.taskRevision || task.state !== "running")
@@ -1784,10 +1784,10 @@ export class ChannelService {
             entry.message.attachments?.some((attachment) => attachment.id === args.attachmentId),
           )
         )
-          return yield* channelFailure(new Error("Attachment not found in this channel."));
+          return yield* channelFailure(new Error(sourceText("error.backend.channelAttachmentNotFound")));
         const attachmentId = args.attachmentId;
         const attachment = yield* this.mailbox.resolveAttachment(attachmentId).pipe(Effect.mapError(channelFailure));
-        if (!attachment) return yield* channelFailure(new Error("The attachment is unavailable."));
+        if (!attachment) return yield* channelFailure(new Error(sourceText("error.attachment.notAvailable")));
         return attachment;
       }
       const page = yield* channelSync(() =>

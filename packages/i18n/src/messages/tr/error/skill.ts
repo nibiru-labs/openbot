@@ -56,4 +56,6 @@ export const messages = {
   "error.skill.localMissingSkillFile": "Beceri klasörü kök dizininde SKILL.md gerektirir.",
   "error.skill.pathSymlink": "Beceri yolları sembolik bağlantılar içeremez.",
   "error.skill.folderNotRead": "{provider}, {folder} klasörünü okumuyor. Bu klasörü {target} konumuna kopyalayın.",
+  "error.skill.localChanged": "Beceri değişti. Üzerinde değişiklik yapmadan önce en son sürümünü okuyun.",
+  "error.skill.archiveLimitsExceeded": "Arşiv sınırları aşıldı.",
 } as const satisfies PartialTranslation<typeof source>;

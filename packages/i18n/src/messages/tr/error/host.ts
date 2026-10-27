@@ -28,4 +28,9 @@ export const messages = {
   "error.host.tenantShutdownTimeout": "Kiracı kapatması zaman aşımına uğradı. Hiçbir uygulama değişimi başlatılmadı.",
   "error.host.tenantHealthMissing":
     "Yeniden başlatmanın ardından kiracı sağlık raporları eksik veya sağlıksız. Başka bir güncellemeden önce kiracı oturumlarını inceleyin.",
+  "error.host.nameBeforeDevelopment": "Yerel geliştirmeyi başlatmadan önce bu OpenBot'a bir ad verin.",
+  "error.host.developmentNotReady": "Yerel geliştirme ana makinesi hazır değil.",
+  "error.host.maintenanceConfigChanged": "Bakım sırasında ana makine yapılandırması değişti.",
+  "error.host.maintenanceMissingRelease": "Hazırlanmış sürüm eksik.",
+  "error.host.maintenanceVersionMismatch": "Kurulu sürüm uyuşmuyor.",
 } as const satisfies PartialTranslation<typeof source>;

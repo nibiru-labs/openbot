@@ -131,4 +131,21 @@ export const messages = {
   "error.agent.screenCaptureEmptyWindows":
     "Windows ha restituito un'immagine vuota. Chiedi all'utente di sbloccare il computer e chiudere i contenuti protetti. Anche un criterio dell'organizzazione può bloccare l'acquisizione dello schermo.",
   "error.agent.screenCaptureFailed": "L'acquisizione dello schermo non è riuscita. Riprova.",
+  "error.agent.duplicationOtherSource":
+    "Questa operazione di duplicazione dell’agente appartiene a un altro agente di origine.",
+  "error.agent.duplicationNotPending": "Questa duplicazione dell’agente non è in attesa.",
+  "error.agent.duplicationUnavailable": "Questa operazione di duplicazione dell’agente non è disponibile.",
+  "error.agent.emojiInvalid": "Emoji non valido.",
+  "error.agent.avatarTooLarge":
+    "L’avatar supera 512 KB. Ridimensiona o comprimi una copia con gli strumenti disponibili, poi riprova con il suo percorso.",
+  "error.agent.avatarType": "Scegli un’immagine avatar PNG, JPEG o WebP valida.",
+  "error.agent.avatarUnreadable":
+    "OpenBot non ha potuto aprire il file dell’avatar. Usa il percorso di un’immagine locale già presente.",
+  "error.agent.avatarNotRegularFile": "Il percorso dell’avatar deve indicare un file regolare.",
+  "error.agent.nameRequired": "Il nome dell’agente è obbligatorio.",
+  "error.agent.nameTooLong": "Il nome dell’agente è troppo lungo.",
+  "error.agent.descriptionTooLong": "La descrizione dell’agente è troppo lunga.",
+  "error.agent.titleTooLong": "Il titolo dell’agente è troppo lungo.",
+  "error.agent.usageNotSaved": "Impossibile salvare i dati di utilizzo.",
+  "error.agent.providerChangeNotAtomic": "Cambiare provider richiede una scelta atomica di provider e modello.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -2381,7 +2381,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         }
         if (requestedProvider && previous && requestedProvider !== providerForAgent(previous)) {
           if (!input.model || !input.provider) {
-            throw new Error("Changing provider requires an atomic provider and model selection.");
+            throw new Error(sourceText("error.agent.providerChangeNotAtomic"));
           }
           requireIdle(previous);
         }

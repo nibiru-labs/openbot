@@ -26,4 +26,8 @@ export const messages = {
   "error.site.fileType": "Этот тип файла не допускается: {path}",
   "error.site.fileOutsideRoot": "Файлы сайта должны находиться внутри корня источника: {path}",
   "error.site.fileTooLarge": "Файл превышает лимит 1 МБ: {path}",
+  "error.site.listInvalid": "Хост вернул недопустимый список сайтов.",
+  "error.site.listResponseInvalid": "Ответ со списком сайтов недопустим.",
+  "error.site.hostingUnavailable": "Размещение сайтов OpenBot недоступно.",
+  "error.site.hostedSiteNotFound": "Размещённый сайт не найден.",
 } as const satisfies PartialTranslation<typeof source>;

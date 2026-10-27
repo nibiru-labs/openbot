@@ -12,4 +12,7 @@ export const messages = {
   "error.attachment.emlUnsupported":
     "Этот сервер не поддерживает вложения EML. Обновите OpenBot на хосте и повторите попытку.",
   "error.attachment.previewTooLarge": "Файл превышает лимит 100 МБ.",
+  "error.attachment.notPrepared": "Вложение не было подготовлено.",
+  "error.attachment.namedFileTooLarge": '"{name}" превышает лимит 100 МБ.',
+  "error.attachment.notAvailable": "Вложение недоступно.",
 } as const satisfies PartialTranslation<typeof source>;

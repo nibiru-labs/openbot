@@ -31,4 +31,9 @@ export const messages = {
     "Se agotó el tiempo de apagado de los inquilinos. No se inició el reemplazo de la aplicación.",
   "error.host.tenantHealthMissing":
     "Faltan informes de estado de los inquilinos o indican problemas tras el reinicio. Inspecciona las sesiones de los inquilinos antes de otra actualización.",
+  "error.host.nameBeforeDevelopment": "Ponle nombre a este OpenBot antes de iniciar el desarrollo local.",
+  "error.host.developmentNotReady": "El host de desarrollo local no está listo.",
+  "error.host.maintenanceConfigChanged": "La configuración del host cambió durante el mantenimiento.",
+  "error.host.maintenanceMissingRelease": "Falta la versión preparada.",
+  "error.host.maintenanceVersionMismatch": "La versión instalada no coincide.",
 } as const satisfies PartialTranslation<typeof source>;

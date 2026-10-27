@@ -126,4 +126,5 @@ export const messages = {
   "composer.context.noAuto": "Dieser Agent komprimiert seinen Kontext nicht.",
   "composer.context.lastCompaction": "Letzte Komprimierung: {before} → {after} Tokens",
   "composer.compaction.elapsed": "{minutes}:{seconds}",
+  "composer.mcp.unnamedServer": "MCP-Server",
 } as const satisfies PartialTranslation<typeof source>;

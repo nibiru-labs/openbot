@@ -840,7 +840,7 @@ export class HostService extends EventEmitter<HostEvents> {
     function* (this: HostService): Effect.fn.Return<HostStatus, RemoteWorkflowError, HostApiRuntime> {
       if (!this.#options.store.configured)
         return yield* new RemoteWorkflowError({
-          cause: new Error("Name this OpenBot before starting local development."),
+          cause: new Error(sourceText("error.host.nameBeforeDevelopment")),
         });
       if (this.#status.phase === "online") return this.getStatus();
       const apiPort = yield* HostApiRuntime.use((api) => api.start());
@@ -879,7 +879,7 @@ export class HostService extends EventEmitter<HostEvents> {
       const identity = this.#options.store.getIdentity();
       const apiUrl = this.#localApiUrl();
       if (!identity || !apiUrl)
-        return yield* new RemoteWorkflowError({ cause: new Error("The local development host is not ready.") });
+        return yield* new RemoteWorkflowError({ cause: new Error(sourceText("error.host.developmentNotReady")) });
       const username = DEVELOPMENT_REMOTE_CLIENT_USERNAME;
       const password = "openbot-local-development-client";
       const authenticated = yield* this.#options.store.login(username, password).pipe(

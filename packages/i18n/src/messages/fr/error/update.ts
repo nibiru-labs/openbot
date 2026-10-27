@@ -29,4 +29,10 @@ export const messages = {
   "error.update.remoteDisabled": "Les mises à jour des administrateurs du serveur sont désactivées sur cet ordinateur.",
   "error.update.restartStarted": "OpenBot redémarre déjà pour installer la mise à jour.",
   "error.update.alreadyRestarting": "OpenBot redémarre déjà.",
+  "error.update.downloadCancelled": "Le téléchargement a été annulé.",
+  "error.update.noStagedRelease": "Le serveur n’a préparé aucune version.",
+  "error.update.feedUnavailable": "Flux des versions indisponible",
+  "error.update.feedTooLarge": "Flux des versions trop volumineux",
+  "error.update.noCompatibleRelease": "Aucune version compatible",
+  "error.update.noReleaseForMachine": "Aucune version pour cette machine",
 } as const satisfies PartialTranslation<typeof source>;

@@ -1372,7 +1372,7 @@ export class TeamApiServer {
         }
         if (event.type === "team-direct-typing") {
           if (!connection.capabilities.has("direct-messages")) {
-            throw new Error("Direct messages are not enabled for this client.");
+            throw new Error(sourceText("error.team.directMessagesDisabled"));
           }
           const typing = event.typing;
           const recipientMemberId = event.recipientMemberId;
@@ -1387,7 +1387,7 @@ export class TeamApiServer {
         const typing = event.typing;
         const agentId = event.agentId;
         if (typing && (!agentId || agentId.length > INPUT_LIMITS.identifier)) {
-          throw new Error("A valid agent is required for typing state.");
+          throw new Error(sourceText("error.team.typingAgentRequired"));
         }
         this.#setClientTyping(connection, typing ? agentId : null);
       } catch {
@@ -1441,7 +1441,7 @@ export class TeamApiServer {
         },
         connection.capabilities,
       );
-      if (!payload) throw new Error("Runtime snapshot is not supported by Team protocol v1.");
+      if (!payload) throw new Error(sourceText("error.team.runtimeSnapshotUnsupported"));
       if (Buffer.byteLength(payload) > AGENT_RUNTIME_SNAPSHOT_BYTES_LIMIT) {
         throw new Error("Runtime snapshot exceeds its transport budget.");
       }
@@ -1566,7 +1566,7 @@ export class TeamApiServer {
   }
 
   #requireChat(): TeamChatStore {
-    if (!this.#options.chat) throw new Error("Direct messages are unavailable.");
+    if (!this.#options.chat) throw new Error(sourceText("error.team.directMessagesUnavailable"));
     return this.#options.chat;
   }
 
@@ -1585,7 +1585,7 @@ export class TeamApiServer {
         if (pending.sourceAgentId !== sourceAgentId) {
           return Effect.fail(
             new AgentDuplicationFailed({
-              cause: new Error("This agent duplication operation belongs to another source agent."),
+              cause: new Error(sourceText("error.agent.duplicationOtherSource")),
             }),
           );
         }

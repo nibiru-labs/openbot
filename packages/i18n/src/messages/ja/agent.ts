@@ -61,6 +61,7 @@ export const messages = {
   "agent.error.mcpNotStarted": "MCP サーバーが起動していません",
   "agent.error.codexConfigIgnored": "Codex の設定に関する警告",
   "agent.error.provider": "プロバイダーのエラー",
+  "agent.description.generalPurpose": "汎用アシスタント",
   "agent.color.red": "赤",
   "agent.color.orange": "オレンジ",
   "agent.color.yellow": "黄",

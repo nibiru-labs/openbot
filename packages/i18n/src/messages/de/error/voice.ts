@@ -21,4 +21,5 @@ export const messages = {
   "error.voice.cloud.streamEnded": "Die Diktat-Übertragung wurde beendet. Nimm erneut auf.",
   "error.voice.cloud.tooLong": "Die Aufnahme ist zu lang.",
   "error.voice.cloud.keySaveFailed": "Der ElevenLabs-API-Schlüssel konnte nicht gespeichert werden.",
+  "error.voice.transcriptTooLong": "Das Sprachprotokoll ist zu lang.",
 } as const satisfies PartialTranslation<typeof source>;

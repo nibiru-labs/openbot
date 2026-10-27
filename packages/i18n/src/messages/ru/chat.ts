@@ -90,6 +90,8 @@ export const messages = {
   "chat.marker.openRoutine": "Открыть регулярную задачу {name}",
   "chat.marker.unavailable": "Недоступно",
   "chat.marker.contextReset": "Начат новый чат",
+  "chat.marker.pause.continue": "Продолжить",
+  "chat.marker.pause.continued": "Продолжено",
   "chat.usageLimit.title": "Лимит использования {provider} исчерпан",
   "chat.usageLimit.onHold": "Сообщение отложено",
   "chat.usageLimit.bodyReset":

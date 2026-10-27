@@ -189,4 +189,7 @@ export const messages = {
   "error.remote.remoteNotConfigured": "Bu OpenBot hizmetinde uzak bağlantılar ayarlanmamış.",
   "error.remote.hostRefused": "Ana makine isteği reddetti ({status}).",
   "error.remote.hostedServerRemoval": "Barındırılan bir sunucuyu silmek için Faturalandırma'yı kullanın.",
+  "error.remote.hostRequired": "Geçerli bir genel ana makine gerekli.",
+  "error.remote.serverReturnedData": "Uzak sunucu veri döndürdü.",
+  "error.remote.developmentIdentityChanged": "Yerel geliştirme sunucusunun kimliği değişti.",
 } as const satisfies PartialTranslation<typeof source>;

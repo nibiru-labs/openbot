@@ -209,7 +209,9 @@ export class VoiceTranscriptionService extends EventEmitter<VoiceTranscriptionEv
               return yield* Effect.gen({ self: this }, function* () {
                 const text = yield* this.#request(pcm, modelId, settings.language);
                 if (text.length > INPUT_LIMITS.messageText)
-                  return yield* new VoiceOperationError({ cause: new Error("The voice transcript is too long.") });
+                  return yield* new VoiceOperationError({
+                    cause: new Error(sourceText("error.voice.transcriptTooLong")),
+                  });
                 logger.info(`Voice transcription of ${audioSeconds}s completed in ${Date.now() - startedAt}ms.`);
                 return { text };
               }).pipe(
@@ -296,7 +298,7 @@ export class VoiceTranscriptionService extends EventEmitter<VoiceTranscriptionEv
       Effect.ensuring(Effect.sync(() => this.#endStream(streamId))),
     );
     if (text.length > INPUT_LIMITS.messageText)
-      return yield* new VoiceOperationError({ cause: new Error("The voice transcript is too long.") });
+      return yield* new VoiceOperationError({ cause: new Error(sourceText("error.voice.transcriptTooLong")) });
     return { text } satisfies VoiceTranscriptionResult;
   }).bind(this);
 

@@ -19,4 +19,5 @@ export const messages = defineMessages("error.voice", {
   "error.voice.cloud.streamEnded": "The dictation stream ended. Record again.",
   "error.voice.cloud.tooLong": "The recording is too long.",
   "error.voice.cloud.keySaveFailed": "Could not save the ElevenLabs API key.",
+  "error.voice.transcriptTooLong": "The voice transcript is too long.",
 });

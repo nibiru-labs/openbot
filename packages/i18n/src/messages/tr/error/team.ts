@@ -123,4 +123,11 @@ export const messages = {
   "error.team.signInRelayUsed": "Bu oturum açma zaten gönderildi.",
   "error.team.signInRelayMismatch": "Bu adres bu oturum açmaya ait değil.",
   "error.team.signInRelayLinkUnknown": "Bu sunucudaki hiçbir ajan bu oturum açma bağlantısını göstermedi.",
+  "error.team.directMessagesDisabled": "Doğrudan mesajlar bu istemci için açık değil.",
+  "error.team.typingAgentRequired": "Yazma durumu için geçerli bir ajan gerekli.",
+  "error.team.runtimeSnapshotUnsupported":
+    "Çalışma zamanı anlık görüntüleri Team protokolü v1 tarafından desteklenmiyor.",
+  "error.team.directMessagesUnavailable": "Doğrudan mesajlar kullanılamıyor.",
+  "error.team.providerUnknown": "Bilinmeyen sağlayıcı.",
+  "error.team.logoVersionChanged": "Sunucu logosu sürümü güncel değil.",
 } as const satisfies PartialTranslation<typeof source>;

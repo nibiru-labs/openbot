@@ -26,4 +26,10 @@ export const messages = defineMessages("error.update", {
   "error.update.remoteDisabled": "Updates from server admins are turned off on this computer.",
   "error.update.restartStarted": "OpenBot is already restarting to install the update.",
   "error.update.alreadyRestarting": "OpenBot is already restarting.",
+  "error.update.downloadCancelled": "The download was cancelled.",
+  "error.update.noStagedRelease": "The server staged no release.",
+  "error.update.feedUnavailable": "Release feed unavailable",
+  "error.update.feedTooLarge": "Release feed too large",
+  "error.update.noCompatibleRelease": "No compatible release",
+  "error.update.noReleaseForMachine": "No release for this machine",
 });

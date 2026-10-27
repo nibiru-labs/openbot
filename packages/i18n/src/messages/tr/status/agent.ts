@@ -7,6 +7,11 @@ export const messages = {
   "status.agent.contextCleared": "Bağlam temizlendi. Yeni bir sohbet burada başlıyor.",
   "status.agent.modelSwitchedForLimit": "Kullanım sınırına ulaşıldı. {model} modeline geçildi.",
   "status.agent.modelReturnedAfterLimit": "Kullanım sınırı bitti. {model} modeline geri dönüldü.",
+  "status.agent.pausedHourBudget":
+    "Token bütçesine ulaşıldı: son bir saatte {used} token kullanıldı (sınır {limit}). Siz devam edene kadar yeni iş bekler.",
+  "status.agent.pausedTurnBudget":
+    "Bir adımdan sonra durdu: bu tur {used} token kullandı (sınır {limit}). İş saklanır. Devam ederek ilerleyin.",
+  "status.agent.pausedPlanLimit": "Plan sınırı bu turu durdurdu. İş saklanır ve sınır bitince devam eder.",
   "status.agent.marketplaceSuggested": "Bir Pazaryeri uygulaması önerildi: {app}.",
   "status.agent.screenCaptureScreen": "Ana ekranı yakala ve görüntüyü ajanın modeline gönder.",
   "status.agent.screenCaptureDisplay": "{name} ekranını yakala ve görüntüyü ajanın modeline gönder.",
@@ -15,4 +20,5 @@ export const messages = {
     "{x}, {y} konumundaki {width} × {height} noktalık ekran alanını yakala ve görüntüyü ajanın modeline gönder.",
   "status.agent.screenCaptureProgress": "Ekranı yakalamak için izin isteniyor…",
   "status.agent.screenCaptureReviewing": "Ekran görüntüsü inceleniyor…",
+  "status.agent.starting": "Yerel ajan CLI'ları başlatılıyor…",
 } as const satisfies PartialTranslation<typeof source>;

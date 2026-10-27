@@ -180,7 +180,7 @@ export class AgentImportService {
     owner: string,
   ): Effect.fn.Return<AgentImportPreview, ArchiveOperationError> {
     const directory = this.uploadDirectory;
-    if (!directory) return yield* archiveFailure(new Error("Agent import uploads are not available."));
+    if (!directory) return yield* archiveFailure(new Error(sourceText("error.import.uploadsUnavailable")));
     yield* this.#release(owner);
     const held = [...this.#staged.values()].filter((slot) => slot.temporary).length;
     if (held + this.#busyUploads >= UPLOAD_SLOTS)
@@ -643,6 +643,6 @@ function bounded(warnings: string[]): string[] {
 }
 
 function message(error: unknown): string {
-  const text = error instanceof Error ? error.message : "The import failed.";
+  const text = error instanceof Error ? error.message : sourceText("error.import.failed");
   return text.slice(0, AGENT_IMPORT_LIMITS.message);
 }

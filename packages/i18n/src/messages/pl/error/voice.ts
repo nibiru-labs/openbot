@@ -19,4 +19,5 @@ export const messages = {
   "error.voice.cloud.streamEnded": "Przesyłanie dyktowania zostało przerwane. Nagraj ponownie.",
   "error.voice.cloud.tooLong": "Nagranie jest za długie.",
   "error.voice.cloud.keySaveFailed": "Nie udało się zapisać klucza API ElevenLabs.",
+  "error.voice.transcriptTooLong": "Transkrypcja głosu jest za długa.",
 } as const satisfies PartialTranslation<typeof source>;

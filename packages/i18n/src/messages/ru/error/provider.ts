@@ -356,4 +356,5 @@ export const messages = {
   "error.provider.registryInstallFailed": "Не удалось установить агента. Предыдущая установка не изменена.",
   "error.provider.registryRemoveBusy":
     "Дождитесь окончания установки агента и активной работы ACP, прежде чем удалять его.",
+  "error.provider.customAgentNoSwitch": "У пользовательских агентов нет встроенного переключателя провайдера.",
 } as const satisfies PartialTranslation<typeof source>;
