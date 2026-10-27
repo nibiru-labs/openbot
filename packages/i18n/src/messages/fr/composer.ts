@@ -77,6 +77,8 @@ export const messages = {
   "composer.send.voice": "Envoyer le message vocal",
   "composer.send.message": "Envoyer le message",
   "composer.send.stop": "Arrêter l’agent",
+  "composer.send.stopAndSend": "Arrêter et envoyer",
+  "composer.send.stopAndSendTooltip": "Arrêter le travail en cours et envoyer ceci maintenant",
   "composer.send.hint.enter": "Envoyer (Entrée). Maj+Entrée ajoute une nouvelle ligne.",
   "composer.send.hint.modEnterMac": "Envoyer (⌘Entrée). Entrée ajoute une nouvelle ligne.",
   "composer.send.hint.modEnterWin": "Envoyer (Ctrl+Entrée). Entrée ajoute une nouvelle ligne.",

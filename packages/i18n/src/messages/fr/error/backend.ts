@@ -270,6 +270,9 @@ export const messages = {
   "error.backend.steerQueuedOnly": "Seuls les messages en file d’attente peuvent orienter le tour.",
   "error.backend.promptInactive": "Cette question n’est plus active.",
   "error.backend.promptAnswerMismatch": "Une réponse ne correspond à aucune question active.",
+  "error.backend.uiBlockAnswerInvalid": "Cette réponse ne correspond pas au bloc de l’agent.",
+  "error.backend.uiBlockActionNotAllowed":
+    "Seul un propriétaire du serveur ou un administrateur peut choisir cette action.",
   "error.backend.approvalInactive": "Cette approbation n’est plus active.",
   "error.backend.takeoverInactive": "Cette prise de contrôle du navigateur n’est plus active.",
   "error.backend.authSubmitting": "L’envoi de l’authentification est déjà en cours.",
@@ -325,5 +328,14 @@ export const messages = {
   "error.backend.taskOpenLimitReached":
     "Cet agent a {count} tâches ouvertes. Fermez une tâche, puis lancez-en ou ouvrez-en une autre.",
   "error.backend.taskRemoteUnsupported": "Les tâches sont disponibles uniquement pour les agents de cet ordinateur.",
+  "error.backend.queueControlRemoteUnsupported":
+    "Mettre en pause et Exécuter maintenant ne sont disponibles que pour les agents de cet ordinateur.",
+  "error.backend.runNowQueuedOnly": "Seul un message en attente peut être exécuté maintenant.",
+  "error.backend.agentControlCooldown":
+    "Vous avez interrompu cet agent il y a moins d’une minute. Votre message attend dans sa file.",
+  "error.backend.agentControlLimit":
+    "Les coéquipiers ont trop interrompu cet agent ces dernières minutes. Votre message attend dans sa file.",
+  "error.backend.agentControlChain":
+    "Ce tour a commencé parce qu’un coéquipier vous a interrompu. Terminez-le avant d’interrompre un autre agent. Votre message attend dans sa file.",
   "error.backend.taskStartFailed": "OpenBot n’a pas pu lancer la tâche. Faites plutôt le travail dans ce tour.",
 } as const satisfies PartialTranslation<typeof source>;

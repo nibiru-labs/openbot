@@ -27,4 +27,24 @@ export const messages = {
   "queue.deleteHeld.title": "¿Eliminar mensaje en cola?",
   "queue.deleteHeld.body": "Otro dispositivo está editando este mensaje. El agente no lo recibirá.",
   "queue.deleteHeld.keep": "Conservar",
+  "queue.waiting.status": { one: "{count} mensaje espera", other: "{count} mensajes esperan" },
+  "queue.paused.status": {
+    one: "En pausa · {count} mensaje guardado",
+    other: "En pausa · {count} mensajes guardados",
+  },
+  "queue.pause": "Pausar",
+  "queue.pause.tooltip":
+    "No inicies ningún mensaje en cola hasta que reanudes. El trabajo actual continúa y no se pierde nada.",
+  "queue.resume": "Reanudar",
+  "queue.resume.tooltip": "Inicia de nuevo los mensajes en cola, en orden",
+  "queue.clearAll.label": "Eliminar todos los mensajes en cola",
+  "queue.clearAll.tooltip": "Eliminar todos los mensajes en cola",
+  "queue.clearAll.title": {
+    one: "¿Eliminar {count} mensaje en cola?",
+    other: "¿Eliminar {count} mensajes en cola?",
+  },
+  "queue.clearAll.body": "El agente no los recibirá. El trabajo actual continúa.",
+  "queue.clearAll.confirm": "Eliminar todo",
+  "queue.item.runNowLabel": "Detener el trabajo actual y ejecutar ahora el mensaje en cola {position}",
+  "queue.item.runNowTooltip": "Ejecutar ahora: detén el trabajo actual e inicia este mensaje a continuación",
 } as const satisfies PartialTranslation<typeof source>;

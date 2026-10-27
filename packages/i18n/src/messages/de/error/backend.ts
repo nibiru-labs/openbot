@@ -274,6 +274,8 @@ export const messages = {
   "error.backend.steerQueuedOnly": "Nur Nachrichten in der Warteschlange können gesteuert werden.",
   "error.backend.promptInactive": "Diese Rückfrage ist nicht mehr aktiv.",
   "error.backend.promptAnswerMismatch": "Eine Antwort passt zu keiner aktiven Frage.",
+  "error.backend.uiBlockAnswerInvalid": "Diese Antwort passt nicht zum Block des Agenten.",
+  "error.backend.uiBlockActionNotAllowed": "Nur der Servereigentümer oder ein Administrator kann diese Aktion wählen.",
   "error.backend.approvalInactive": "Diese Genehmigung ist nicht mehr aktiv.",
   "error.backend.takeoverInactive": "Diese Browserübernahme ist nicht mehr aktiv.",
   "error.backend.authSubmitting": "Die Authentifizierung wird bereits übermittelt.",
@@ -331,6 +333,15 @@ export const messages = {
   "error.backend.taskOpenLimitReached":
     "Dieser Agent hat {count} offene Aufgaben. Schließe eine Aufgabe und starte oder öffne dann eine andere.",
   "error.backend.taskRemoteUnsupported": "Aufgaben sind nur für Agenten auf diesem Computer verfügbar.",
+  "error.backend.queueControlRemoteUnsupported":
+    "Pausieren und Sofort ausführen sind nur für Agenten auf diesem Computer verfügbar.",
+  "error.backend.runNowQueuedOnly": "Nur eine Nachricht in der Warteschlange kann sofort ausgeführt werden.",
+  "error.backend.agentControlCooldown":
+    "Du hast diesen Agenten vor weniger als einer Minute unterbrochen. Deine Nachricht wartet in seiner Warteschlange.",
+  "error.backend.agentControlLimit":
+    "Teammitglieder haben diesen Agenten in den letzten Minuten zu oft unterbrochen. Deine Nachricht wartet in seiner Warteschlange.",
+  "error.backend.agentControlChain":
+    "Dieser Durchlauf begann, weil ein Teammitglied dich unterbrochen hat. Beende ihn, bevor du einen anderen Agenten unterbrichst. Deine Nachricht wartet in seiner Warteschlange.",
   "error.backend.taskStartFailed":
     "OpenBot konnte die Aufgabe nicht starten. Erledige die Arbeit stattdessen in diesem Durchlauf.",
 } as const satisfies PartialTranslation<typeof source>;

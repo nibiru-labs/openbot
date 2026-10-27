@@ -77,6 +77,8 @@ export const messages = {
   "composer.send.voice": "Sesli mesaj gönder",
   "composer.send.message": "Mesaj gönder",
   "composer.send.stop": "Ajanı durdur",
+  "composer.send.stopAndSend": "Durdur ve gönder",
+  "composer.send.stopAndSendTooltip": "Mevcut işi durdur ve bunu şimdi gönder",
   "composer.send.hint.enter": "Gönder (Enter). Shift+Enter yeni satır ekler.",
   "composer.send.hint.modEnterMac": "Gönder (⌘Enter). Enter yeni satır ekler.",
   "composer.send.hint.modEnterWin": "Gönder (Ctrl+Enter). Enter yeni satır ekler.",

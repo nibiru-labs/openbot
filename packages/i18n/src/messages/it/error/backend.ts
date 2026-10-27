@@ -263,6 +263,9 @@ export const messages = {
   "error.backend.steerQueuedOnly": "Si possono indirizzare solo i messaggi in coda.",
   "error.backend.promptInactive": "Questo prompt non è più attivo.",
   "error.backend.promptAnswerMismatch": "La risposta al prompt non corrisponde a una domanda attiva.",
+  "error.backend.uiBlockAnswerInvalid": "Questa risposta non è adatta al blocco dell'agente.",
+  "error.backend.uiBlockActionNotAllowed":
+    "Solo il proprietario del server o un amministratore può scegliere questa azione.",
   "error.backend.approvalInactive": "Questa approvazione non è più attiva.",
   "error.backend.takeoverInactive": "Questo intervento nel browser non è più attivo.",
   "error.backend.authSubmitting": "L'invio dell'autenticazione è già in corso.",
@@ -318,6 +321,15 @@ export const messages = {
   "error.backend.taskOpenLimitReached":
     "Questo agente ha {count} attività aperte. Chiudi un'attività, poi avviane o aprine un'altra.",
   "error.backend.taskRemoteUnsupported": "Le attività sono disponibili solo per gli agenti su questo computer.",
+  "error.backend.queueControlRemoteUnsupported":
+    "Mettere in pausa ed Esegui ora sono disponibili solo per gli agenti su questo computer.",
+  "error.backend.runNowQueuedOnly": "Solo un messaggio in coda può essere eseguito adesso.",
+  "error.backend.agentControlCooldown":
+    "Hai interrotto questo agente meno di un minuto fa. Il tuo messaggio aspetta nella sua coda.",
+  "error.backend.agentControlLimit":
+    "I colleghi hanno interrotto questo agente troppo spesso negli ultimi minuti. Il tuo messaggio aspetta nella sua coda.",
+  "error.backend.agentControlChain":
+    "Questo turno è iniziato perché un collega ti ha interrotto. Finiscilo prima di interrompere un altro agente. Il tuo messaggio aspetta nella sua coda.",
   "error.backend.taskStartFailed":
     "OpenBot non è riuscito ad avviare l'attività. Esegui invece il lavoro in questo turno.",
 } as const satisfies PartialTranslation<typeof source>;

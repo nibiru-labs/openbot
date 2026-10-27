@@ -19,6 +19,8 @@ export const messages = {
   "app.errorStatus.steer": "Der Agent konnte nicht gesteuert werden",
   "app.errorStatus.edit": "Die wartende Nachricht konnte nicht bearbeitet werden",
   "app.errorStatus.reorder": "Die Warteschlange konnte nicht neu sortiert werden",
+  "app.errorStatus.queuePause": "Die Warteschlange konnte nicht pausiert oder fortgesetzt werden",
+  "app.errorStatus.runNow": "Die Nachricht konnte nicht sofort ausgeführt werden",
   "app.errorStatus.stop": "Der Agent konnte nicht gestoppt werden",
   "app.errorStatus.messageLoad": "Nachrichten konnten nicht geladen werden",
   "app.errorStatus.acknowledge": "Der Fehlerhinweis konnte nicht geschlossen werden",

@@ -254,7 +254,7 @@ export const messages = {
   "error.backend.promptInactive": "Этот запрос больше не активен.",
   "error.backend.promptAnswerMismatch": "Ответ не соответствует активному вопросу.",
   "error.backend.uiBlockAnswerInvalid": "Этот ответ не подходит к блоку агента.",
-  "error.backend.uiBlockActionNotAllowed": "Это действие может выбрать только владелец или админ сервера.",
+  "error.backend.uiBlockActionNotAllowed": "Это действие может выбрать только владелец сервера или администратор.",
   "error.backend.approvalInactive": "Это подтверждение больше не активно.",
   "error.backend.takeoverInactive": "Этот перехват браузера больше не активен.",
   "error.backend.authSubmitting": "Отправка аутентификации уже выполняется.",
@@ -307,5 +307,14 @@ export const messages = {
   "error.backend.taskOpenLimitReached":
     "У этого агента открыто задач: {count}. Закройте задачу, затем начните или откройте другую.",
   "error.backend.taskRemoteUnsupported": "Задачи доступны только для агентов на этом компьютере.",
+  "error.backend.queueControlRemoteUnsupported":
+    "Приостановить и Выполнить сейчас доступны только для агентов на этом компьютере.",
+  "error.backend.runNowQueuedOnly": "Выполнить сейчас можно только сообщение из очереди.",
+  "error.backend.agentControlCooldown":
+    "Вы прервали этого агента меньше минуты назад. Ваше сообщение ждёт в его очереди.",
+  "error.backend.agentControlLimit":
+    "Коллеги слишком часто прерывали этого агента за последние минуты. Ваше сообщение ждёт в его очереди.",
+  "error.backend.agentControlChain":
+    "Этот ход начался из-за того, что вас прервал коллега. Завершите его, прежде чем прерывать другого агента. Ваше сообщение ждёт в его очереди.",
   "error.backend.taskStartFailed": "OpenBot не удалось запустить задачу. Выполните работу в этом ходе.",
 } as const satisfies PartialTranslation<typeof source>;

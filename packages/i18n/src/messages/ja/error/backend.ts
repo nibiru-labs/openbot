@@ -263,6 +263,8 @@ export const messages = {
   "error.backend.steerQueuedOnly": "ターンの方向を変えられるのはキュー内のメッセージだけです。",
   "error.backend.promptInactive": "この質問はもう有効ではありません。",
   "error.backend.promptAnswerMismatch": "回答が有効な質問と一致しません。",
+  "error.backend.uiBlockAnswerInvalid": "この回答はエージェントのブロックに合いません。",
+  "error.backend.uiBlockActionNotAllowed": "この操作はサーバーオーナーまたは管理者だけが選べます。",
   "error.backend.approvalInactive": "この承認はもう有効ではありません。",
   "error.backend.takeoverInactive": "このブラウザーの操作引き継ぎはもう有効ではありません。",
   "error.backend.authSubmitting": "認証の送信はすでに実行中です。",
@@ -316,5 +318,14 @@ export const messages = {
   "error.backend.taskOpenLimitReached":
     "このエージェントには {count} 件の開いているタスクがあります。タスクを閉じてから、別のタスクを開始するか開いてください。",
   "error.backend.taskRemoteUnsupported": "タスクは、このコンピューター上のエージェントでのみ利用できます。",
+  "error.backend.queueControlRemoteUnsupported":
+    "一時停止と今すぐ実行は、このコンピューター上のエージェントでのみ利用できます。",
+  "error.backend.runNowQueuedOnly": "今すぐ実行できるのはキュー内のメッセージだけです。",
+  "error.backend.agentControlCooldown":
+    "1 分以内にこのエージェントを中断しました。あなたのメッセージはそのキューで待ちます。",
+  "error.backend.agentControlLimit":
+    "チームメイトがこのエージェントを短時間に何度も中断しました。あなたのメッセージはそのキューで待ちます。",
+  "error.backend.agentControlChain":
+    "チームメイトに中断されてこのターンが始まりました。別のエージェントを中断する前にこのターンを終えてください。あなたのメッセージはそのキューで待ちます。",
   "error.backend.taskStartFailed": "OpenBot はタスクを開始できませんでした。代わりにこのターンで作業してください。",
 } as const satisfies PartialTranslation<typeof source>;

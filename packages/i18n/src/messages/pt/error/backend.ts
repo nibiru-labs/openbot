@@ -262,6 +262,9 @@ export const messages = {
   "error.backend.steerQueuedOnly": "Somente mensagens na fila podem orientar o turno ativo.",
   "error.backend.promptInactive": "Esta pergunta não está mais ativa.",
   "error.backend.promptAnswerMismatch": "Uma resposta não corresponde a uma pergunta ativa.",
+  "error.backend.uiBlockAnswerInvalid": "Esta resposta não corresponde ao bloco do agente.",
+  "error.backend.uiBlockActionNotAllowed":
+    "Somente o proprietário do servidor ou um administrador pode escolher esta ação.",
   "error.backend.approvalInactive": "Esta aprovação não está mais ativa.",
   "error.backend.takeoverInactive": "Este controle manual do navegador não está mais ativo.",
   "error.backend.authSubmitting": "O envio da autenticação já está em andamento.",
@@ -317,5 +320,14 @@ export const messages = {
   "error.backend.taskOpenLimitReached":
     "Este agente tem {count} tarefas abertas. Feche uma tarefa e depois inicie ou abra outra.",
   "error.backend.taskRemoteUnsupported": "As tarefas só estão disponíveis para agentes neste computador.",
+  "error.backend.queueControlRemoteUnsupported":
+    "Pausar e Executar agora só estão disponíveis para agentes neste computador.",
+  "error.backend.runNowQueuedOnly": "Somente uma mensagem na fila pode ser executada agora.",
+  "error.backend.agentControlCooldown":
+    "Você interrompeu este agente há menos de um minuto. Sua mensagem espera na fila dele.",
+  "error.backend.agentControlLimit":
+    "Colegas interromperam este agente vezes demais nos últimos minutos. Sua mensagem espera na fila dele.",
+  "error.backend.agentControlChain":
+    "Este turno começou porque um colega interrompeu você. Termine-o antes de interromper outro agente. Sua mensagem espera na fila dele.",
   "error.backend.taskStartFailed": "O OpenBot não conseguiu iniciar a tarefa. Faça o trabalho neste turno.",
 } as const satisfies PartialTranslation<typeof source>;
