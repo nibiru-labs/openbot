@@ -164,9 +164,13 @@ export const dispatchCommand = Effect.fn("DispatchProcess.command")(function* (
   args: string[],
   options: DispatchCommandOptions = {},
 ) {
+  // A packaged app starts with a short PATH, so look for the CLI in the login shell folders too.
+  const resolved = yield* resolveAgentCommand(binary).pipe(Effect.catch(() => Effect.succeed(null)));
+  const launchPath = yield* agentLaunchPath().pipe(Effect.catch(() => Effect.succeed(null)));
+  const executable = resolved ?? binary;
   yield* Effect.try({
     try: () => {
-      assertDispatchArgs(binary, args);
+      assertDispatchArgs(executable, args);
     },
     catch: (cause) =>
       dispatchFailure({
@@ -175,10 +179,7 @@ export const dispatchCommand = Effect.fn("DispatchProcess.command")(function* (
         step: "spawn",
       }),
   });
-  // A packaged app starts with a short PATH, so look for the CLI in the login shell folders too.
-  const resolved = yield* resolveAgentCommand(binary).pipe(Effect.catch(() => Effect.succeed(null)));
-  const launchPath = yield* agentLaunchPath().pipe(Effect.catch(() => Effect.succeed(null)));
-  const target = cliSpawnTarget(resolved ?? binary, args);
+  const target = cliSpawnTarget(executable, args);
   return yield* Effect.acquireUseRelease(
     Effect.try({
       try: () =>
