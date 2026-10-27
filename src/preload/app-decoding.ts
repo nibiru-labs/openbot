@@ -65,6 +65,7 @@ import {
   isProviderDetectionSettings,
   isRemoteDesktopSetupStatus,
   isRemoteDesktopTestStatus,
+  isTokenBudgetPreference,
   isVoiceLanguage,
   isVoiceModelId,
   type MobileConnectedDevice,
@@ -80,6 +81,7 @@ import {
   type RemoteDesktopSetupStatus,
   type RemoteDesktopTestStatus,
   type RemoteSessionReusePreference,
+  type TokenBudgetPreference,
   UPDATE_PHASES,
   type UpdatePreference,
   type UpdateStatus,
@@ -141,6 +143,11 @@ export function decodeBusyMessageModePreference(value: unknown): BusyMessageMode
   if (!isBusyMessageMode(preference.mode)) throw new Error("Invalid busy message mode.");
   return { mode: preference.mode };
 }
+
+export const decodeTokenBudgetPreference: (value: unknown) => TokenBudgetPreference = guardedDecoder(
+  isTokenBudgetPreference,
+  "token budget preference",
+);
 
 export function decodeAgentMemoryLimitPreference(value: unknown): AgentMemoryLimitPreference {
   const preference = decodeRecord(value, "agent memory limit preference");

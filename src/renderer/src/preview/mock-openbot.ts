@@ -53,6 +53,7 @@ import {
   DEFAULT_PROVIDER_ACCOUNT_ID,
   DEFAULT_PROVIDER_DETECTION_SETTINGS,
   DEFAULT_REMOTE_SESSION_REUSE_PREFERENCE,
+  DEFAULT_TOKEN_BUDGET,
   type DirectConversationSnapshot,
   type DirectMessageRealtimeEvent,
   type DirectTypingRealtimeEvent,
@@ -95,6 +96,7 @@ import {
   type SteerQueuedMessageInput,
   sameCustomProviderOrigin,
   type TeamPresenceSnapshot,
+  type TokenBudgetPreference,
   type UpdateAgentInput,
   type UpdatePreference,
   type UpdateQueuedMessageInput,
@@ -284,6 +286,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   let analyticsPreference = clone<AnalyticsPreference>(options.analyticsPreference ?? { enabled: true });
   let approvalAutomation = clone<ApprovalAutomationPreference>(DEFAULT_APPROVAL_AUTOMATION_PREFERENCE);
   let busyMessageMode: BusyMessageModePreference = { mode: DEFAULT_BUSY_MESSAGE_MODE };
+  let tokenBudget: TokenBudgetPreference = { ...DEFAULT_TOKEN_BUDGET };
   let agentMemoryLimit: AgentMemoryLimitPreference = { limit: DEFAULT_AGENT_MEMORY_LIMIT };
   let remoteSessionReuse: RemoteSessionReusePreference = { ...DEFAULT_REMOTE_SESSION_REUSE_PREFERENCE };
   let languagePreference = clone<AppLanguagePreference>(options.languagePreference ?? { language: "system" });
@@ -791,6 +794,11 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     setBusyMessageModePreference: async ({ mode }) => {
       busyMessageMode = { mode };
       return clone(busyMessageMode);
+    },
+    getTokenBudgetPreference: async () => clone(tokenBudget),
+    setTokenBudgetPreference: async (preference) => {
+      tokenBudget = { perHour: preference.perHour, perTurn: preference.perTurn };
+      return clone(tokenBudget);
     },
     getAgentMemoryLimitPreference: async () => clone(agentMemoryLimit),
     setAgentMemoryLimitPreference: async ({ limit }) => {
@@ -2186,6 +2194,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         queues.set(input.agentId, queue);
         emitAgentEvent({ type: "queue-changed", snapshot: queue });
       },
+      continueAgentPause: async () => undefined,
       setQueuePaused: async (input) => {
         const queue = queues.get(input.agentId) ?? emptyQueue(input.agentId);
         const next: QueueSnapshot = {

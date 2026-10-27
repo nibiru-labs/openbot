@@ -226,6 +226,7 @@
     "test:routine-pause-resume": "bun scripts/routine-pause-resume-e2e.ts",
     "test:agent-hide-restore": "bun scripts/agent-hide-restore-e2e.ts",
     "test:steer-interrupt-pause": "bun scripts/steer-interrupt-pause-e2e.ts",
+    "test:token-budget": "bun scripts/token-budget-e2e.ts",
     "test:messaging-pause-resume": "bun scripts/messaging-pause-resume-e2e.ts",
     "test:messaging-discord-access": "bun scripts/messaging-discord-access-e2e.ts",
     "test:analytics-redaction": "bun scripts/analytics-redaction-e2e.ts",

@@ -25,6 +25,7 @@ import type { GeneralSettingsValue } from "@openbot/ui/features/settings/app-set
 import { LanguageSelect } from "@openbot/ui/features/settings/LanguageSelect";
 import { LogoColorPicker } from "@openbot/ui/features/settings/LogoColorPicker";
 import { SendShortcutSelect } from "@openbot/ui/features/settings/SendShortcutSelect";
+import { useText } from "@openbot/ui/text";
 import { Show } from "solid-js";
 import { useAppearanceChoice } from "../../appearance";
 import { useI18n } from "../../i18n-context";
@@ -165,6 +166,20 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
               </Select>
             </ItemActions>
           </Item>
+          <TokenLimitRow
+            row="hour"
+            value={props.value.tokenBudgetPerHour}
+            choices={TOKEN_LIMIT_HOUR_CHOICES}
+            selectMount={props.selectMount}
+            onChange={(value) => props.onUpdateSetting("tokenBudgetPerHour", value)}
+          />
+          <TokenLimitRow
+            row="turn"
+            value={props.value.tokenBudgetPerTurn}
+            choices={TOKEN_LIMIT_TURN_CHOICES}
+            selectMount={props.selectMount}
+            onChange={(value) => props.onUpdateSetting("tokenBudgetPerTurn", value)}
+          />
           <Item data-settings-row="settings.externalLinks.title" class="settings-modal-row">
             <ItemContent>
               <ItemTitle>{i18n.t("settings.externalLinks.title")}</ItemTitle>
@@ -238,5 +253,64 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
         </ItemGroup>
       </SettingsSection>
     </>
+  );
+}
+
+/** The limits the menu offers. 0 is no limit. A saved limit outside the list is offered too. */
+const TOKEN_LIMIT_HOUR_CHOICES = [0, 5_000_000, 15_000_000, 30_000_000, 60_000_000, 150_000_000] as const;
+const TOKEN_LIMIT_TURN_CHOICES = [0, 1_000_000, 2_000_000, 5_000_000, 10_000_000, 25_000_000] as const;
+
+const TOKEN_LIMIT_KEYS = {
+  hour: {
+    title: "settings.tokenBudget.hour.title",
+    description: "settings.tokenBudget.hour.description",
+  },
+  turn: {
+    title: "settings.tokenBudget.turn.title",
+    description: "settings.tokenBudget.turn.description",
+  },
+} as const satisfies Record<"hour" | "turn", { title: AppTextKey; description: AppTextKey }>;
+
+function TokenLimitRow(props: {
+  row: "hour" | "turn";
+  value: number;
+  choices: readonly number[];
+  selectMount: HTMLElement | undefined;
+  onChange: (value: number) => void;
+}) {
+  const { t, format } = useText();
+  const keys = TOKEN_LIMIT_KEYS[props.row];
+  const options = () =>
+    props.choices.includes(props.value) ? [...props.choices] : [...props.choices, props.value].sort((a, b) => a - b);
+  const label = (value: number | undefined) =>
+    value === undefined
+      ? ""
+      : value === 0
+        ? t("settings.tokenBudget.unlimited")
+        : t("settings.tokenBudget.option", { amount: format.compact(value) });
+  return (
+    <Item data-settings-row={keys.title} class="settings-modal-row">
+      <ItemContent>
+        <ItemTitle>{t(keys.title)}</ItemTitle>
+        <ItemDescription>{t(keys.description)}</ItemDescription>
+      </ItemContent>
+      <ItemActions>
+        <Select<number>
+          class="settings-modal-select"
+          options={options()}
+          value={props.value}
+          onChange={(value) => value !== null && value !== undefined && props.onChange(value)}
+          placement="bottom-end"
+          itemComponent={(selectProps) => (
+            <SelectItem item={selectProps.item}>{label(selectProps.item.rawValue)}</SelectItem>
+          )}
+        >
+          <SelectTrigger size="sm" aria-label={t(keys.title)}>
+            <SelectValue<number>>{(state) => label(state.selectedOption() ?? undefined)}</SelectValue>
+          </SelectTrigger>
+          <SelectContent mount={props.selectMount} />
+        </Select>
+      </ItemActions>
+    </Item>
   );
 }

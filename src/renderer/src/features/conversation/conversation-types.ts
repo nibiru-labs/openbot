@@ -253,6 +253,8 @@ export interface ConversationProps {
   onReorderQueue: (deliveryIds: string[]) => void;
   /** Pauses or resumes the agent's queue. Local agents only. */
   onSetQueuePaused?: ((paused: boolean) => void) | undefined;
+  /** Continues an agent that an `agent-pause` marker holds. Local agents only. */
+  onContinuePause?: ((messageId: string) => void) | undefined;
   /** Stops the running turn and starts one queued message next. Local agents only. */
   onRunQueuedMessageNow?: ((deliveryId: string) => void) | undefined;
   /** Cancels every queued message of the agent. */

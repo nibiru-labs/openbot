@@ -32,6 +32,7 @@ import {
   providerForAgent,
 } from "./thread-items";
 import type { ThreadLifecycle } from "./thread-lifecycle";
+import type { TokenBudget } from "./token-budget";
 import { TurnSlots } from "./turn-slots";
 import type { UsageLimitGate } from "./usage-limit-gate";
 import { codexSandboxPolicy, workspaceWritableRoots } from "./workspace-sandbox";
@@ -121,6 +122,7 @@ export interface DrainSchedulerOptions {
   threads: ThreadLifecycle;
   memory: MemoryHold;
   usageLimits: UsageLimitGate;
+  tokenBudget: Pick<TokenBudget, "mayDrain">;
   tasks: TaskLanes;
   hooks: DrainHooks;
   channels?: ChannelService;
@@ -153,6 +155,7 @@ export class DrainScheduler {
   readonly #threads: ThreadLifecycle;
   readonly #memory: MemoryHold;
   readonly #usageLimits: UsageLimitGate;
+  readonly #tokenBudget: Pick<TokenBudget, "mayDrain">;
   readonly #tasks: TaskLanes;
   readonly #slots: TurnSlots;
   /** Lanes that a full set of turn slots held back. A drain that may free a slot tries them again. */
@@ -195,6 +198,7 @@ export class DrainScheduler {
     this.#threads = options.threads;
     this.#memory = options.memory;
     this.#usageLimits = options.usageLimits;
+    this.#tokenBudget = options.tokenBudget;
     this.#tasks = options.tasks;
     this.#hooks = options.hooks;
     this.#channels = options.channels;
@@ -292,6 +296,7 @@ export class DrainScheduler {
     if (!this.#compaction.mayDrain(agentId)) return "compaction";
     if (!this.#routines.mayDrain(agentId)) return "routine";
     if (!this.#usageLimits.mayDrain(agentId)) return "usage-limit";
+    if (!this.#tokenBudget.mayDrain(agentId)) return "token-budget";
     return null;
   }
 

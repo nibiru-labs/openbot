@@ -65,7 +65,13 @@ export class AgentUsage {
     return row ? requiredStringColumn(row, "model") : null;
   }
 
-  record(sample: UsageSample): void {
+  /**
+   * Stores one usage report and returns the processed tokens it added: input, cached input, cache
+   * writes and output. It is 0 for a baseline, a report that repeats an earlier one, and a counter
+   * that did not move.
+   */
+  record(sample: UsageSample): number {
+    let added = 0;
     const tokens = decodeUsageTokens(sample.tokens);
     const digest = createHash("sha256")
       .update(JSON.stringify([sample.counterId, sample.turnId, tokens, sample.reportedCost]))
@@ -136,6 +142,7 @@ export class AgentUsage {
         );
         const occurredAt =
           sample.occurredAt ?? (turn ? requiredStringColumn(turn, "occurred_at") : new Date().toISOString());
+        for (const key of TOKEN_KEYS) added += delta[key] ?? 0;
         db.prepare("INSERT INTO agent_usage_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
           sample.agentId,
           digest,
@@ -152,6 +159,29 @@ export class AgentUsage {
         return null;
       },
     );
+    return added;
+  }
+
+  /**
+   * The processed tokens recorded for one agent since `sinceMs`, oldest first, by the time each
+   * report was stored. A turn that began earlier still counts for the part it spent since. The read
+   * covers one day of the agent's rows through the `agent_usage_date` index.
+   */
+  tokensSince(agentId: string, sinceMs: number): Array<{ at: number; tokens: number }> {
+    const rows = databaseRows(
+      this.#core.connection
+        .prepare(
+          "SELECT tokens_json, recorded_at FROM agent_usage_records WHERE agent_id = ? AND occurred_at >= ? AND recorded_at >= ? ORDER BY recorded_at",
+        )
+        .all(agentId, new Date(sinceMs - 86_400_000).toISOString(), new Date(sinceMs).toISOString()),
+    );
+    return rows.flatMap((row) => {
+      const at = Date.parse(requiredStringColumn(row, "recorded_at"));
+      const value = decodeUsageTokens(JSON.parse(requiredStringColumn(row, "tokens_json")));
+      let tokens = 0;
+      for (const key of TOKEN_KEYS) tokens += value[key] ?? 0;
+      return Number.isFinite(at) && tokens > 0 ? [{ at, tokens }] : [];
+    });
   }
 
   startTurn(agentId: string, sessionId: string, turnId: string, provider: string, model: string): void {
