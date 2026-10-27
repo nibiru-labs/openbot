@@ -693,6 +693,12 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           this.#attention.clearPrompts(client);
           this.#attention.clearBrowserTakeovers(client);
           this.#attention.clearApprovals(client);
+          // The warm generations of the lost process belong to it, so they end with it. The warm
+          // clients of the other providers, and the process of an agent that has an account of its
+          // own, are not this client's, so they keep running.
+          Effect.runFork(
+            this.#warmGenerations.ownerStopped(client).pipe(Effect.forkIn(this.#scope, { startImmediately: true })),
+          );
           Effect.runFork(
             this.#turn
               .interruptTurnsOf(client, { keepRecoverable: true })

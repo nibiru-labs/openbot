@@ -10,7 +10,7 @@ import { type ParamListBase, useNavigation } from "expo-router/react-navigation"
 import { Typography } from "heroui-native";
 import { useThemeColor } from "heroui-native/hooks";
 import ArrowDown from "lucide-react-native/icons/arrow-down";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AppState, Keyboard, useColorScheme, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { KeyboardGestureArea } from "react-native-keyboard-controller";
@@ -31,7 +31,7 @@ import { ChatMessageList } from "@/features/chat/components/chat-message-list";
 import { useChatAttachments } from "@/features/chat/components/use-chat-attachments";
 import { useChatMotion } from "@/features/chat/components/use-chat-motion";
 import type { QuestionPromptController } from "@/features/chat/components/use-question-prompt";
-import { useOutbox } from "@/features/chat/context/outbox-context";
+import { useComposerDrafts, useOutbox } from "@/features/chat/context/outbox-context";
 import { usePublishedQueuedChat } from "@/features/chat/context/queued-messages-context";
 import {
   type ChatBubbleMessage,
@@ -57,6 +57,7 @@ import { useAppForeground } from "@/shared/lib/use-app-foreground";
 import { useReducedTransparency } from "@/shared/lib/use-reduced-transparency";
 import { mentionDraft } from "../model/chat-mentions";
 import type { ChatTarget } from "../model/chat-target";
+import type { ComposerDraftTarget } from "../model/composer-drafts";
 import {
   deleteComposerFiles,
   takeComposerFocus,
@@ -276,7 +277,6 @@ export function ChatView({
   const [selection, setSelection] = useState<{ message: ChatBubbleMessage; selected: string } | null>(null);
   const selectionQuote = selection ? selection.selected.trim() || markdownPlainText(selection.message.body) : "";
   const [replyFocusVersion, setReplyFocusVersion] = useState(0);
-  const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<{
     agentId: string;
     message: string;
@@ -314,6 +314,23 @@ export function ChatView({
   const [showStarter, setShowStarter] = useState(true);
   // The messages of this chat that the host has not drawn yet. They wait for the connection, in order.
   const { store: outbox, snapshot: outboxSnapshot } = useOutbox();
+  // The unsent text of this chat. The phone keeps it while the app runs and over a restart, so a
+  // chat that closes and opens again has the text the person typed.
+  const { snapshot: draftSnapshot, gate: draftGate } = useComposerDrafts();
+  const draftTarget = useMemo<ComposerDraftTarget>(
+    () => ({ kind: target.kind, serverId: target.serverId, id: target.id, threadId }),
+    [target.kind, target.serverId, target.id, threadId],
+  );
+  // The composer shows the text of the chat it is in. Another chat, or another thread of it,
+  // starts with its own text.
+  const draft = useSyncExternalStore(draftGate.subscribe, () => draftGate.text(draftTarget));
+  const setDraft = useCallback(
+    (value: string | ((current: string) => string)) => {
+      const current = draftGate.text(draftTarget);
+      draftGate.setText(draftTarget, typeof value === "function" ? value(current) : value);
+    },
+    [draftGate, draftTarget],
+  );
   const outboxKey = outboxChatKey(target);
   const outboxMessages = useMemo(
     () =>
@@ -456,13 +473,22 @@ export function ChatView({
     void composerAttachments
       .addShared(request.text, files, (text) => setDraft((current) => (current ? `${current}\n${text}` : text)))
       .finally(() => deleteComposerFiles(files));
-  }, [isFocused, composerRequest, target.kind, target.serverId, target.id, composerAttachments.addShared]);
+  }, [isFocused, composerRequest, target.kind, target.serverId, target.id, composerAttachments.addShared, setDraft]);
   const composerFocus = useComposerRequest((state) => state.focus);
   const [handoffFocusVersion, setHandoffFocusVersion] = useState(0);
   useEffect(() => {
     if (!isFocused || !composerFocus || target.kind !== "agent") return;
     if (takeComposerFocus(target.serverId, target.id)) setHandoffFocusVersion((version) => version + 1);
   }, [isFocused, composerFocus, target.kind, target.serverId, target.id]);
+  // The text of this chat that was typed and not sent comes back when the chat opens again. It
+  // waits for the store, which reads the file of the account, and it never replaces text that the
+  // person typed in this chat already.
+  useEffect(() => {
+    if (!draftSnapshot.loaded || readOnly || !canSend) return;
+    draftGate.restore(draftTarget);
+  }, [draftSnapshot.loaded, draftGate, draftTarget, readOnly, canSend]);
+  // The chat closes: the draft is written now, so it is there when the chat opens again.
+  useEffect(() => () => void draftGate.flush(), [draftGate]);
   const lastUserId =
     messages.findLast((message) => message.kind === "message" && message.author === "user")?.id ?? null;
   // The host accepted a message to an idle agent, and nothing shows its turn yet. Turn events can
@@ -734,8 +760,8 @@ export function ChatView({
     deliver(serializeSelectionInstruction(instruction, selectionQuote), hostMessageId(selection.message.id), []);
   }
 
-  // The messages whose text and files are in the composer. The composer draft is not saved, so the
-  // outbox keeps them until it sends, and they come back stopped when the chat closes.
+  // The messages whose text and files are in the composer. The outbox keeps them until it sends,
+  // and they come back stopped when the chat closes.
   const editedMessages = useRef(new Set<string>());
   const mounted = useRef(false);
   useEffect(() => {
