@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
 import { COMPUTER_USE_MCP_SERVER_NAME } from "@openbot/contracts/ipc";
 import { type DynamicRecord, isDynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-values";
 import { isGeneratedAgentId } from "@openbot/contracts/validation";
@@ -858,27 +858,31 @@ const MIGRATIONS: readonly OpenBotMigration[] = [
   },
   {
     version: 45,
-    // Only creates a table, so no foreign-key pause and no vacuum. No agent names a profile yet, so
-    // every tab keeps the session it had.
-    up: (db) => db.exec(BROWSER_PROFILE_SCHEMA_SQL),
+    // Only creates a table, so no foreign-key pause and no vacuum. No routine has a backoff row yet, so
+    // every routine runs on its own schedule, which is what it did before.
+    up: (db) => db.exec(ROUTINE_BACKOFF_SCHEMA_SQL),
   },
   {
     version: 46,
-    // Only creates tables, so no foreign-key pause and no vacuum. No one has a workflow yet, and agents,
-    // routines and routine flows stay as they were.
-    up: (db) => db.exec(WORKFLOW_SCHEMA_SQL),
+    up: (db) => {
+      if (!hasTable(db, "browser_profiles")) db.exec(BROWSER_PROFILE_SCHEMA_SQL);
+    },
   },
   {
     version: 47,
-    // Copies every task into the side-thread table and drops the task table. No table is rebuilt and the
-    // dropped table is a leaf, so no foreign-key pause; few rows, so no vacuum. Mailbox records keep their
-    // task ids: the thread keeps the task id as `legacy_task_id`.
-    up: (db) => db.exec(AGENT_THREAD_MIGRATION_SQL),
+    up: (db) => {
+      if (!hasTable(db, "workflows")) db.exec(WORKFLOW_SCHEMA_SQL);
+    },
   },
   {
     version: 48,
-    // Only creates a table, so no foreign-key pause and no vacuum. A fork version 45 database already has
-    // this table and its rows, so this step keeps them.
+    up: (db) => {
+      if (!hasTable(db, "projection_agent_threads")) db.exec(AGENT_THREAD_MIGRATION_SQL);
+    },
+  },
+  {
+    version: 49,
+    // Imported upstream histories have no routine backoff operation. Fork histories keep their rows.
     up: (db) => {
       if (!hasTable(db, "routine_backoff")) db.exec(ROUTINE_BACKOFF_SCHEMA_SQL);
     },
@@ -899,14 +903,12 @@ export function migrateOpenBotDatabase(db: DatabaseSync, options: OpenBotMigrati
   const appliedVersions = readAppliedVersions(db);
   validateAppliedVersions(appliedVersions);
   const currentVersion = latestAppliedVersion(appliedVersions);
-  const isForkVersion45 = currentVersion === 45 && hasTable(db, "routine_backoff") && !hasTable(db, "browser_profiles");
-  const pending = MIGRATIONS.filter(
-    (migration) => migration.version > currentVersion || (isForkVersion45 && migration.version === 45),
-  );
+  validateReservedSchema(db, currentVersion);
+  const pending = MIGRATIONS.filter((migration) => migration.version > currentVersion);
 
   for (const migration of pending) {
     try {
-      runMigration(db, migration, appliedAt, { replaceMarker: isForkVersion45 && migration.version === 45 });
+      runMigration(db, migration, appliedAt);
     } catch (error) {
       throw new Error(`OpenBot database migration to version ${migration.version} failed.`, {
         cause: error,
@@ -991,6 +993,98 @@ function hasTable(db: DatabaseSync, name: string): boolean {
   return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
 }
 
+// Compare complete reserved declarations, including checks, keys and indexes. A table name alone
+// cannot prove that an imported operation is safe to skip. The reference database has no user data.
+function validateReservedSchema(db: DatabaseSync, version: number): void {
+  const reference = new DatabaseSync(":memory:");
+  try {
+    reference.exec("PRAGMA foreign_keys = OFF");
+    const groups = [
+      ROUTINE_BACKOFF_SCHEMA_SQL,
+      BROWSER_PROFILE_SCHEMA_SQL,
+      WORKFLOW_SCHEMA_SQL,
+      AGENT_THREAD_SCHEMA_SQL,
+      AGENT_TASK_SCHEMA_SQL,
+    ];
+    const reservedNames = new Set<string>();
+    const reservedTables: string[] = [];
+    const states = groups.map((sql) => {
+      reference.exec(sql);
+      const expected = reference.prepare("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL").all();
+      let present = 0;
+      for (const entry of expected) {
+        const name = String(entry.name);
+        reservedNames.add(name);
+        const actual = db.prepare("SELECT sql FROM sqlite_master WHERE name = ?").get(name);
+        if (!actual) continue;
+        if (
+          typeof actual.sql !== "string" ||
+          typeof entry.sql !== "string" ||
+          normalizeReservedSql(actual.sql) !== normalizeReservedSql(entry.sql)
+        ) {
+          throw new Error(`OpenBot database has an unknown reserved schema: ${entry.name}.`);
+        }
+        present += 1;
+      }
+      if (present !== 0 && present !== expected.length) {
+        throw new Error("OpenBot database has an incomplete reserved schema.");
+      }
+      reservedTables.push(
+        ...reference
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .all()
+          .map((entry) => String(entry.name)),
+      );
+      // Each group is independent. Remove only the empty reference objects, never user objects.
+      for (const entry of reference.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()) {
+        reference.exec(`DROP TABLE "${entry.name}"`);
+      }
+      return present > 0;
+    });
+    const reserved = db
+      .prepare(`SELECT name FROM sqlite_master WHERE sql IS NOT NULL AND (
+      name LIKE 'workflow%' OR name LIKE 'browser_profiles%' OR name = 'routine_backoff' OR
+      name LIKE 'projection_agent_task%' OR name LIKE 'projection_agent_thread%' OR
+      name LIKE 'agent_tasks_%' OR name LIKE 'agent_threads_%' OR
+      tbl_name IN (${reservedTables.map(() => "?").join(",")}))`)
+      .all(...reservedTables);
+    if (reserved.some((entry) => !reservedNames.has(String(entry.name)))) {
+      throw new Error("OpenBot database has an unknown reserved schema object.");
+    }
+    const [backoff, profiles, workflows, threads, tasks] = states;
+    const fork =
+      version >= 45 &&
+      backoff &&
+      profiles === version >= 46 &&
+      workflows === version >= 47 &&
+      threads === version >= 48 &&
+      tasks === version < 48;
+    const upstream =
+      !backoff &&
+      profiles &&
+      ((version === 45 && !workflows && !threads && tasks) ||
+        (version === 46 && !threads && tasks) ||
+        (version === 47 && workflows && threads !== tasks));
+    // Imported 45 can commit marker 46 without workflow tables, and imported 46 can commit
+    // marker 47 without threads. These are valid retry states, not marker rewrites.
+    // Upstream 47 can commit our marker 48 before completion 49. Its shape stays unchanged.
+    const imported48 = version === 48 && !backoff && profiles && workflows && threads && !tasks;
+    const earlier = version < 45 && !backoff && !profiles && !workflows && !threads && tasks === version >= 38;
+    if (!earlier && !fork && !upstream && !imported48) {
+      throw new Error("OpenBot database has a contradictory reserved schema and migration history.");
+    }
+  } finally {
+    reference.close();
+  }
+}
+
+function normalizeReservedSql(sql: string): string {
+  return sql
+    .replace(/\s+/g, " ")
+    .replace(/\s*([(),])\s*/g, "$1")
+    .trim();
+}
+
 function hasExistingSchema(db: DatabaseSync): boolean {
   return Boolean(
     db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1").get(),
@@ -1050,18 +1144,12 @@ function latestAppliedVersion(versions: number[]): number {
   return baselineAndLater.at(-1) ?? BASELINE_SCHEMA_VERSION - 1;
 }
 
-function runMigration(
-  db: DatabaseSync,
-  migration: OpenBotMigration,
-  appliedAt: string,
-  options: { replaceMarker?: boolean } = {},
-): void {
+function runMigration(db: DatabaseSync, migration: OpenBotMigration, appliedAt: string): void {
   if (migration.disableForeignKeys) db.exec("PRAGMA foreign_keys = OFF");
   try {
     db.exec("BEGIN IMMEDIATE");
-    if (options.replaceMarker) {
-      db.prepare("DELETE FROM schema_migrations WHERE version = ?").run(migration.version);
-    }
+    // Recheck while the write lock is held before an appended operation skips an imported structure.
+    if (migration.version >= 46) validateReservedSchema(db, migration.version - 1);
     migration.up(db, appliedAt);
     db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(migration.version, appliedAt);
     assertForeignKeys(db);

@@ -12,8 +12,9 @@ afterEach(() => {
   for (const db of databases.splice(0)) db.close();
 });
 
-// Migration 45 adds the profiles and migration 46 the workflow tables, all empty.
+// Migration 46 adds the profiles and migration 47 the workflow tables, all empty.
 const NEW_TABLES = {
+  routine_backoff: [],
   browser_profiles: [],
   workflow_edges: [],
   workflow_nodes: [],
@@ -81,7 +82,7 @@ function releasedDatabase(tag: string, marker: number): DatabaseSync {
 }
 
 /**
- * Every row of every table, by table name. Migration 47 replaces the empty task table with the thread
+ * Every row of every table, by table name. Migration 48 replaces the empty task table with the thread
  * table; `agent-thread-migration.test.ts` checks that move.
  */
 function contents(db: DatabaseSync): Record<string, unknown[]> {
@@ -101,7 +102,7 @@ function profileTables(db: DatabaseSync) {
 }
 
 function expectHealthy(db: DatabaseSync): void {
-  expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 47 });
+  expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 49 });
   expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
   expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
@@ -110,7 +111,7 @@ function expectHealthy(db: DatabaseSync): void {
 const PROFILE_ID = "0123456789abcdef0123456789abcdef";
 
 describe("browser profile migration", () => {
-  it.each(Array.from({ length: 37 }, (_, index) => index + 8))(
+  it.each(Array.from({ length: 38 }, (_, index) => index + 8))(
     "preserves every row from released schema %i",
     (version) => {
       const db = databaseAt(version);
@@ -140,15 +141,15 @@ describe("browser profile migration", () => {
   });
 
   it("rolls back the table and the marker after a late failure, then retries", () => {
-    const db = databaseAt(44);
-    seed(db, 44);
+    const db = databaseAt(45);
+    seed(db, 45);
     const before = contents(db);
-    db.exec(`CREATE TEMP TRIGGER fail_marker BEFORE INSERT ON schema_migrations WHEN new.version=45
+    db.exec(`CREATE TEMP TRIGGER fail_marker BEFORE INSERT ON schema_migrations WHEN new.version=46
       BEGIN SELECT RAISE(ABORT, 'late failure'); END;`);
-    expect(() => migrateOpenBotDatabase(db)).toThrow("migration to version 45 failed");
+    expect(() => migrateOpenBotDatabase(db)).toThrow("migration to version 46 failed");
     expect(contents(db)).toEqual(before);
     expect(profileTables(db)).toEqual([]);
-    expect(db.prepare("SELECT version FROM schema_migrations WHERE version=45").all()).toEqual([]);
+    expect(db.prepare("SELECT version FROM schema_migrations WHERE version=46").all()).toEqual([]);
     expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
     db.exec("DROP TRIGGER fail_marker");
     migrateOpenBotDatabase(db);
@@ -160,9 +161,9 @@ describe("browser profile migration", () => {
     const db = databaseAt(44);
     seed(db, 44);
     const before = contents(db);
-    db.exec("INSERT INTO schema_migrations VALUES(48,'now')");
+    db.exec("INSERT INTO schema_migrations VALUES(50,'now')");
     expect(() => migrateOpenBotDatabase(db)).toThrow("newer than this application supports");
-    db.exec("DELETE FROM schema_migrations WHERE version=48; DELETE FROM schema_migrations WHERE version=20");
+    db.exec("DELETE FROM schema_migrations WHERE version=50; DELETE FROM schema_migrations WHERE version=20");
     expect(() => migrateOpenBotDatabase(db)).toThrow("missing version 20");
     expect(contents(db)).toEqual(before);
     expect(profileTables(db)).toEqual([]);
