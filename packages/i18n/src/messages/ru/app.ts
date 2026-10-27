@@ -21,6 +21,7 @@ export const messages = {
   "app.errorStatus.reorder": "Не удалось изменить порядок очереди",
   "app.errorStatus.queuePause": "Не удалось приостановить или возобновить очередь",
   "app.errorStatus.runNow": "Не удалось выполнить сообщение сейчас",
+  "app.errorStatus.continuePause": "Не удалось продолжить работу агента",
   "app.errorStatus.stop": "Не удалось остановить агента",
   "app.errorStatus.messageLoad": "Не удалось загрузить сообщения",
   "app.errorStatus.acknowledge": "Не удалось закрыть уведомление об ошибке",

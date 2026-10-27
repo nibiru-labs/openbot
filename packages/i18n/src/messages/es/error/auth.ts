@@ -30,4 +30,12 @@ export const messages = {
   "error.auth.adminKeyRejected": "El servicio de cuentas no aceptó la clave de administración.",
   "error.auth.sessionNotStorable":
     "OpenBot no puede guardar la sesión de inicio de sesión en este equipo, así que no puede iniciar sesión con una clave de administración.",
+  "error.auth.hostedServerNoAnswer": "El servidor de cuentas no respondió al principio.",
+  "error.auth.hostedServerNoClaim": "El servidor alojado no ha iniciado sesión y no tiene credencial de acceso.",
+  "error.auth.hostedServerClaimMismatch": "La credencial de acceso es para otro servidor alojado.",
+  "error.auth.hostedServerHostMismatch": "El host configurado no es el servidor alojado para el que se creó esta VM.",
+  "error.auth.hostedServerUnknown": "El servidor de cuentas no tiene ningún registro de este servidor alojado.",
+  "error.auth.invalidUser": "El servicio de cuentas devolvió un usuario no válido.",
+  "error.auth.invalidHostedServerClaim": "Credencial de acceso no válida del servidor alojado.",
+  "error.auth.sessionNotStored": "No se pudo guardar la sesión.",
 } as const satisfies PartialTranslation<typeof source>;

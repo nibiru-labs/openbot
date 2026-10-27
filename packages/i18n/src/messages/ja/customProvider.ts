@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/customProvider";
 
 export const messages = {
+  "customProvider.dispatch.title": "コード実行エグゼキューター",
+  "customProvider.dispatch.description":
+    "エージェントはコーディング作業を openswarm に送信できます。タスクカードとコードは実行ホストとそのモデルプロバイダーへ送られます。独立した実行では lane を空のままにします。",
+  "customProvider.dispatch.binary": "openswarm コマンドまたはパス",
+  "customProvider.dispatch.host": "既定のフリートホスト",
+  "customProvider.dispatch.lane": "既定の lane（省略可）",
   "customProvider.registry.title": "ACP レジストリ",
   "customProvider.registry.description":
     "このサーバーにエージェントをインストールします。ランタイムを削除しても、エージェントの設定、認証情報、会話は残ります。",

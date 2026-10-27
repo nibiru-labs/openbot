@@ -29,4 +29,13 @@ export const messages = {
   "error.auth.adminKeyRejected": "アカウントサービスが管理者キーを受け付けませんでした。",
   "error.auth.sessionNotStorable":
     "OpenBot はこのコンピューターにサインインセッションを保存できないため、管理者キーでサインインできません。",
+  "error.auth.hostedServerNoAnswer": "アカウントサーバーが開始時に応答しませんでした。",
+  "error.auth.hostedServerNoClaim": "ホスト型サーバーはサインアウトしており、アクセス資格情報がありません。",
+  "error.auth.hostedServerClaimMismatch": "このアクセス資格情報は別のホスト型サーバー用です。",
+  "error.auth.hostedServerHostMismatch":
+    "設定されたホストは、この VM に対して作成されたホスト型サーバーではありません。",
+  "error.auth.hostedServerUnknown": "アカウントサーバーにこのホスト型サーバーの記録がありません。",
+  "error.auth.invalidUser": "アカウントサービスが無効なユーザーを返しました。",
+  "error.auth.invalidHostedServerClaim": "無効なホスト型サーバーのアクセス資格情報です。",
+  "error.auth.sessionNotStored": "セッションを保存できませんでした。",
 } as const satisfies PartialTranslation<typeof source>;

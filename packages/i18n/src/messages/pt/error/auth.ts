@@ -29,4 +29,13 @@ export const messages = {
   "error.auth.adminKeyRejected": "O serviço de contas não aceitou a chave de administração.",
   "error.auth.sessionNotStorable":
     "O OpenBot não consegue guardar a sessão de login neste computador, por isso não pode entrar com uma chave de administração.",
+  "error.auth.hostedServerNoAnswer": "O servidor de contas não respondeu no início.",
+  "error.auth.hostedServerNoClaim": "O servidor hospedado está desconectado e não tem credencial de acesso.",
+  "error.auth.hostedServerClaimMismatch": "A credencial de acesso é para outro servidor hospedado.",
+  "error.auth.hostedServerHostMismatch":
+    "O computador anfitrião configurado não é o servidor hospedado para o qual esta VM foi criada.",
+  "error.auth.hostedServerUnknown": "O servidor de contas não tem nenhum registro deste servidor hospedado.",
+  "error.auth.invalidUser": "O serviço de contas retornou um usuário inválido.",
+  "error.auth.invalidHostedServerClaim": "Credencial de acesso do servidor hospedado inválida.",
+  "error.auth.sessionNotStored": "Não foi possível guardar a sessão.",
 } as const satisfies PartialTranslation<typeof source>;

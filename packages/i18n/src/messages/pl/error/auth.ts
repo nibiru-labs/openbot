@@ -28,4 +28,13 @@ export const messages = {
   "error.auth.adminKeyRejected": "Usługa kont nie przyjęła klucza administratora.",
   "error.auth.sessionNotStorable":
     "OpenBot nie może zapisać sesji logowania na tym komputerze, więc nie może zalogować się kluczem administratora.",
+  "error.auth.hostedServerNoAnswer": "Serwer kont nie odpowiedział na początku.",
+  "error.auth.hostedServerNoClaim": "Serwer hostowany nie jest zalogowany i nie ma poświadczenia dostępu.",
+  "error.auth.hostedServerClaimMismatch": "Poświadczenie dostępu dotyczy innego serwera hostowanego.",
+  "error.auth.hostedServerHostMismatch":
+    "Skonfigurowany host to nie serwer hostowany, dla którego utworzono tę maszynę wirtualną.",
+  "error.auth.hostedServerUnknown": "Serwer kont nie ma wpisu o tym serwerze hostowanym.",
+  "error.auth.invalidUser": "Usługa kont zwróciła nieprawidłowego użytkownika.",
+  "error.auth.invalidHostedServerClaim": "Nieprawidłowe poświadczenie dostępu serwera hostowanego.",
+  "error.auth.sessionNotStored": "Nie udało się zapisać sesji.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -29,4 +29,12 @@ export const messages = {
   "error.auth.adminKeyRejected": "Сервис аккаунтов не принял ключ администратора.",
   "error.auth.sessionNotStorable":
     "OpenBot не может сохранить сеанс входа на этом компьютере, поэтому он не может войти с ключом администратора.",
+  "error.auth.hostedServerNoAnswer": "Сервер аккаунтов не ответил в начале.",
+  "error.auth.hostedServerNoClaim": "Облачный сервер вышел из учётной записи и не имеет токена доступа.",
+  "error.auth.hostedServerClaimMismatch": "Токен доступа относится к другому облачному серверу.",
+  "error.auth.hostedServerHostMismatch": "Настроенный хост — не тот облачный сервер, для которого создана эта ВМ.",
+  "error.auth.hostedServerUnknown": "На сервере аккаунтов нет записи об этом облачном сервере.",
+  "error.auth.invalidUser": "Сервис аккаунтов вернул некорректного пользователя.",
+  "error.auth.invalidHostedServerClaim": "Некорректный токен доступа облачного сервера.",
+  "error.auth.sessionNotStored": "Не удалось сохранить сеанс.",
 } as const satisfies PartialTranslation<typeof source>;

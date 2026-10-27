@@ -2,12 +2,28 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/backend";
 
 export const messages = {
+  "error.backend.dispatchCommand":
+    "Nie udało się ukończyć żądania openswarm. Sprawdź ustawienia wykonawcy i stan uruchomienia przed ponowną próbą.",
+  "error.backend.dispatchOwnChat": "Wysyłaj pracę programistyczną tylko z własnego czatu.",
+  "error.backend.dispatchLaneOptions":
+    "Lane używa skonfigurowanych backendu i modelu. Pomiń backend i model, gdy wybierasz lane.",
+  "error.backend.dispatchUnknown": "Ten czat nie należy do tego uruchomienia kodu.",
+  "error.backend.dispatchHostRequired":
+    "Kilka uruchomień kodu ma ten identyfikator. Podaj hosta zwróconego przez dispatch_work.",
+  "error.backend.dispatchVerifyWorkspace":
+    "Polecenie weryfikacji działa na hoście wykonawcy, poza limitem obszaru roboczego tego agenta. Agent w trybie „Tylko obszar roboczy” nie może ustawić weryfikacji.",
+  "error.backend.dispatchExecutorWorkspace":
+    "Agent w trybie „Tylko obszar roboczy” może używać tylko wykonawcy Codex, bo pozostali wykonawcy nie ograniczają miejsca zapisu. Pomiń lane i backend.",
+  "error.backend.dispatchRepository":
+    "Skonfiguruj w openswarm fleet.json pasujące ścieżki repozytoriów lokalnych i wykonawcy.",
   "error.backend.dispatchSpawnFailed": "Nie udało się uruchomić openswarm.",
   "error.backend.dispatchExitCode": "openswarm zakończył działanie z kodem {code}.",
   "error.backend.dispatchExited": "openswarm zakończył działanie przed zwróceniem wyniku.",
   "error.backend.dispatchTimeout": "openswarm nie odpowiedział przed upływem limitu czasu.",
   "error.backend.dispatchOutputUnreadable": "Nie udało się odczytać danych wyjściowych openswarm.",
   "error.backend.dispatchSaveFailed": "Nie udało się zapisać żądania openswarm.",
+  "error.backend.dispatchApprovalDenied": "Osoba odrzuciła tę wysyłkę kodową. Nic nie zostało uruchomione.",
+  "error.backend.dispatchApprovalMissing": "Ta wysyłka kodowa nie ma zatwierdzenia. Nic nie zostało uruchomione.",
   "error.backend.eventsUnavailable": "Zdarzenia nie są dostępne na tym hoście.",
   "error.backend.databaseIntegrity": "Baza danych OpenBot nie przeszła kontroli integralności.",
   "error.backend.webhookRouteLimit": "Host może mieć maksymalnie {limit} rutyn typu webhook.",
@@ -327,4 +343,18 @@ export const messages = {
   "error.backend.agentControlChain":
     "Ta tura zaczęła się, bo przerwał cię członek zespołu. Zakończ ją, zanim przerwiesz innego agenta. Twoja wiadomość czeka w jego kolejce.",
   "error.backend.taskStartFailed": "OpenBot nie może rozpocząć zadania. Zamiast tego wykonaj pracę w tej turze.",
+  "error.backend.requestedPathNotFile": "Żądana ścieżka nie jest plikiem.",
+  "error.backend.sunshinePortsNotAllocated": "Porty Sunshine nie zostały jeszcze przydzielone.",
+  "error.backend.moonlightPortNotAllocated": "Port Moonlight nie został jeszcze przydzielony.",
+  "error.backend.moonlightPortsNotAllocated": "Porty Moonlight nie zostały jeszcze przydzielone.",
+  "error.backend.remoteDesktopExitedDuringPairing": "Proces pulpitu zdalnego zakończył się podczas parowania.",
+  "error.backend.browserUploadInputLimit": "Karta przeglądarki może przechowywać pliki dla maksymalnie {n} wejść.",
+  "error.backend.browserUploadTabLimit": "Karta przeglądarki może przechować do {n} bajtów przesyłania.",
+  "error.backend.browserUploadTotalLimit": "Przesyłanie w przeglądarce może przechować łącznie do {n} bajtów.",
+  "error.backend.generatedImageMissing": "Generowanie obrazu nie zwróciło obrazu.",
+  "error.backend.channelAssignmentInactive": "Przydział kanału nie jest już aktywny.",
+  "error.backend.channelAttachmentNotFound": "Nie znaleziono załącznika na tym kanale.",
+  "error.backend.routineHandoffDeliveryFailed": "Nie udało się utworzyć dostarczenia przekazania rutyny.",
+  "error.backend.routineDeliveryNotCreated": "Nie udało się utworzyć dostarczenia rutyny.",
+  "error.backend.routineRunGone": "Uruchomienie rutyny już nie istnieje.",
 } as const satisfies PartialTranslation<typeof source>;

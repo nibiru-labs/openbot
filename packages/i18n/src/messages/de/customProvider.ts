@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/customProvider";
 
 export const messages = {
+  "customProvider.dispatch.title": "Code-Ausführer",
+  "customProvider.dispatch.description":
+    "Agenten können Code-Arbeit an openswarm senden. Auftragskarten und Code gehen an den Ausführer-Host und dessen Modellanbieter. Lasse die Lane leer für einen losgelösten Lauf.",
+  "customProvider.dispatch.binary": "openswarm-Befehl oder -Pfad",
+  "customProvider.dispatch.host": "Standard-Host der Flotte",
+  "customProvider.dispatch.lane": "Standard-Lane (optional)",
   "customProvider.registry.title": "ACP-Registry",
   "customProvider.registry.description":
     "Installiere Agenten auf diesem Server. „Laufzeit entfernen“ behält Agenteneinstellungen, Zugangsdaten und Unterhaltungen.",

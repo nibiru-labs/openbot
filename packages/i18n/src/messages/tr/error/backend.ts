@@ -2,12 +2,28 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/backend";
 
 export const messages = {
+  "error.backend.dispatchCommand":
+    "openswarm isteği tamamlanamadı. Tekrar denemeden önce yürütücü ayarlarını ve çalıştırma durumunu kontrol edin.",
+  "error.backend.dispatchOwnChat": "Kodlama işini yalnızca kendi sohbetinden gönderin.",
+  "error.backend.dispatchLaneOptions":
+    "Bir lane kendi için yapılandırılmış backend ve modeli kullanır. Bir lane seçtiğinizde backend ve modeli belirtmeyin.",
+  "error.backend.dispatchUnknown": "Bu sohbet o kod çalıştırmasına ait değil.",
+  "error.backend.dispatchHostRequired":
+    "Bu kimliğe sahip birden fazla kod çalıştırması var. dispatch_work'ün döndürdüğü ana makineyi belirtin.",
+  "error.backend.dispatchVerifyWorkspace":
+    "Doğrulama komutu, bu ajanın çalışma alanı sınırının dışında, yürütücü ana makinede çalışır. “Yalnızca çalışma alanı” modundaki bir ajan doğrulama ayarlayamaz.",
+  "error.backend.dispatchExecutorWorkspace":
+    "“Yalnızca çalışma alanı” modundaki bir ajan yalnızca Codex yürütücüsünü kullanabilir, çünkü diğer yürütücüler nereye yazacaklarını sınırlamaz. Lane ve backend belirtmeyin.",
+  "error.backend.dispatchRepository":
+    "openswarm fleet.json içinde yerel ve yürütücü depo yollarını eşleşecek şekilde yapılandırın.",
   "error.backend.dispatchSpawnFailed": "openswarm başlatılamadı.",
   "error.backend.dispatchExitCode": "openswarm {code} koduyla kapandı.",
   "error.backend.dispatchExited": "openswarm sonuç döndürmeden durdu.",
   "error.backend.dispatchTimeout": "openswarm süre sınırı içinde yanıt vermedi.",
   "error.backend.dispatchOutputUnreadable": "openswarm çıktısı okunamadı.",
   "error.backend.dispatchSaveFailed": "openswarm isteği kaydedilemedi.",
+  "error.backend.dispatchApprovalDenied": "Bu kod gönderimini kişi reddetti. Hiçbir şey başlatılmadı.",
+  "error.backend.dispatchApprovalMissing": "Bu kod gönderiminin onayı yok. Hiçbir şey başlatılmadı.",
   "error.backend.eventsUnavailable": "Bu ana makinede etkinlikler kullanılamıyor.",
   "error.backend.databaseIntegrity": "OpenBot veritabanı bütünlük denetiminden geçemedi.",
   "error.backend.webhookRouteLimit": "Bir ana makinede en fazla {limit} webhook rutini olabilir.",
@@ -322,4 +338,18 @@ export const messages = {
   "error.backend.agentControlChain":
     "Bu tur, bir ekip arkadaşınız sizi durdurduğu için başladı. Başka bir ajanı durdurmadan önce bu turu bitirin. Mesajınız onun kuyruğunda bekliyor.",
   "error.backend.taskStartFailed": "OpenBot görevi başlatamadı. Bunun yerine işi bu turda yapın.",
+  "error.backend.requestedPathNotFile": "İstenen yol bir dosya değil.",
+  "error.backend.sunshinePortsNotAllocated": "Sunshine bağlantı noktaları henüz ayrılmadı.",
+  "error.backend.moonlightPortNotAllocated": "Moonlight bağlantı noktası henüz ayrılmadı.",
+  "error.backend.moonlightPortsNotAllocated": "Moonlight bağlantı noktaları henüz ayrılmadı.",
+  "error.backend.remoteDesktopExitedDuringPairing": "Uzak masaüstü süreçleri eşleştirme sırasında sona erdi.",
+  "error.backend.browserUploadInputLimit": "Bir tarayıcı sekmesi en fazla {n} giriş için dosya tutabilir.",
+  "error.backend.browserUploadTabLimit": "Bir tarayıcı sekmesi en fazla {n} bayt yükleme tutabilir.",
+  "error.backend.browserUploadTotalLimit": "Tarayıcı yüklemeleri toplamda en fazla {n} bayt tutabilir.",
+  "error.backend.generatedImageMissing": "Görsel oluşturma bir görsel döndürmedi.",
+  "error.backend.channelAssignmentInactive": "Kanal ataması artık etkin değil.",
+  "error.backend.channelAttachmentNotFound": "Bu kanalda ek bulunamadı.",
+  "error.backend.routineHandoffDeliveryFailed": "Rutin devretme teslimatı oluşturulamadı.",
+  "error.backend.routineDeliveryNotCreated": "Rutin teslimatı oluşturulamadı.",
+  "error.backend.routineRunGone": "Rutin çalıştırması artık mevcut değil.",
 } as const satisfies PartialTranslation<typeof source>;

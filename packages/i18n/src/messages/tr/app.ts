@@ -21,6 +21,7 @@ export const messages = {
   "app.errorStatus.reorder": "Kuyruk yeniden sıralanamadı",
   "app.errorStatus.queuePause": "Kuyruk duraklatılamadı veya sürdürülemedi",
   "app.errorStatus.runNow": "Mesaj şimdi çalıştırılamadı",
+  "app.errorStatus.continuePause": "Ajan sürdürülemedi",
   "app.errorStatus.stop": "Ajan durdurulamadı",
   "app.errorStatus.messageLoad": "Mesajlar yüklenemedi",
   "app.errorStatus.acknowledge": "Hata bildirimi kapatılamadı",

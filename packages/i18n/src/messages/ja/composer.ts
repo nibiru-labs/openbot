@@ -122,4 +122,5 @@ export const messages = {
   "composer.context.noAuto": "このエージェントはコンテキストを圧縮しません。",
   "composer.context.lastCompaction": "前回の圧縮: {before} → {after} トークン",
   "composer.compaction.elapsed": "{minutes}:{seconds}",
+  "composer.mcp.unnamedServer": "MCP サーバー",
 } as const satisfies PartialTranslation<typeof source>;

@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/status/agent";
 
 export const messages = {
+  "status.agent.dispatchApproval":
+    "Questo invio di codice include un'operazione rischiosa. Rivedi la scheda e gli argomenti prima di approvarlo.",
+  "status.agent.dispatchStarted": "Lavoro di programmazione avviato: {title}. Host: {host}. Esecuzione: {runId}.",
+  "status.agent.dispatchFinished":
+    "Lavoro di programmazione terminato: {title}. Host: {host}. Risultato: {status}. Rivedi il risultato prima di dichiarare il successo.",
+  "status.agent.dispatchNoResult": "L'esecutore openswarm è terminato senza file di risultato.",
   "status.agent.claudeWriteOutside":
     "Scrittura di {path}, fuori dal workspace dell'agente, dalla cartella condivisa e dalle cartelle temporanee.",
   "status.agent.contextCleared": "Contesto cancellato. Da qui inizia una nuova chat.",

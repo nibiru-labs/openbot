@@ -30,4 +30,13 @@ export const messages = {
   "error.auth.adminKeyRejected": "Hesap hizmeti yönetici anahtarını kabul etmedi.",
   "error.auth.sessionNotStorable":
     "OpenBot oturum bilgisini bu bilgisayarda saklayamıyor, bu yüzden yönetici anahtarıyla oturum açamıyor.",
+  "error.auth.hostedServerNoAnswer": "Hesap sunucusu başlangıçta yanıt vermedi.",
+  "error.auth.hostedServerNoClaim": "Barındırılan sunucunun oturumu kapalı ve erişim belirteci yok.",
+  "error.auth.hostedServerClaimMismatch": "Erişim belirteci başka bir barındırılan sunucu için.",
+  "error.auth.hostedServerHostMismatch":
+    "Yapılandırılmış ana makine, bu sanal makine için oluşturulan barındırılan sunucu değil.",
+  "error.auth.hostedServerUnknown": "Hesap sunucusunda bu barındırılan sunucu için kayıt yok.",
+  "error.auth.invalidUser": "Hesap hizmeti geçersiz bir kullanıcı döndürdü.",
+  "error.auth.invalidHostedServerClaim": "Geçersiz barındırılan sunucu erişim belirteci.",
+  "error.auth.sessionNotStored": "Oturum bilgisi kaydedilemedi.",
 } as const satisfies PartialTranslation<typeof source>;
