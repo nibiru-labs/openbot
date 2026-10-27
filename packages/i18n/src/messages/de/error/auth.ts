@@ -26,4 +26,8 @@ export const messages = {
     "Die Verbindung wurde beendet, bevor OpenBot die Zustellung bestätigt hat. Prüfe die Zustellung, um keinen weiteren Code zu senden.",
   "error.auth.deliveryUnknown":
     "OpenBot konnte nicht bestätigen, ob der Anmeldecode gesendet wurde. Prüfe die Zustellung, bevor du ihn erneut sendest.",
+  "error.auth.adminKeyRequired": "Gib den Admin-Schlüssel des Kontodienstes ein.",
+  "error.auth.adminKeyRejected": "Der Kontodienst hat den Admin-Schlüssel nicht akzeptiert.",
+  "error.auth.sessionNotStorable":
+    "OpenBot kann die Anmeldesitzung auf diesem Computer nicht speichern und sich daher nicht mit einem Admin-Schlüssel anmelden.",
 } as const satisfies PartialTranslation<typeof source>;

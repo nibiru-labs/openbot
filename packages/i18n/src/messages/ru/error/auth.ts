@@ -25,4 +25,8 @@ export const messages = {
     "Соединение оборвалось, прежде чем OpenBot подтвердил доставку. Проверьте доставку, чтобы не отправлять код повторно.",
   "error.auth.deliveryUnknown":
     "OpenBot не смог подтвердить, отправлен ли код входа. Проверьте доставку, прежде чем отправлять снова.",
+  "error.auth.adminKeyRequired": "Введите ключ администратора сервиса аккаунтов.",
+  "error.auth.adminKeyRejected": "Сервис аккаунтов не принял ключ администратора.",
+  "error.auth.sessionNotStorable":
+    "OpenBot не может сохранить сеанс входа на этом компьютере, поэтому он не может войти с ключом администратора.",
 } as const satisfies PartialTranslation<typeof source>;

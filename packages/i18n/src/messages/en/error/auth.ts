@@ -24,4 +24,8 @@ export const messages = defineMessages("error.auth", {
     "The connection ended before OpenBot confirmed delivery. Check delivery to avoid sending another code.",
   "error.auth.deliveryUnknown":
     "OpenBot could not confirm whether the sign-in code was sent. Check delivery before sending again.",
+  "error.auth.adminKeyRequired": "Enter the admin key of the account service.",
+  "error.auth.adminKeyRejected": "The account service did not accept the admin key.",
+  "error.auth.sessionNotStorable":
+    "OpenBot cannot store the sign-in session on this computer, so it cannot sign in with an admin key.",
 });

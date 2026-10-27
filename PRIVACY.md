@@ -281,6 +281,12 @@ tickets in D1. It returns a new plaintext secret only to the client that request
 app encrypts its account session token with the operating-system storage protection before it writes
 the token to disk.
 
+The desktop app can sign in to an account service with the admin key of that service, instead of an
+email code. The key goes to that account service and nowhere else. The service uses it to make a
+one-time sign-in claim for the account, and the app exchanges the claim for a session. The app keeps
+the key in memory for that sign-in only. It writes the key to no file, and sends it in no log and no
+analytics event. The service keeps only the hash of the claim, not the admin key.
+
 The desktop app also keeps, for each joined server, the ID of its logical remote session and the
 Signal address, so that the next start asks only for a new ticket. The file
 (`openbot-remote-sessions-v1.bin`) is encrypted with the same storage protection and is not written

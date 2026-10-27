@@ -22,6 +22,7 @@ export interface AccountPort {
     | "revokeAccountSession"
     | "revokeMobileConnectedDevice"
     | "revokeMobileConnectLink"
+    | "signInWithAdminKey"
     | "updateAvatar"
     | "updateName"
     | "verifyEmailCode"
