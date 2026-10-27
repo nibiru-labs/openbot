@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/chat";
 
 export const messages = {
+  "chat.process.running": "Réflexion en cours…",
+  "chat.process.completed": "Processus de réponse",
+  "chat.process.stopped": "Processus arrêté",
+  "chat.process.failed": "Échec du processus",
+  "chat.process.waiting": "En attente des détails du processus…",
+  "chat.process.unavailable": "Aucun détail du processus n’a été fourni.",
   "chat.activity.workingOnIt": "Travail en cours…",
   "chat.activity.thinking": "Réflexion en cours…",
   "chat.activity.connectingDots": "Rapprochement des éléments…",

@@ -169,9 +169,8 @@ function isSearchTab(value: string): value is SearchTab {
 }
 
 function messagePreview(message: AgentMessage): string {
-  return expandChatTagReferences(message.body, (reference) =>
-    reference.kind === "quote" ? `“${reference.name}”` : undefined,
-  )
+  const text = message.kind === "thinking" ? (message.items ?? [message.body]).join("\n") : message.body;
+  return expandChatTagReferences(text, (reference) => (reference.kind === "quote" ? `“${reference.name}”` : undefined))
     .trim()
     .replace(/\s+/g, " ");
 }
@@ -654,9 +653,7 @@ export function GlobalSearch(props: GlobalSearchProps) {
     indexed(
       messageSearch.items().flatMap(({ agentId, message }): MessageResult[] => {
         const agent = agentsById().get(agentId);
-        return agent && message.kind !== "thinking" && messagePreview(message)
-          ? [{ kind: "message", agent, message }]
-          : [];
+        return agent && messagePreview(message) ? [{ kind: "message", agent, message }] : [];
       }),
     ),
   );
@@ -761,7 +758,7 @@ export function GlobalSearch(props: GlobalSearchProps) {
         props.onSelectChannel?.(result.channel.id);
         return;
       case "message":
-        props.onSelectMessage(result.agent.id, result.message.id);
+        props.onSelectMessage(result.agent.id, result.message.itemIds?.[0] ?? result.message.id);
         return;
       case "file":
         props.onSelectMessage(result.file.agentId, result.file.messageId);

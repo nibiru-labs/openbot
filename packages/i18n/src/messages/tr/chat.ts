@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/chat";
 
 export const messages = {
+  "chat.process.running": "Düşünüyor…",
+  "chat.process.completed": "Yanıt süreci",
+  "chat.process.stopped": "Süreç durduruldu",
+  "chat.process.failed": "Süreç başarısız oldu",
+  "chat.process.waiting": "Süreç ayrıntıları bekleniyor…",
+  "chat.process.unavailable": "Süreç ayrıntıları sağlanmadı.",
   "chat.activity.workingOnIt": "Üzerinde çalışılıyor…",
   "chat.activity.thinking": "Düşünülüyor…",
   "chat.activity.connectingDots": "Noktalar birleştiriliyor…",

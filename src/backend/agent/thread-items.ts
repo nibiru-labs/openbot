@@ -119,11 +119,12 @@ export function toThreadItem(value: DynamicRecord): ThreadItem | null {
   const type = getString(value, "type");
   if (type === "reasoning") {
     const id = getString(value, "id");
+    const text = reasoningText(value);
     return {
       type: "agentMessage",
       ...(id === null ? {} : { id }),
       phase: "commentary",
-      text: reasoningText(value),
+      ...(text ? { text } : {}),
     };
   }
   return type ? { ...value, type } : null;
