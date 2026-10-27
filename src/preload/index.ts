@@ -655,6 +655,7 @@ const openbotApi: OpenBotDesktopApi = {
     retry: decodeCentralAuthState,
     requestEmailCode: decodeCentralAuthState,
     verifyEmailCode: decodeCentralAuthState,
+    signInWithAdminKey: decodeCentralAuthState,
     updateName: decodeCentralAuthState,
     updateAvatar: decodeCentralAuthState,
     createMobileConnect: decodeMobileConnectTicket,

@@ -95,6 +95,13 @@ export function decodeTicketResponse(value: unknown): { ticket: string; expiresA
   return { ticket: requiredString(record, "ticket"), expiresAt: record.expiresAt };
 }
 
+/** The one-time claim that the admin key made for an email. It is a credential: never log it. */
+export function decodeServerClaim(value: unknown): { claim: string; expiresAt: number } {
+  const record = decodeRecord(value, "server claim");
+  if (!isNumber(record.expiresAt)) throw new Error("Invalid server claim expiration.");
+  return { claim: requiredString(record, "claim"), expiresAt: record.expiresAt };
+}
+
 export function decodeMobileConnectLinkResponse(value: unknown): { link: string; createdAt: number } {
   const record = decodeRecord(value, "Mobile Connect link");
   if (!isNumber(record.createdAt)) throw new Error("Invalid Mobile Connect link date.");

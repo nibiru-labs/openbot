@@ -52,6 +52,7 @@ import {
   decodeRemoteInvitePreview,
   decodeRemoteInvites,
   decodeRemoteMembers,
+  decodeServerClaim,
   decodeSessionResponse,
   decodeTicketResponse,
   decodeVoid,
@@ -1521,6 +1522,69 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
       }).pipe(
         Effect.catch(({ cause: error }) =>
           Effect.succeed(centralAuthIssue(error, "server_claim_failed", sourceText("error.auth.serviceError"))),
+        ),
+      );
+    },
+    (operation) => this.#owned(operation),
+  ).bind(this);
+
+  /**
+   * Signs in with the admin key of a self-hosted account service. The key makes a one-time claim
+   * for the email, and the claim is redeemed for a session of that account.
+   * The key stays inside this call: it is never stored, logged, or sent anywhere but the account
+   * service, and the claim it made is spent on the first use.
+   */
+  readonly signInWithAdminKey = Effect.fn("CentralAuth.signInWithAdminKey")(
+    function* (
+      this: CentralAuthManager,
+      input: { email: string; adminKey: string },
+    ): Effect.fn.Return<CentralAuthState, CentralAuthOperationError, CentralAuthTransport> {
+      const email = input.email.trim().toLowerCase();
+      const adminKey = input.adminKey.trim();
+      if (!adminKey)
+        return yield* new CentralAuthOperationError({
+          cause: new Error(sourceText("error.auth.adminKeyRequired")),
+        });
+      // The claim works once. A session that cannot be stored would end at the next start.
+      if (!this.#options.canPersist())
+        return yield* new CentralAuthOperationError({
+          cause: new Error(sourceText("error.auth.sessionNotStorable")),
+        });
+      const challenge = this.#state.status === "code_sent" ? this.#state : null;
+      return yield* Effect.gen({ self: this }, function* () {
+        const claim = yield* this.#requestEffect(
+          "/v2/admin/server-claims",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminKey}` },
+            body: JSON.stringify({ email }),
+          },
+          decodeServerClaim,
+        );
+        const session = yield* this.#requestEffect(
+          "/v2/server-claims/redeem",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ claim: claim.claim }),
+          },
+          decodeSessionResponse,
+        );
+        yield* this.#applyClaimedSession(session);
+        return this.getState();
+      }).pipe(
+        Effect.catch(({ cause: error }) =>
+          Effect.sync(() => {
+            const issue = centralAuthIssue(
+              error,
+              "admin_key_sign_in_failed",
+              sourceText("error.auth.adminKeyRejected"),
+            );
+            // A failed sign-in keeps the code challenge of the email sign-in, so the user can
+            // still finish it with the code that was sent.
+            if (challenge) return this.#setState({ ...challenge, issue });
+            return this.#setState({ status: "error", issue });
+          }),
         ),
       );
     },

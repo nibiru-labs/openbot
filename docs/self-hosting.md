@@ -85,6 +85,9 @@ Keep the private JWK secret. With it, a person can open each host that uses your
    REMOTE_AUTH_WEBHOOK_SECRET=...
    ```
 
+   Add `SERVER_CLAIMS_ADMIN_TOKEN` when you want to sign in without an email code. It is optional.
+   The [admin key sign-in](#sign-in-with-the-admin-key) uses it.
+
 4. Deploy. The script puts the secrets, applies the D1 migrations, builds and deploys the Worker:
 
    ```sh
@@ -161,6 +164,17 @@ sends your session token there. To go back to `openbot.run`, sign out first.
 
 The app does not start, and shows an error, if `OPENBOT_REMOTE_SIGNAL_URL` is not a `wss:` URL, has
 a user name or password, or is set without `OPENBOT_AUTH_API_URL`.
+
+### Sign in with the admin key
+
+The Worker can hold an admin key, `SERVER_CLAIMS_ADMIN_TOKEN`. Make it with `openssl rand -base64 48`.
+Anyone with this key can sign in as any account of your service, so keep it on the computer of the
+operator only.
+
+On the sign-in screen of the desktop app, choose "Use an admin key instead", enter the email of the
+account and the admin key, and OpenBot signs in without an email code. The app sends the key to your
+Worker and to nothing else. It keeps the key in memory for that sign-in only, and writes it to no
+file and no log.
 
 ## Updates
 

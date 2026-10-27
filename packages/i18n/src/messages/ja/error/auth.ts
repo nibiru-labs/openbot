@@ -25,4 +25,8 @@ export const messages = {
     "OpenBot が配信を確認する前に接続が終了しました。別のコードを送信しないように、配信を確認してください。",
   "error.auth.deliveryUnknown":
     "サインインコードが送信されたかどうかを OpenBot が確認できませんでした。再送信する前に配信を確認してください。",
+  "error.auth.adminKeyRequired": "アカウントサービスの管理者キーを入力してください。",
+  "error.auth.adminKeyRejected": "アカウントサービスが管理者キーを受け付けませんでした。",
+  "error.auth.sessionNotStorable":
+    "OpenBot はこのコンピューターにサインインセッションを保存できないため、管理者キーでサインインできません。",
 } as const satisfies PartialTranslation<typeof source>;
