@@ -68,7 +68,13 @@ import {
 } from "./agent-archive";
 import type { AgentImportSkills } from "./agent-import-service";
 import { validTimezone } from "./agent-marketplace-service";
-import { type ArchiveOperationError, archiveCall, archiveFailure, archiveSync } from "./archive-effects";
+import {
+  type ArchiveOperationError,
+  archiveCall,
+  archiveFailure,
+  archiveSync,
+  writeArchiveChunk,
+} from "./archive-effects";
 import {
   agentPrefix,
   decodeTransferManifest,
@@ -1131,9 +1137,20 @@ const writeZipEffect = Effect.fn("InstanceTransfer.writeZip")(function* (
     try {
       let pending = Promise.resolve();
       let error: unknown = null;
+      let position = 0;
       const zip = new Zip((failure, chunk) => {
         if (failure) error = failure;
-        else pending = pending.then(() => handle.write(chunk).then(() => undefined));
+        else
+          pending = pending.then(() =>
+            writeArchiveChunk(handle, chunk, position).then(
+              (end) => {
+                position = end;
+              },
+              (cause: unknown) => {
+                error = cause;
+              },
+            ),
+          );
       });
       for (const entry of entries) {
         let data: Uint8Array;

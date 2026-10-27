@@ -2,12 +2,12 @@
 // macOS and `Compress-Archive` on Windows. Linux ships neither tool, so it writes the ZIP here.
 
 import { execFile } from "node:child_process";
-import { type FileHandle, open, readdir, stat } from "node:fs/promises";
+import { open, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { Effect } from "effect";
 import { Zip, ZipPassThrough } from "fflate";
-import { type ArchiveOperationError, archiveCall } from "./archive-effects";
+import { type ArchiveOperationError, archiveCall, writeArchiveChunk } from "./archive-effects";
 
 const execFileAsync = promisify(execFile);
 
@@ -67,7 +67,7 @@ async function writeArchive(exportRoot: string, destination: string): Promise<vo
       if (error) failure = error;
       else
         pending = pending.then(() =>
-          writeChunk(handle, chunk, position).then(
+          writeArchiveChunk(handle, chunk, position).then(
             (end) => {
               position = end;
             },
@@ -109,26 +109,6 @@ async function writeArchive(exportRoot: string, destination: string): Promise<vo
   } finally {
     await handle.close();
   }
-}
-
-/**
- * Writes the chunk to the file and returns the offset behind it.
- *
- * A write can be short: the file system can write fewer bytes than the request. The write asks
- * again for the rest of the chunk, at the offset behind the bytes that were written. A write that
- * writes no byte at all fails the export, so a truncated archive never reaches the user as a
- * saved backup.
- */
-async function writeChunk(handle: FileHandle, chunk: Uint8Array, position: number): Promise<number> {
-  let written = 0;
-  while (written < chunk.length) {
-    const { bytesWritten } = await handle.write(chunk, written, chunk.length - written, position + written);
-    if (bytesWritten <= 0) {
-      throw new Error(`The archive wrote no byte at offset ${position + written}.`);
-    }
-    written += bytesWritten;
-  }
-  return position + chunk.length;
 }
 
 interface ArchiveFile {
