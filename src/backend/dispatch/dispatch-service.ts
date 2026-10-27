@@ -272,7 +272,15 @@ export class DispatchService {
         const settings = this.#options.settings();
         const binary = expandHome(settings.binaryPath || "openswarm");
         const host = input.host ?? (settings.defaultHost || "local");
-        const lane = input.lane ?? (input.backend || input.model ? "" : settings.defaultLane);
+        // A Workspace-only agent may not choose an executor that has no write confinement.
+        if (caller.workspaceOnly && (input.lane || (input.backend && input.backend !== "codex"))) {
+          return yield* new DispatchFailed({
+            cause: new Error(sourceText("error.backend.dispatchExecutorWorkspace")),
+            reason: sourceText("error.backend.dispatchExecutorWorkspace"),
+          });
+        }
+        const backend = caller.workspaceOnly ? "codex" : input.backend;
+        const lane = input.lane ?? (backend || input.model ? "" : settings.defaultLane);
         yield* Effect.try({
           try: () =>
             assertDispatchInputValues(
@@ -312,7 +320,7 @@ export class DispatchService {
           const args = lane ? ["lane", "assign", lane] : ["run", "--detach", "--cwd", cwd];
           args.push("--task-file", taskFile, "--title", title, "--budget-minutes", String(input.budgetMinutes ?? 40));
           if (input.verify) args.push("--verify", this.#options.redact(input.verify));
-          if (input.backend) args.push("--backend", input.backend);
+          if (backend) args.push("--backend", backend);
           if (input.model) args.push("--model", input.model);
           return args;
         };

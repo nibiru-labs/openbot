@@ -109,6 +109,8 @@ export const handleDispatchTool = Effect.fn("DispatchTools.handle")(function* (
       if (caller.workspaceOnly && input.verify) {
         return openBotToolFailure(sourceText("error.backend.dispatchVerifyWorkspace"));
       }
+      if (caller.workspaceOnly && (input.lane || (input.backend && input.backend !== "codex")))
+        return openBotToolFailure(sourceText("error.backend.dispatchExecutorWorkspace"));
       if (input.lane && (input.backend || input.model))
         return openBotToolFailure(sourceText("error.backend.dispatchLaneOptions"));
       if (isRiskyDispatch(input)) {

@@ -11,6 +11,8 @@ export const messages = defineMessages("error.backend", {
     "More than one coding run has this ID. Include the host returned by dispatch_work.",
   "error.backend.dispatchVerifyWorkspace":
     "The verify command runs on the executor host, outside this agent's workspace limit. A Workspace-only agent cannot set verify.",
+  "error.backend.dispatchExecutorWorkspace":
+    "A Workspace-only agent can only use the Codex executor, because other executors do not limit where they write. Omit lane and backend.",
   "error.backend.dispatchRepository": "Configure matching local and executor repository paths in openswarm fleet.json.",
   "error.backend.dispatchSpawnFailed": "openswarm could not be started.",
   "error.backend.dispatchExitCode": "openswarm exited with code {code}.",
