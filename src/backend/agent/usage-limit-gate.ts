@@ -110,14 +110,20 @@ export class UsageLimitGate {
     const accountId = accountOf(agent);
     if (this.#limits.has(limitKey(provider, accountId, null))) return false;
     const family = modelFamily(agent.model);
-    return !family || !this.#limits.has(limitKey(provider, accountId, family));
+    return (
+      !(family && this.#limits.has(limitKey(provider, accountId, family))) &&
+      !this.#limits.has(limitKey(provider, accountId, `model:${agent.model}`))
+    );
   }
 
   /** Whether a limit holds this provider account and model: the whole account's, or its family's. */
   isLimited(limit: UsageLimitKey): boolean {
     if (this.#limits.has(limitKey(limit.provider, limit.accountId, null))) return true;
     const family = modelFamily(limit.model);
-    return family !== null && this.#limits.has(limitKey(limit.provider, limit.accountId, family));
+    return (
+      (family !== null && this.#limits.has(limitKey(limit.provider, limit.accountId, family))) ||
+      this.#limits.has(limitKey(limit.provider, limit.accountId, `model:${limit.model}`))
+    );
   }
 
   /**
@@ -168,7 +174,8 @@ export class UsageLimitGate {
       const family = modelFamily(agent.model);
       const limit =
         this.#limits.get(limitKey(provider, accountId, null)) ??
-        (family ? this.#limits.get(limitKey(provider, accountId, family)) : undefined);
+        (family ? this.#limits.get(limitKey(provider, accountId, family)) : undefined) ??
+        this.#limits.get(limitKey(provider, accountId, `model:${agent.model}`));
       return limit ? [{ agentId: agent.id, resetsAt: limit.resetsAt }] : [];
     });
   }
@@ -185,27 +192,28 @@ export class UsageLimitGate {
   /**
    * The plan refused a turn of this agent. `resetsAt` is in epoch seconds. `model` is the one the
    * turn ran on; the agent's current model when null. `family` is the model family the provider
-   * reported for the refused window; null when it reported a window for the whole account, or no
-   * window at all, and the hold then covers the whole account.
+   * reported for the refused window; null when it reported a window for the whole account. An
+   * unspecified window holds only the model that was refused.
    */
   readonly reached = Effect.fn("UsageLimitGate.reached")(function* (
     this: UsageLimitGate,
     agentId: string,
     resetsAt: number | null,
     model: string | null = null,
-    family: string | null = null,
+    family: string | null | undefined = undefined,
   ) {
     const agent = this.#agent(agentId);
     if (!agent) return;
     const provider = providerForAgent(agent);
     const turnModel = model ?? agent.model;
     const accountId = accountOf(agent);
-    const key = limitKey(provider, accountId, family);
+    const scope = family === undefined ? `model:${turnModel}` : family;
+    const key = limitKey(provider, accountId, scope);
     const limit = this.#limits.get(key) ?? {
       provider,
       accountId,
       model: turnModel,
-      family,
+      family: scope,
       resetsAt: null,
       timer: null,
     };
@@ -252,6 +260,8 @@ export class UsageLimitGate {
       const scopedKey = limitKey(provider, accountId, family);
       if (this.#limits.has(scopedKey)) yield* this.#release(scopedKey);
     }
+    const modelKey = limitKey(provider, accountId, `model:${model ?? agent.model}`);
+    if (this.#limits.has(modelKey)) yield* this.#release(modelKey);
     const failedKey = limitKey(provider, accountId, model ?? agent.model);
     if (this.#failures.has(failedKey)) yield* this.#releaseFailure(failedKey);
     if (![...this.#limits.values()].some((limit) => limit.provider === provider)) this.#announced.delete(provider);
@@ -378,7 +388,9 @@ export class UsageLimitGate {
         (agent) =>
           providerForAgent(agent) === limit.provider &&
           accountOf(agent) === limit.accountId &&
-          (limit.family === null || modelFamily(agent.model) === limit.family),
+          (limit.family === null ||
+            modelFamily(agent.model) === limit.family ||
+            `model:${agent.model}` === limit.family),
       );
   }
 }

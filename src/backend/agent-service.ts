@@ -5022,7 +5022,7 @@ function sameUsageLimit(choice: AgentModelChoice, limit: UsageLimitKey): boolean
   return (
     own.provider === limit.provider &&
     own.accountId === limit.accountId &&
-    (limit.family === null || own.family === limit.family)
+    (limit.family === null || own.family === limit.family || `model:${choice.model}` === limit.family)
   );
 }
 

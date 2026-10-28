@@ -192,7 +192,7 @@ interface ActiveTurn {
    * Set when Claude refuses the turn for a spent plan window. The refusal arrives as an assistant
    * message that only states the limit, so its text is held here and not published as the answer.
    */
-  usageLimit: { resetsAt: number | null; text: string | null; family: string | null } | null;
+  usageLimit: { resetsAt: number | null; text: string | null; family: string | null | undefined } | null;
   /** The CLI started this turn itself, with no message from OpenBot, such as after a background task ended. */
   unprompted: boolean;
 }
@@ -1272,7 +1272,7 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           turn.usageLimit = {
             resetsAt: turn.usageLimit?.resetsAt ?? null,
             text: text || null,
-            family: turn.usageLimit?.family ?? null,
+            family: turn.usageLimit?.family,
           };
           return;
         }
@@ -2057,12 +2057,12 @@ function claudeWeeklyKey(rateLimits: DynamicRecord, model: string | null): strin
 /**
  * The model family a refused window covers: the family of `seven_day_opus` or `seven_day_sonnet`.
  * Any other window, the overall weekly one and the five-hour one included, covers the whole
- * account, and so does an event that names no window: both read as null.
+ * account. An event that names no known window leaves the scope unspecified.
  */
-function claudeLimitFamily(rateLimitType: unknown): "opus" | "sonnet" | null {
+function claudeLimitFamily(rateLimitType: unknown): "opus" | "sonnet" | null | undefined {
   if (rateLimitType === "seven_day_opus") return "opus";
   if (rateLimitType === "seven_day_sonnet") return "sonnet";
-  return null;
+  return rateLimitType === "five_hour" || rateLimitType === "seven_day" ? null : undefined;
 }
 
 /**

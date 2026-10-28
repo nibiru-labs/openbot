@@ -1458,7 +1458,7 @@ export class MailboxStore {
    */
   userMessagesToStartWith(deliveryId: string): DeliveryContext[] {
     const next = this.#state.deliveries.find((candidate) => candidate.id === deliveryId);
-    if (!next) return [];
+    if (!next || this.#runNow.has(next.id) || this.isQueuePaused(next.recipientAgentId)) return [];
     const messages = this.#messagesById();
     const first = this.#requireMessage(next.messageId, messages);
     if (!isChatMessageFromPerson(first)) return [];
