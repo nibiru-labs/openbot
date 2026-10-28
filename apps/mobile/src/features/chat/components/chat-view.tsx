@@ -28,9 +28,11 @@ import { ChatComposer, type MentionSkill, VOICE_BUTTON_SIZE } from "@/features/c
 import { ChatGlassIconButton } from "@/features/chat/components/chat-glass-icon-button";
 import { ChatHeader } from "@/features/chat/components/chat-header";
 import { ChatMessageList } from "@/features/chat/components/chat-message-list";
+import { ChatSearchBar } from "@/features/chat/components/chat-search-bar";
 import { useChatAttachments } from "@/features/chat/components/use-chat-attachments";
 import { useChatMotion } from "@/features/chat/components/use-chat-motion";
 import type { QuestionPromptController } from "@/features/chat/components/use-question-prompt";
+import type { UiBlockPromptController } from "@/features/chat/components/use-ui-block-prompt";
 import { useComposerDrafts, useOutbox } from "@/features/chat/context/outbox-context";
 import { usePublishedQueuedChat } from "@/features/chat/context/queued-messages-context";
 import {
@@ -39,6 +41,7 @@ import {
   type PendingChatMessage,
   presentChatMessages,
 } from "@/features/chat/model/chat-messages";
+import { findChatSearchMatches } from "@/features/chat/model/chat-search";
 import { ConnectionStatus } from "@/features/workspace/components/connection-status";
 import { useBrowserRequests } from "@/features/workspace/components/use-live-workspace";
 import type { MobileAgent } from "@/features/workspace/context/mobile-workspace-context";
@@ -67,6 +70,7 @@ import {
 import { type OutboxMessage, outboxChatKey, outboxChatMessage, outboxRowId, outboxTargetKey } from "../model/outbox";
 import type { OutboxDraft, OutboxStore } from "../model/outbox-store";
 import { queueReceiptMessages, queueRowsWithHeldEdit } from "../model/queue-edit-draft";
+import { canStopAndSend, stopAndSend } from "../model/stop-and-send";
 import { retainConfirmedAttachments } from "../model/upload-chat-attachments";
 import { voiceAccent, voicePalette } from "../model/voice-palette";
 import { rememberImageDimensions } from "./attachment-preview";
@@ -75,6 +79,7 @@ import { ChatAttachmentPanel } from "./chat-attachment-panel";
 import type { OutboxRowStatus } from "./chat-outbox-status";
 import { ChatQueueButton } from "./chat-queue-button";
 import { ChatSelectionBar } from "./chat-selection-bar";
+import { ChatStopAndSendButton } from "./chat-stop-and-send-button";
 import type { ChatQueueController } from "./use-chat-queue";
 import { useVoiceMode } from "./use-voice-mode";
 import { VoiceOverlay } from "./voice-overlay";
@@ -103,6 +108,7 @@ export interface ChatViewProps {
   /** Absent for a chat that cannot stop a turn, such as a channel. */
   stopTurn?: (turnId: string) => Promise<void>;
   questionForm?: QuestionPromptController;
+  uiBlockForm?: UiBlockPromptController;
   /** Opens the form of an open question, in a channel where several agents can ask. */
   onSelectQuestion?: (messageId: string) => void;
   /** A channel task needs the user. */
@@ -137,6 +143,8 @@ export interface ChatViewProps {
   showLatestMessages?: () => Promise<void>;
   /** Leaves the chat, from the back button and the Android edge swipe. */
   onLeave: () => void;
+  /** The first unread message when the chat opened. The divider stays after messages are marked read. */
+  firstUnreadMessageId?: string | null;
 }
 
 const CHAT_BACK_EDGE_WIDTH = 24;
@@ -202,6 +210,7 @@ export function ChatView({
   activeTurnId,
   stopTurn,
   questionForm,
+  uiBlockForm,
   onSelectQuestion,
   needsAction = false,
   channelLeadAgentId = null,
@@ -223,6 +232,7 @@ export function ChatView({
   detached = false,
   showLatestMessages,
   onLeave: leaveConversation,
+  firstUnreadMessageId = null,
 }: ChatViewProps) {
   const { t, errorMessage } = useText();
   const workspace = useMobileWorkspaceReader();
@@ -272,6 +282,9 @@ export function ChatView({
     "accent-foreground",
     "background",
   ]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchIndex, setSearchIndex] = useState(-1);
   const [replyTarget, setReplyTarget] = useState<ChatBubbleMessage | null>(null);
   // The message whose text the reader selects in its bubble, and the selected part of it.
   const [selection, setSelection] = useState<{ message: ChatBubbleMessage; selected: string } | null>(null);
@@ -414,6 +427,43 @@ export function ChatView({
         messageAliases,
       ),
     [projectedMessages, pendingMessages, messageAliases, queuedMessageIds],
+  );
+  const searchMatches = useMemo(
+    () => (searchOpen && searchQuery.trim() ? findChatSearchMatches(messages, searchQuery) : []),
+    [searchOpen, searchQuery, messages],
+  );
+  useEffect(() => {
+    if (!searchOpen || !searchQuery.trim()) {
+      setSearchIndex(-1);
+      return;
+    }
+    setSearchIndex((current) => {
+      if (searchMatches.length === 0) return -1;
+      if (current < 0) return 0;
+      return Math.min(current, searchMatches.length - 1);
+    });
+  }, [searchOpen, searchQuery, searchMatches.length]);
+  const activeSearchMatch = searchIndex >= 0 ? searchMatches[searchIndex] : undefined;
+  const searchFocusMessageId = activeSearchMatch?.messageId ?? null;
+  const openChatSearch = useCallback(() => {
+    setSelection(null);
+    Keyboard.dismiss();
+    setSearchOpen(true);
+  }, []);
+  const closeChatSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchIndex(-1);
+  }, []);
+  const moveChatSearch = useCallback(
+    (direction: 1 | -1) => {
+      if (searchMatches.length === 0) return;
+      setSearchIndex((current) => {
+        const index = current < 0 ? 0 : current;
+        return (index + direction + searchMatches.length) % searchMatches.length;
+      });
+    },
+    [searchMatches.length],
   );
   useEffect(() => {
     for (const id of sendBaselines.current.keys())
@@ -646,14 +696,16 @@ export function ChatView({
   const [stoppingTurnId, setStoppingTurnId] = useState<string | null>(null);
   const stopping = stoppingTurnId !== null && stoppingTurnId === activeTurnId;
 
-  const requestStop = useMemo(() => {
-    if (!stopTurn || !activeTurnId) return undefined;
-    const turnId = activeTurnId;
-    return () => {
+  /** Stops the turn. A failure is reported to the reader, and the caller learns about it. */
+  const stopTurnNow = useCallback(
+    async (turnId: string): Promise<void> => {
+      if (!stopTurn) return;
       setStoppingTurnId(turnId);
       setSendError(null);
       void haptics.impact();
-      stopTurn(turnId).catch((error: unknown) => {
+      try {
+        await stopTurn(turnId);
+      } catch (error: unknown) {
         void haptics.notification("error");
         setStoppingTurnId((current) => (current === turnId ? null : current));
         setSendError({
@@ -662,9 +714,19 @@ export function ChatView({
           agentId: target.id,
           message: errorMessage(error, t("mobile.chat.composer.stopFailed")),
         });
-      });
+        throw error;
+      }
+    },
+    [stopTurn, target.id, errorMessage, t, failureContext],
+  );
+
+  const requestStop = useMemo(() => {
+    if (!stopTurn || !activeTurnId) return undefined;
+    const turnId = activeTurnId;
+    return () => {
+      void stopTurnNow(turnId).catch(() => undefined);
     };
-  }, [stopTurn, activeTurnId, target.id, errorMessage, t, failureContext]);
+  }, [stopTurn, activeTurnId, stopTurnNow]);
 
   function sendMessage(value: string): void {
     if (!canSend) return;
@@ -843,6 +905,23 @@ export function ChatView({
   const latestSend = useRef(sendMessage);
   latestSend.current = sendMessage;
   const send = useCallback((value: string) => latestSend.current(value), []);
+  // "Stop and send": the composer text stops the running turn and goes next, as on the desktop.
+  const stopAndSendAvailable = canStopAndSend({
+    running: Boolean(activeTurnId) && !stopping,
+    hasDraft: draft.trim().length > 0 || attachments.items.length > 0,
+    // A turn of a server that is offline cannot be stopped.
+    disabled: !canSend || attachments.preparing || !serverOnline,
+  });
+  const stopAndSendRequest = useMemo(() => {
+    if (!stopTurn || !activeTurnId) return undefined;
+    const turnId = activeTurnId;
+    return () => {
+      const text = draft.trim();
+      if (!text) return;
+      // The stop comes first. A stop that fails sends nothing, so the text stays in the composer.
+      void stopAndSend({ stop: () => stopTurnNow(turnId), send, text }).catch(() => undefined);
+    };
+  }, [stopTurn, activeTurnId, draft, stopTurnNow, send]);
   const cancelReply = useCallback(() => setReplyTarget(null), []);
   const dismissStarter = useCallback(() => setShowStarter(false), []);
   const respondToApproval = useCallback(
@@ -916,19 +995,36 @@ export function ChatView({
             // from the message list, only not from the composer itself.
             enableSwipeToDismiss={!(isAndroid && suggestionsOpen)}
           >
-            <ChatHeader
-              target={target}
-              needsAction={needsAction && !readOnly}
-              channelBrowser={readOnly ? null : channelBrowser}
-              fallbackBackground={fieldBackground}
-              foreground={foreground}
-              liquidGlassAvailable={liquidGlassAvailable}
-              topInset={insets.top}
-              onBack={leaveConversation}
-              // The voice overlay covers the chat. It blocks touches, and this
-              // keeps screen readers on the transcript and the voice controls.
-              accessibilityHidden={voiceOpen}
-            />
+            {searchOpen ? (
+              <ChatSearchBar
+                query={searchQuery}
+                onQueryChange={setSearchQuery}
+                current={searchIndex}
+                total={searchMatches.length}
+                topInset={insets.top}
+                fallbackBackground={String(fieldBackground)}
+                liquidGlassAvailable={liquidGlassAvailable}
+                onPrevious={() => moveChatSearch(-1)}
+                onNext={() => moveChatSearch(1)}
+                onClose={closeChatSearch}
+              />
+            ) : (
+              <ChatHeader
+                target={target}
+                needsAction={needsAction && !readOnly}
+                channelBrowser={readOnly ? null : channelBrowser}
+                fallbackBackground={fieldBackground}
+                foreground={foreground}
+                liquidGlassAvailable={liquidGlassAvailable}
+                topInset={insets.top}
+                onBack={leaveConversation}
+                onOpenSearch={readOnly ? undefined : openChatSearch}
+                searchOpen={searchOpen}
+                // The voice overlay covers the chat. It blocks touches, and this
+                // keeps screen readers on the transcript and the voice controls.
+                accessibilityHidden={voiceOpen}
+              />
+            )}
             <ChatMessageList
               agents={serverAgents}
               rowsShown={rowsShown}
@@ -958,6 +1054,10 @@ export function ChatView({
               // The form is a new object on each render. Without a question the list does not read it,
               // so it is left out and does not draw the list again.
               questionForm={questionForm?.messageId ? questionForm : undefined}
+              uiBlockForm={uiBlockForm?.messageId ? uiBlockForm : undefined}
+              searchMatches={searchOpen ? searchMatches : undefined}
+              activeSearchMatch={searchOpen ? activeSearchMatch : undefined}
+              searchFocusMessageId={searchOpen ? searchFocusMessageId : null}
               onSelectQuestion={readOnly ? undefined : onSelectQuestion}
               activityAccessory={activityAccessory}
               approvals={readOnly ? undefined : approvals}
@@ -991,6 +1091,7 @@ export function ChatView({
               onRetryHistory={fetchHistory}
               focusMessageId={focusMessageId}
               onFocusPlaced={onFocusPlaced}
+              firstUnreadMessageId={firstUnreadMessageId}
               upload={listUpload}
               outboxStatuses={outboxStatuses}
             />
@@ -1081,6 +1182,13 @@ export function ChatView({
                   waiting={queue.waiting.length > 0}
                   liquidGlassAvailable={liquidGlassAvailable}
                   fallbackBackground={fieldBackground}
+                />
+              ) : null}
+              {stopAndSendAvailable && stopAndSendRequest && !notice ? (
+                <ChatStopAndSendButton
+                  liquidGlassAvailable={liquidGlassAvailable}
+                  fallbackBackground={fieldBackground}
+                  onPress={stopAndSendRequest}
                 />
               ) : null}
               {/* Mounted while it leaves, so its capsules can animate out. */}

@@ -20,10 +20,14 @@ import {
   channelRoutingConversationEvent,
   dispatchConversationEvent,
   isContextResetMarker,
+  marketplaceSuggestionEvent,
+  modelSwitchReason,
   parseConversationPlanText,
   routineConversationEvent,
   routineRunConversationEvent,
+  skillConversationEvent,
 } from "@openbot/contracts/ipc";
+import type { ConversationUiBlock } from "@openbot/contracts/ui-blocks";
 import type { MobileTextKey } from "@openbot/i18n/mobile";
 
 export type RoutineMarkerEvent = RoutineConversationEventAction | RoutineRunStatus;
@@ -54,8 +58,27 @@ export type ChatMessage =
   /** The status card that a coding dispatch posts when a run starts or ends. `text` is source text. */
   | { id: string; kind: "dispatch"; text: string }
   /** A routine created, changed, deleted, or run by the agent. The label matches the desktop marker. */
-  | { id: string; kind: "routine"; event: RoutineMarkerEvent; label: MobileTextKey; routineName: string }
+  | {
+      id: string;
+      kind: "routine";
+      /** The routine the marker names. The chat opens it. */
+      routineId: string;
+      event: RoutineMarkerEvent;
+      label: MobileTextKey;
+      routineName: string;
+    }
+  /** A system note with readable text: a model switch, a skill change, and the like. */
+  | { id: string; kind: "marker"; text: string }
+  /** A Marketplace app an agent suggested. The host text names what happened; the card opens connect. */
+  | { id: string; kind: "marketplace-suggestion"; appId: string; text: string }
   | { id: string; kind: "question"; turnId: string | undefined; prompt: ConversationQuestionPrompt }
+  | {
+      id: string;
+      kind: "uiBlock";
+      turnId: string | undefined;
+      block: ConversationUiBlock;
+      prompt: ConversationQuestionPrompt;
+    }
   | {
       id: string;
       kind: "message";
@@ -166,9 +189,12 @@ export function presentChatMessages(
 const projectedBubbles = new WeakMap<ConversationMessage, { readerKey: string; bubble: ChatMessage }>();
 const projectedExchanges = new WeakMap<ConversationMessage, ChatMessage>();
 const projectedQuestions = new WeakMap<ConversationMessage, ChatMessage>();
+const projectedUiBlocks = new WeakMap<ConversationMessage, ChatMessage>();
 const projectedRoutines = new WeakMap<ConversationMessage, ChatMessage>();
 const projectedResets = new WeakMap<ConversationMessage, ChatMessage>();
 const projectedDispatches = new WeakMap<ConversationMessage, ChatMessage>();
+const projectedMarkers = new WeakMap<ConversationMessage, ChatMessage>();
+const projectedSuggestions = new WeakMap<ConversationMessage, ChatMessage>();
 
 const ROUTINE_RUN_LABELS = {
   queued: "mobile.chat.routine.invoked",
@@ -192,6 +218,7 @@ function routineMarker(message: ConversationMessage) {
   if (lifecycle) {
     return {
       runId: null,
+      routineId: lifecycle.routineId,
       event: lifecycle.action,
       label: ROUTINE_ACTION_LABELS[lifecycle.action],
       routineName: lifecycle.routineName,
@@ -199,10 +226,17 @@ function routineMarker(message: ConversationMessage) {
   }
   const run = routineRunConversationEvent(message);
   if (run)
-    return { runId: run.runId, event: run.status, label: ROUTINE_RUN_LABELS[run.status], routineName: run.routineName };
+    return {
+      runId: run.runId,
+      routineId: run.routineId,
+      event: run.status,
+      label: ROUTINE_RUN_LABELS[run.status],
+      routineName: run.routineName,
+    };
   if (message.routine)
     return {
       runId: message.routine.runId,
+      routineId: message.routine.routineId,
       event: "queued" as const,
       label: ROUTINE_RUN_LABELS.queued,
       routineName: message.routine.name,
@@ -226,6 +260,7 @@ function projectRoutineMarker(message: ConversationMessage, latestRuns: Readonly
   return projectedMarker(projectedRoutines, message, () => ({
     id: `routine:${message.id}`,
     kind: "routine",
+    routineId: marker.routineId,
     event: marker.event,
     label: marker.label,
     routineName: marker.routineName,
@@ -348,6 +383,38 @@ export function projectChatMessages(
       );
       continue;
     }
+    if (modelSwitchReason(message)) {
+      result.push(
+        projectedMarker(projectedMarkers, message, () => ({
+          id: `marker:${message.id}`,
+          kind: "marker",
+          text: message.text,
+        })),
+      );
+      continue;
+    }
+    if (skillConversationEvent(message)) {
+      result.push(
+        projectedMarker(projectedMarkers, message, () => ({
+          id: `marker:${message.id}`,
+          kind: "marker",
+          text: message.text,
+        })),
+      );
+      continue;
+    }
+    const suggestion = marketplaceSuggestionEvent(message);
+    if (suggestion) {
+      result.push(
+        projectedMarker(projectedSuggestions, message, () => ({
+          id: `marketplace-suggestion:${message.id}`,
+          kind: "marketplace-suggestion",
+          appId: suggestion.appId,
+          text: message.text,
+        })),
+      );
+      continue;
+    }
     if (message.delivery?.status === "queued" || message.delivery?.status === "cancelled") continue;
     if (message.exchange) {
       const { exchange } = message;
@@ -362,6 +429,20 @@ export function projectChatMessages(
       // Match desktop: exchanges have markers, not another agent's text bubble.
       // Incoming attachments remain visible below their marker.
       if (message.exchange.direction !== "incoming" || !message.attachments?.length) continue;
+    }
+    if (message.uiBlock && message.questionPrompt) {
+      const prompt = message.questionPrompt;
+      const block = message.uiBlock;
+      result.push(
+        projectedMarker(projectedUiBlocks, message, () => ({
+          id: message.id,
+          kind: "uiBlock",
+          turnId: message.turnId,
+          block,
+          prompt,
+        })),
+      );
+      continue;
     }
     if (message.questionPrompt) {
       const prompt = message.questionPrompt;
@@ -459,6 +540,8 @@ export function chatRowIndex(rows: readonly (ChatMessage | ExchangeGroup)[], mes
     `routine:${messageId}`,
     `context-reset:${messageId}`,
     `dispatch:${messageId}`,
+    `marker:${messageId}`,
+    `marketplace-suggestion:${messageId}`,
   ]);
   return rows.findIndex((row) =>
     row.kind === "exchange-group" ? row.exchanges.some((marker) => ids.has(marker.id)) : ids.has(row.id),
@@ -517,7 +600,7 @@ function visualReply(message: Parameters<typeof chatVisualReply>[0]): { visual?:
 export function latestReadableMessage(messages: ConversationMessage[]) {
   return messages.findLast(
     (message) =>
-      Boolean(message.questionPrompt) ||
+      Boolean(message.questionPrompt || message.uiBlock) ||
       (message.author !== "system" &&
         message.itemType !== CONVERSATION_PLAN_ITEM_TYPE &&
         message.itemType !== CONVERSATION_SUBAGENTS_ITEM_TYPE &&
@@ -542,9 +625,26 @@ function projectChannelMessage(
     return {
       id: entry.id,
       kind: "routine",
+      routineId: routine.routineId,
       event: routine.event,
       label: routine.label,
       routineName: routine.routineName,
+    };
+  }
+  if (entry.message.uiBlock && entry.message.questionPrompt) {
+    const prompt =
+      entry.superseded && !entry.message.questionPrompt.resolution
+        ? { ...entry.message.questionPrompt, resolution: { status: "expired" as const } }
+        : entry.message.questionPrompt;
+    return {
+      id: entry.id,
+      kind: "uiBlock",
+      turnId: entry.message.turnId,
+      block:
+        entry.superseded && entry.message.uiBlock.state.status === "pending"
+          ? { ...entry.message.uiBlock, state: { status: "expired" as const } }
+          : entry.message.uiBlock,
+      prompt,
     };
   }
   if (entry.message.questionPrompt) {
@@ -613,6 +713,7 @@ export function projectChannelMessages(messages: ChannelMessage[], memberId: str
     .filter(
       (entry) =>
         entry.message.questionPrompt ||
+        entry.message.uiBlock ||
         entry.message.imageGeneration ||
         entry.message.text.trim() ||
         entry.message.attachments?.length,

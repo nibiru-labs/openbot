@@ -75,6 +75,7 @@ export function ChatMessageActions({
   onReply,
   onSelectText,
   selecting = false,
+  showTime = true,
 }: {
   align: "start" | "end";
   /** The text that Copy puts on the clipboard. Empty for a message of files only. */
@@ -88,6 +89,11 @@ export function ChatMessageActions({
   /** Starts the selection of the text in the bubble, or ends it while `selecting`. */
   onSelectText?: () => void;
   selecting?: boolean;
+  /**
+   * False for a message that continues a run of messages by one sender: the run carries one time at
+   * its top, as on the desktop.
+   */
+  showTime?: boolean;
 }) {
   const { t, format } = useText();
   const [mutedColor, foregroundColor] = useThemeColor(["muted", "foreground"]);
@@ -210,7 +216,7 @@ export function ChatMessageActions({
             <TextSelect size={ICON_SIZE} color={selecting ? String(foregroundColor) : muted} />
           </ActionButton>
         ) : null}
-        {time ? (
+        {time && showTime ? (
           <Typography.Paragraph type="body-xs" className="px-1 text-muted">
             {time}
           </Typography.Paragraph>

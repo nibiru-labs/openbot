@@ -5,7 +5,10 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { ChatView } from "@/features/chat/components/chat-view";
 import { useLeaveChat } from "@/features/chat/components/use-leave-chat";
 import { useQuestionPrompt } from "@/features/chat/components/use-question-prompt";
+import { useUiBlockPrompt } from "@/features/chat/components/use-ui-block-prompt";
+import { useVisitUnread } from "@/features/chat/components/use-visit-unread";
 import { projectChannelMessages } from "@/features/chat/model/chat-messages";
+import { firstUnreadChannelMessageId } from "@/features/chat/model/chat-unread-boundary";
 import { useApprovalRequests, useBrowserRequests } from "@/features/workspace/components/use-live-workspace";
 import { useMobileWorkspaceSelector } from "@/features/workspace/context/mobile-workspace-context";
 import type { MobileAgentActivity, MobileAgentWaitReason } from "@/features/workspace/model/agent-activity";
@@ -128,17 +131,31 @@ function ChannelChat({ channelId, serverId }: { channelId: string; serverId: str
   // The phone keeps a message while the server is offline and sends it when it is back.
   const canSend = Boolean(channel) && !archived;
   const [selectedPromptId, selectPrompt] = useState<string | null>(null);
+  const pendingUiBlocks = messages.filter(
+    (message) => message.kind === "uiBlock" && message.block.state.status === "pending",
+  );
   const pendingPrompts = messages.filter((message) => message.kind === "question" && !message.prompt.resolution);
-  const activePrompt = pendingPrompts.find((message) => message.id === selectedPromptId) ?? pendingPrompts[0];
-  const promptAuthor = page?.messages.find((message) => message.id === activePrompt?.id)?.author;
+  const activeUiBlock = pendingUiBlocks.find((message) => message.id === selectedPromptId) ?? pendingUiBlocks[0];
+  const activePrompt =
+    pendingPrompts.find((message) => message.id === selectedPromptId && !activeUiBlock) ?? pendingPrompts[0];
+  const activeForm = activeUiBlock ?? activePrompt;
+  const promptAuthor = page?.messages.find((message) => message.id === activeForm?.id)?.author;
   const respondToPrompt = useCallback(
     (agentId: string, input: RespondToPromptInput) => store.respondToPrompt(serverId, channelId, agentId, input),
     [store, serverId, channelId],
   );
+  const answerAgentId = promptAuthor?.kind === "agent" ? promptAuthor.id : "";
+  const canAnswer = showsOnline(server) && canSend;
+  const uiBlockForm = useUiBlockPrompt(
+    answerAgentId,
+    activeUiBlock?.kind === "uiBlock" ? activeUiBlock : undefined,
+    canAnswer,
+    respondToPrompt,
+  );
   const questionForm = useQuestionPrompt(
-    promptAuthor?.kind === "agent" ? promptAuthor.id : "",
-    activePrompt?.kind === "question" ? activePrompt : undefined,
-    showsOnline(server) && canSend,
+    answerAgentId,
+    !activeUiBlock && activePrompt?.kind === "question" ? activePrompt : undefined,
+    canAnswer,
     respondToPrompt,
   );
   const name = channel?.name ?? t("mobile.channel.chat.fallbackName");
@@ -146,6 +163,14 @@ function ChannelChat({ channelId, serverId }: { channelId: string; serverId: str
     () => ({ kind: "channel" as const, id: channelId, serverId, name, members }),
     [channelId, serverId, name, members],
   );
+  const conversationKey = `${serverId}:channel:${channelId}`;
+  const visitUnread = useVisitUnread(conversationKey, {
+    unreadCount: summary?.unreadCount ?? 0,
+    firstUnreadMessageId:
+      page && summary?.unreadCount
+        ? firstUnreadChannelMessageId(page.messages, summary.unreadCount, server?.membershipId ?? null)
+        : null,
+  });
   return (
     <ChatView
       target={target}
@@ -161,6 +186,7 @@ function ChannelChat({ channelId, serverId }: { channelId: string; serverId: str
       activities={activities}
       activeTurnId={null}
       questionForm={questionForm}
+      uiBlockForm={uiBlockForm}
       onSelectQuestion={selectPrompt}
       approvals={approvals}
       channelThreadIds={threadIds}
@@ -174,6 +200,7 @@ function ChannelChat({ channelId, serverId }: { channelId: string; serverId: str
       needsAction={channelTasksNeedingAction(page?.tasks ?? []).length > 0}
       channelLeadAgentId={channel?.leadAgentId ?? null}
       onLeave={leaveChat}
+      firstUnreadMessageId={visitUnread.firstUnreadMessageId}
     />
   );
 }

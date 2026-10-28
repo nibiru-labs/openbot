@@ -4,6 +4,7 @@ import { Typography } from "heroui-native";
 import { useThemeColor } from "heroui-native/hooks";
 import ArrowLeft from "lucide-react-native/icons/arrow-left";
 import Globe from "lucide-react-native/icons/globe";
+import Search from "lucide-react-native/icons/search";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import { type ReactNode, useMemo } from "react";
 import { Pressable, View, type ViewStyle } from "react-native";
@@ -42,6 +43,9 @@ interface ChatHeaderProps {
   kicker?: string;
   /** Takes the place of the browser button, such as the actions of a task. */
   trailing?: ReactNode;
+  /** Opens the search of the open chat. Hidden while search is open. */
+  onOpenSearch?: () => void;
+  searchOpen?: boolean;
 }
 
 export function ChatHeader({
@@ -57,6 +61,8 @@ export function ChatHeader({
   title,
   kicker,
   trailing,
+  onOpenSearch,
+  searchOpen = false,
 }: ChatHeaderProps) {
   const { t } = useText();
   const warning = useThemeColor("warning");
@@ -68,6 +74,7 @@ export function ChatHeader({
   // A channel opens the browser of one member: the browser is the browser of an agent.
   const browserAgent =
     target.kind === "agent" ? { agentId: target.id, agentIds: [], tabId: undefined } : channelBrowser;
+  const searchShown = trailing === undefined && !searchOpen && Boolean(onOpenSearch) && !disconnected;
   const browserShown =
     trailing === undefined && browserAllowed && !disconnected && browserView && Boolean(browserAgent);
   const members = useMemo(
@@ -172,6 +179,19 @@ export function ChatHeader({
           trailing
         ) : (
           <View className="flex-row items-center gap-2">
+            {searchShown ? (
+              <ChatGlassIconButton
+                accessibilityLabel={t("mobile.chat.search.open")}
+                fallbackBackground={fallbackBackground}
+                liquidGlassAvailable={liquidGlassAvailable}
+                onPress={() => {
+                  void haptics.impact("soft");
+                  onOpenSearch?.();
+                }}
+              >
+                <Search color={iconColor} size={24} strokeWidth={2} />
+              </ChatGlassIconButton>
+            ) : null}
             {target.kind === "channel" && needsAction ? (
               <ChatGlassIconButton
                 accessibilityLabel={t("mobile.chat.header.actionsNeeded")}

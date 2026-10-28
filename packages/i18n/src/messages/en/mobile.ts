@@ -19,6 +19,7 @@ import { messages as mobileWorkflow } from "./mobile/workflow";
 import { messages as mobileWorkspace } from "./mobile/workspace";
 import { shared } from "./shared";
 import { source } from "./source";
+import { messages as uiBlock } from "./uiBlock";
 
 /** The mobile catalog: shared keys, source text, and the mobile areas only. */
 export const enMobile = {
@@ -42,6 +43,7 @@ export const enMobile = {
   ...mobileWorkflow,
   ...mobileShare,
   ...mobileShared,
+  ...uiBlock,
 } as const satisfies MessageCatalog;
 
 export type AppMobileMessages = typeof enMobile;
