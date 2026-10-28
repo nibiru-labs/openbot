@@ -38,7 +38,7 @@ function withinGroupingWindow(previousIso: string | undefined, currentIso: strin
  * `previousDrawsTime` is false for a row that carries no time the reader can see, such as an
  * activity marker: the run it interrupts cannot continue under it.
  */
-export function continuesSenderRun(
+function continuesSenderRun(
   previous: SenderRunRow | undefined,
   current: SenderRunRow,
   options: { previousDrawsTime: boolean },
