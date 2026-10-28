@@ -283,9 +283,10 @@ The agents of a computer can answer in an external chat platform: Slack, Discord
 below) and Telegram. [messaging.md](../messaging.md) has the setup, the limits and how to add a
 platform. Every workspace
 installs the one OpenBot Slack app (`apps/slack-app`), and the workspace is linked to the host that
-connected it. People mention @OpenBot or send it a direct message. The workspace's Slack Orchestrator,
-an agent that the connect dialog adds, receives each new conversation, asks its teammates and posts
-the answer. Every answer comes from OpenBot.
+connected it. People mention @OpenBot or send it a direct message. Slack workspaces normally share
+one Slack Orchestrator, an agent that the connect dialog adds. Existing workspaces keep their own
+orchestrator assignments after an upgrade. The assigned orchestrator receives each new conversation,
+asks its teammates and posts the answer. Every answer comes from OpenBot.
 
 - **Install.** The desktop asks `POST /v2/slack/authorize` for Slack's install URL, with a one-use host
   key. The Worker exchanges the code at `/v2/slack/callback`, because the app's client secret lives
@@ -347,20 +348,23 @@ beside `ChannelService` and knows no platform. `MessagingService` is built in th
 owns the live connections, through one `MessagingDriver` per platform: an adapter for its API and a
 transport for its events. `messaging-types.ts` is the seam; the core never reads a platform payload.
 
-- **Storage.** Migration 25 adds `projection_messaging_connections` (one per workspace, with its
-  orchestrator agent) and `projection_messaging_threads` (one per external conversation, with the
-  agent that answers it).
+- **Storage.** Migration 25 (`src/backend/messaging/messaging-schema.ts`) adds
+  `projection_messaging_connections` (one per workspace, with its assigned orchestrator agent) and
+  `projection_messaging_threads` (one per external conversation, with the agent that answers it).
+  Slack and Discord connections normally share an orchestrator per platform, but existing
+  assignments are retained after an upgrade.
   Tokens are not in the database: `MessagingCredentialStore` keeps the bot token encrypted by
   `safeStorage`, keyed by connection, and only its state crosses IPC. Migration 36 adds
   `projection_messaging_memories`, the facts of each connection (`MessagingMemoryStore`, the same
   `MemoryStore` as agent and channel memories, with a connection for an owner). No code deletes a
   connection, so the table has no cascade: disconnect keeps the facts.
 - **Orchestrator.** A message in a thread that has a link goes to the link's agent. A new conversation
-  goes to the workspace's orchestrator; without one, Slack is told that no agent answers. The
-  orchestrator is a normal agent (`slack-orchestrator.ts`): its description is its standing remit, and
-  it starts with five memories, which are facts only, because the model reads memories as data. It
-  gives work to one teammate with `send_message`; the request carries `messagingReturn`, so the
-  teammate's answer runs as a follow-up turn in the same Slack thread. A turn that only asked a
+  goes to the connection's assigned orchestrator (`MessagingService`,
+  `src/backend/messaging/messaging-service.ts`); without one, Slack is told that no agent answers.
+  The orchestrator is a normal agent (`slack-orchestrator.ts`): its description is its standing
+  remit, and it starts with five memories, which are facts only, because the model reads memories as
+  data. It gives work to one teammate with `send_message`; the request carries `messagingReturn`, so
+  the teammate's answer runs as a follow-up turn in the same Slack thread. A turn that only asked a
   teammate posts "A teammate is working on it" (`MessagingThreads.awaitsTeammate`). It goes in the
   sidebar's Integrations section, which `MessagingService` creates the first time; the renderer shows
   that section collapsed. A disconnect deletes the orchestrator that no other connected place uses
@@ -407,8 +411,10 @@ transport for its events. `messaging-types.ts` is the seam; the core never reads
   covers a restart, and a kept event that Signal sends again. Events that arrive while no socket is
   open are lost after Slack's retries, except for a hosted server that starts.
 - **Screen.** **Marketplace → Apps → Slack** on the computer that runs the agents shows
-  each workspace and its orchestrator, and a two-step dialog connects the workspace and adds the
-  orchestrator on the model the user picks (`messaging:*`). A remote server shows no Slack page,
+  each workspace and its assigned orchestrator, and a two-step dialog connects the workspace
+  and adds the platform orchestrator on the model the user picks (`messaging:*`). The dialog gives
+  that orchestrator to every place of the platform that has none, and makes one only when the
+  platform has none (`MessagingService.addOrchestrator`). A remote server shows no Slack page,
   because the install returns to the host's own browser. A live connection does not count as use:
   a hosted server sleeps, and Signal starts it for the next message that addresses OpenBot and keeps
   that message, sealed to the host, until the host connects
@@ -417,9 +423,10 @@ transport for its events. `messaging-types.ts` is the seam; the core never reads
   (`TelegramIntegrationPanel`), with one row per chat and one orchestrator for all chats.
 
 **Discord.** Every guild installs the one OpenBot Discord app (`apps/discord-app`), and a guild is a
-connection with its own Discord Orchestrator (`discord-orchestrator.ts`). Discord pushes a bot's
-messages only over its Gateway WebSocket, and the bot token cannot go to each host, so Signal holds
-the token and does the platform work for the hosts:
+connection. Discord guilds normally share one Discord Orchestrator (`discord-orchestrator.ts`), but
+existing guilds keep their own orchestrator assignments after an upgrade. Discord pushes a bot's
+messages only over its Gateway WebSocket, and the bot token
+cannot go to each host, so Signal holds the token and does the platform work for the hosts:
 
 - **Install.** As for Slack: `POST /v2/discord/authorize`, `/v2/discord/callback` (scope `bot`, the
   Worker exchanges the code, revokes the user token it gets, and links the guild in D1
@@ -427,11 +434,14 @@ the token and does the platform work for the hosts:
   (`@openbot/contracts/discord-guild-grant`, on `host-grant.ts`) names the guild and holds no token.
   Another account gets `discord_guild_taken`.
 - **Events.** Signal keeps one Gateway connection (`@discordjs/ws`) with the guilds, guild messages
-  and direct messages intents, and no privileged intent. It passes on only a guild message that
-  mentions the bot, and a press of an OpenBot button, which it acknowledges to Discord at once. It
-  normalizes each into `DiscordDelivery` (`@openbot/contracts/signal-protocol/discord-api`), takes the
-  bot's own mention out, and sends a `discord-delivery` frame to the `ingress` socket that holds a
-  Discord route ticket for the guild. The ticket mirrors the Slack one (audience
+  and direct messages intents, and the privileged Message Content intent
+  (`DISCORD_MESSAGE_CONTENT_INTENT`, `packages/contracts/src/discord-app.ts`). Signal asks for that
+  intent unless `DISCORD_MESSAGE_CONTENT` is `false`, and it connects without it again when Discord
+  closes the Gateway with 4014. It passes on only a guild message that mentions the bot, and a
+  press of an OpenBot button, which it acknowledges to Discord at once. It normalizes each into
+  `DiscordDelivery` (`@openbot/contracts/signal-protocol/discord-api`), takes the bot's own mention
+  out, and sends a `discord-delivery` frame to the `ingress` socket that holds a Discord route
+  ticket for the guild. The ticket mirrors the Slack one (audience
   `openbot-discord-route`, `/v2/remote/hosts/:id/discord-route`, `discord-route-revoked`,
   `/v2/remote/discord-route/validate`). The socket asks for a route only for the platforms whose
   connections hold it.
