@@ -87,7 +87,7 @@ describe("routine backoff migration", () => {
         before.triggers,
       );
       expect(rows(db, "routine_backoff")).toEqual([]);
-      expect(db.prepare("SELECT MAX(version) AS latest FROM schema_migrations").get()).toEqual({ latest: 49 });
+      expect(db.prepare("SELECT MAX(version) AS latest FROM schema_migrations").get()).toEqual({ latest: 50 });
     });
   }
 
@@ -159,7 +159,7 @@ function snapshot(db: DatabaseSync): MigrationSnapshot {
 }
 
 describe("fork and imported migration registry", () => {
-  it.each([46, 47, 48, 49])("keeps fork backoff rows and marker 45 after marker %i fails", (failure) => {
+  it.each([46, 47, 48, 49, 50])("keeps fork backoff rows and marker 45 after marker %i fails", (failure) => {
     const db = databaseAt(45);
     seedRoutine(db);
     db.exec("INSERT INTO routine_backoff VALUES ('routine-1', 'kept', 3, 2, 'later', 'old')");
@@ -181,7 +181,7 @@ describe("fork and imported migration registry", () => {
   });
 
   for (const source of [45, 46, 47]) {
-    for (const failure of [46, 47, 48, 49].filter((version) => version > source)) {
+    for (const failure of [46, 47, 48, 49, 50].filter((version) => version > source)) {
       it(`retries imported ${source} after marker ${failure} fails without changing source data`, () => {
         const db = importedAt(source);
         const markers = rows(db, "schema_migrations");
@@ -208,7 +208,7 @@ describe("fork and imported migration registry", () => {
         expect(rows(db, "routine_backoff")).toEqual([]);
         expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
         expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
-        expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 49 });
+        expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 50 });
         const beforeRetry = snapshot(db);
         migrateOpenBotDatabase(db);
         expect(snapshot(db)).toEqual(beforeRetry);
@@ -218,11 +218,11 @@ describe("fork and imported migration registry", () => {
 
   it.each([45, 46, 47])("rejects missing and newer imported %i histories without writes", (version) => {
     const db = importedAt(version);
-    db.exec("INSERT INTO schema_migrations VALUES (50, 'future')");
+    db.exec("INSERT INTO schema_migrations VALUES (51, 'future')");
     let before = snapshot(db);
     expect(() => migrateOpenBotDatabase(db)).toThrow("newer than this application supports");
     expect(snapshot(db)).toEqual(before);
-    db.exec("DELETE FROM schema_migrations WHERE version=50; DELETE FROM schema_migrations WHERE version=20");
+    db.exec("DELETE FROM schema_migrations WHERE version=51; DELETE FROM schema_migrations WHERE version=20");
     before = snapshot(db);
     expect(() => migrateOpenBotDatabase(db)).toThrow("missing version 20");
     expect(snapshot(db)).toEqual(before);
@@ -298,7 +298,7 @@ describe("reserved schema guard", () => {
 
     expect(rows(db, "browser_profiles")).toHaveLength(1);
     expect(rows(db, "routine_backoff")).toEqual([]);
-    expect(db.prepare("SELECT MAX(version) AS latest FROM schema_migrations").get()).toEqual({ latest: 49 });
+    expect(db.prepare("SELECT MAX(version) AS latest FROM schema_migrations").get()).toEqual({ latest: 50 });
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
   });
@@ -331,7 +331,7 @@ describe("reserved schema guard", () => {
         updated_at: "old",
       },
     ]);
-    expect(db.prepare("SELECT MAX(version) AS latest FROM schema_migrations").get()).toEqual({ latest: 49 });
+    expect(db.prepare("SELECT MAX(version) AS latest FROM schema_migrations").get()).toEqual({ latest: 50 });
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
     // The table that the runner accepted is the one it compared, so it keeps the checks of the

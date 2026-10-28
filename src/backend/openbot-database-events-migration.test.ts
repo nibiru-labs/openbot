@@ -114,7 +114,7 @@ describe("OpenBot webhook routine migration", () => {
     expect(migratedRoutines.getRecord("chief", routine.id)?.trigger).toMatchObject({ kind: "webhook", url: null });
     expect(migratedRoutines.listRuns("chief", routine.id, 10)).toEqual([expect.objectContaining({ id: run.id })]);
     expect(migrated.connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-      version: 49,
+      version: 50,
     });
     expect(migrated.connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     expect(migrated.connection.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
@@ -164,7 +164,7 @@ describe("OpenBot webhook routine migration", () => {
       instruction: routine.instruction,
     });
     expect(retried.connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-      version: 49,
+      version: 50,
     });
     expect(retried.connection.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
     expect(retried.connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
@@ -195,6 +195,7 @@ function removeWebhookSchema(database: DatabaseSync): void {
     -- The tables that the migrations after 29 created go with their markers: a database from that release
     -- never had them.
     DROP TABLE projection_agent_threads;
+    DROP TABLE unknown_usage_holds;
     DROP TABLE routine_backoff;
     DROP TABLE browser_profiles;
     DROP TABLE workflow_output_deliveries;
@@ -207,7 +208,7 @@ function removeWebhookSchema(database: DatabaseSync): void {
     DROP TABLE workflow_edges;
     DROP TABLE workflow_nodes;
     DROP TABLE workflows;
-    DELETE FROM schema_migrations WHERE version IN (30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49);
+    DELETE FROM schema_migrations WHERE version IN (30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50);
   `);
 }
 

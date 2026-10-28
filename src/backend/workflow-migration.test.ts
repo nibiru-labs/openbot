@@ -88,7 +88,7 @@ function workflowTables(db: DatabaseSync) {
 }
 
 function expectHealthy(db: DatabaseSync): void {
-  expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 49 });
+  expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 50 });
   expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
   expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
@@ -151,7 +151,12 @@ describe("workflow migration", () => {
     expect(db.prepare("SELECT * FROM schema_migrations WHERE version <= ? ORDER BY version").all(version)).toEqual(
       markers,
     );
-    expect(contents(db)).toEqual({ ...before, ...(version < 46 ? EMPTY_WORKFLOW_TABLES : {}), routine_backoff: [] });
+    expect(contents(db)).toEqual({
+      ...before,
+      ...(version < 46 ? EMPTY_WORKFLOW_TABLES : {}),
+      routine_backoff: [],
+      unknown_usage_holds: [],
+    });
     expectHealthy(db);
     expect(() => migrateOpenBotDatabase(db)).not.toThrow();
   });
@@ -166,7 +171,7 @@ describe("workflow migration", () => {
       if (version < 25) seedConnection(db);
       const before = contents(db);
       migrateOpenBotDatabase(db);
-      expect(contents(db)).toEqual({ ...before, ...EMPTY_WORKFLOW_TABLES });
+      expect(contents(db)).toEqual({ ...before, ...EMPTY_WORKFLOW_TABLES, unknown_usage_holds: [] });
       expectHealthy(db);
     },
   );
@@ -184,7 +189,7 @@ describe("workflow migration", () => {
     expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
     db.exec("DROP TRIGGER fail_marker");
     migrateOpenBotDatabase(db);
-    expect(contents(db)).toEqual({ ...before, ...EMPTY_WORKFLOW_TABLES });
+    expect(contents(db)).toEqual({ ...before, ...EMPTY_WORKFLOW_TABLES, unknown_usage_holds: [] });
     expectHealthy(db);
   });
 
@@ -192,9 +197,9 @@ describe("workflow migration", () => {
     const db = databaseAt(46);
     seed(db, 46);
     const before = contents(db);
-    db.exec("INSERT INTO schema_migrations VALUES(50,'now')");
+    db.exec("INSERT INTO schema_migrations VALUES(51,'now')");
     expect(() => migrateOpenBotDatabase(db)).toThrow("newer than this application supports");
-    db.exec("DELETE FROM schema_migrations WHERE version=50; DELETE FROM schema_migrations WHERE version=20");
+    db.exec("DELETE FROM schema_migrations WHERE version=51; DELETE FROM schema_migrations WHERE version=20");
     expect(() => migrateOpenBotDatabase(db)).toThrow("missing version 20");
     expect(contents(db)).toEqual(before);
     expect(workflowTables(db)).toEqual([]);

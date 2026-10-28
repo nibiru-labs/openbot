@@ -49,6 +49,7 @@ const claudeExecutable = join(root, "claude");
 const codexExecutable = join(root, "codex");
 const codexLog = join(root, "codex-turns.jsonl");
 const workLog = join(root, "work.jsonl");
+const probeRelease = join(root, "probe-release");
 const CODEX_MODEL = defaultProviderModel("codex");
 const PRIMARY: AgentModelId = defaultProviderModel("claude");
 const BACKUP: AgentModelId = PRIMARY === "claude-sonnet-5-5" ? "claude-opus-5-5" : "claude-sonnet-5-5";
@@ -190,6 +191,7 @@ const { randomUUID } = require("node:crypto");
 if (process.argv.includes("--version")) { console.log("codex-cli 0.160.1"); process.exit(0); }
 const threads = new Map();
 const active = new Map();
+const probeAttempts = new Map();
 const write = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
 const config = { config: { mcp_servers: {} }, layers: [{ name: { type: "user", file: "/fake/.codex/config.toml", profile: null }, version: "1", config: { mcp_servers: {} } }] };
 const answer = (request) => {
@@ -226,6 +228,22 @@ const answer = (request) => {
       const limited = current.includes("usage-");
       const caseId = /case:([a-z-]+)/.exec(current)?.[1] ?? "no-case";
       fs.appendFileSync(${JSON.stringify(codexLog)}, JSON.stringify({ model: params.model, threadId: thread.id, turnId: turn.id, input, limited }) + "\\n");
+      const earlyMode = /usage-empty-probe-(success|failure|uncertain)/.exec(current)?.[1];
+      const attempt = earlyMode ? (probeAttempts.get(earlyMode) ?? 0) + 1 : 0;
+      if (earlyMode) probeAttempts.set(earlyMode, attempt);
+      if (earlyMode && attempt > 1) {
+        write({ method: "turn/started", params: { threadId: thread.id, turn: { id: turn.id } } });
+        turn.status = earlyMode === "failure" ? "failed" : "completed";
+        write({ method: "turn/completed", params: { threadId: thread.id, turn } });
+        const release = ${JSON.stringify(probeRelease)} + "-" + earlyMode;
+        const watcher = fs.watch(require("node:path").dirname(release), () => {
+          if (!fs.existsSync(release)) return;
+          watcher.close();
+          if (earlyMode === "uncertain") write({ id: request.id, error: { code: -32000, message: "Start unconfirmed" } });
+          else reply({ turn });
+        });
+        return;
+      }
       reply({ turn });
       write({ method: "turn/started", params: { threadId: thread.id, turn: { id: turn.id } } });
       const item = (item) => { turn.items.push(item); write({ method: "item/completed", params: { threadId: thread.id, turnId: turn.id, item } }); };
@@ -1281,6 +1299,51 @@ try {
     await runCauseEffect(service.deleteAgent(agent.id));
     return { deliveryId };
   });
+
+  for (const mode of ["success", "failure", "uncertain"] as const) {
+    await check(`early ${mode} probe settles only after its start response`, async () => {
+      await restart();
+      const agent = await createCodex(`Early probe ${mode}`, automaticBackups);
+      const receipt = await runCauseEffect(
+        service.sendMessage({ agentId: agent.id, text: `usage-empty-probe-${mode}` }),
+      );
+      const deliveryId = receipt.deliveries[0]?.id;
+      assert.ok(deliveryId);
+      await waitFor(
+        "the refusal to hold the delivery",
+        () =>
+          mailbox.getDelivery(deliveryId)?.delivery.status === "queued" &&
+          service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
+      );
+      const before = events.length;
+      probeNow += 600_000;
+      for (const [timer, callback] of probeTimers) {
+        clearTimeout(timer);
+        probeTimers.delete(timer);
+        callback();
+      }
+      const terminal = await waitFor("the probe terminal event before the response", () =>
+        events.slice(before).find((event) => event.type === "turn-completed" && event.agentId === agent.id),
+      );
+      assert.equal(terminal.type, "turn-completed");
+      assert.equal(terminal.status, mode === "failure" ? "failed" : "completed");
+      const hold = database.connection.prepare("SELECT phase, probe_turn_id FROM unknown_usage_holds").get();
+      assert.equal(hold?.phase, "reserved");
+      assert.equal(hold?.probe_turn_id, null);
+      writeFileSync(`${probeRelease}-${mode}`, "release");
+      await waitFor("the probe response to settle the hold", () => {
+        const row = database.connection.prepare("SELECT phase FROM unknown_usage_holds").get();
+        return mode === "success" ? !row : row?.phase === "attention";
+      });
+      if (mode !== "success") {
+        const starts = readLog<CodexTurn>(codexLog).length;
+        await restart(true);
+        assert.equal(database.connection.prepare("SELECT phase FROM unknown_usage_holds").get()?.phase, "attention");
+        assert.equal(readLog<CodexTurn>(codexLog).length, starts);
+      }
+      return { deliveryId, terminalTurnId: terminal.turnId, outcome: mode };
+    });
+  }
 
   await check("unknown scope probes one same-model delivery and attention blocks a second probe", async () => {
     await restart();
