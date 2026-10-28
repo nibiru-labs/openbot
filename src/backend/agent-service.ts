@@ -210,7 +210,13 @@ import { TokenBudget } from "./agent/token-budget";
 import { toToolOperationFailed } from "./agent/tool-operation";
 import { type AgentBrowserHost, TurnLifecycle } from "./agent/turn-lifecycle";
 import { workflowUsageObserver } from "./agent/usage-collection";
-import { modelFamily, toUsageReadFailed, UsageLimitGate, type UsageLimitKey } from "./agent/usage-limit-gate";
+import {
+  modelFamily,
+  toUsageReadFailed,
+  UsageLimitGate,
+  type UsageLimitGateOptions,
+  type UsageLimitKey,
+} from "./agent/usage-limit-gate";
 import { WarmGenerations } from "./agent/warm-generations";
 import type { WebhookRoutineWriter } from "./agent/webhook-routine-tool";
 import type { AgentApiKeys } from "./agent-api-keys";
@@ -279,6 +285,8 @@ interface AgentServiceEvents {
 }
 
 export interface AgentServiceOptions {
+  /** Timer boundary for deterministic usage-limit tests. */
+  usageLimitTimers?: UsageLimitGateOptions["timers"];
   openswarmSettings?: () => OpenswarmSettings;
   store: AgentStore;
   mailbox: MailboxStore;
@@ -1164,6 +1172,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     });
     this.#usageLimits = new UsageLimitGate({
       store,
+      ...(options.usageLimitTimers ? { timers: options.usageLimitTimers } : {}),
       hooks: {
         emit: (event) => this.#emit(event),
         emitRuntimeSnapshot: () => this.#emitRuntimeSnapshot(),

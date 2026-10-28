@@ -4,8 +4,9 @@
 // family holds only that family. Another account and another provider stay free.
 //
 // Run: bun scripts/usage-limit-account-e2e.ts
-// It writes .openbot-build/usage-limit-account-e2e/report.json and exits non-zero on a failure.
+// It writes a report in a unique .openbot-build directory and exits non-zero on a failure.
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { Effect } from "effect";
@@ -13,7 +14,7 @@ import { UsageLimitGate } from "../src/backend/agent/usage-limit-gate";
 import type { AgentProvider } from "../src/backend/agent-client";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const OUT = join(ROOT, ".openbot-build", "usage-limit-account-e2e");
+const OUT = join(ROOT, ".openbot-build", `usage-limit-account-e2e-${randomUUID()}`);
 
 interface FixtureAgent {
   id: string;
@@ -148,6 +149,7 @@ await Effect.runPromise(gate.accountReset("claude", "acc-1"));
 const clock: { scheduled: (() => void) | null } = { scheduled: null };
 let cleared = 0;
 const wakes: string[] = [];
+process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS = "1";
 const timedGate = new UsageLimitGate({
   store,
   timers: {

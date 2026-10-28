@@ -11,13 +11,12 @@
 //   5. After a restart, the agent goes back to its own model, with a note.
 // Also checks continuation after a usage limit with a known family interrupts partial work.
 // Codex refusals name no family: unknown scope pauses work and never switches provider or account.
-// `bun run test:backup-model-failover`. Writes .openbot-build/backup-model-failover-e2e/report.json and trace.json.
+// `bun run test:backup-model-failover`. Writes a report and trace in a unique .openbot-build directory.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   AGENT_PROVIDERS,
@@ -38,8 +37,9 @@ import type { AppServerNotification, AppServerRequest, RequestId, ResponseDecode
 import { providerFailure, providerSync } from "../src/backend/provider-client-effects";
 import type { ReadProviderHistory } from "../src/backend/provider-history";
 
-const OUT = resolve(import.meta.dirname, "../.openbot-build/backup-model-failover-e2e");
-const root = await mkdtemp(join(tmpdir(), "openbot-backup-model-failover-"));
+const OUT = resolve(import.meta.dirname, `../.openbot-build/backup-model-failover-e2e-${randomUUID()}`);
+mkdirSync(OUT, { recursive: true });
+const root = await mkdtemp(join(OUT, "profile-"));
 const userData = join(root, "user-data");
 const home = join(root, "home");
 const turnLog = join(root, "claude-turns.jsonl");
@@ -56,7 +56,6 @@ const PROVIDER_ERROR =
   'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"},"request_id":"req_e2e"}';
 
 // Before the service modules load: the stores and the CLI search read these.
-process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS = "25";
 process.env.HOME = home;
 process.env.OPENBOT_CLAUDE_PATH = claudeExecutable;
 process.env.CLAUDE_CONFIG_DIR = join(home, ".claude");
@@ -494,6 +493,7 @@ failing([]);
 const database = new OpenBotDatabase(userData);
 const clients: ClaudeStandIn[] = [];
 const events: AgentEvent[] = [];
+const probeTimers = new Map<ReturnType<typeof setTimeout>, () => void>();
 
 function startService() {
   const store = new AgentStore(userData, home, database);
@@ -502,6 +502,19 @@ function startService() {
     store,
     mailbox,
     browser,
+    usageLimitTimers: {
+      set: (callback, delay) => {
+        assert.equal(delay, 600_000);
+        const timer = setTimeout(() => {}, delay);
+        timer.unref();
+        probeTimers.set(timer, callback);
+        return timer;
+      },
+      clear: (timer) => {
+        clearTimeout(timer);
+        probeTimers.delete(timer);
+      },
+    },
     preferredProvider: "claude",
     offProviders: AGENT_PROVIDERS.filter((provider) => provider !== "claude" && provider !== "codex"),
     clientFactory: (provider, cli) => {
@@ -1190,6 +1203,11 @@ try {
     assert.equal(mailbox.getDelivery(delivery1)?.resumeAfterUsageLimit, undefined);
     assert.equal(mailbox.getDelivery(delivery2)?.resumeAfterUsageLimit, undefined);
     assert.equal(turns().length, beforeClaude, "No cross-provider backup runs.");
+    for (const [timer, callback] of probeTimers) {
+      clearTimeout(timer);
+      probeTimers.delete(timer);
+      callback();
+    }
     await waitFor("one probe turn", () => readLog<CodexTurn>(codexLog).length >= beforeCodex + 3, 10_000);
     assert.equal(readLog<CodexTurn>(codexLog).length, beforeCodex + 3, "Only one probe runs for the model.");
     assert.equal(turns().length, beforeClaude, "The probe stays on the same provider.");
@@ -1245,7 +1263,6 @@ try {
   writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
   if (report.usageWorkTrace !== undefined)
     writeFileSync(join(OUT, "trace.json"), `${JSON.stringify(report.usageWorkTrace, null, 2)}\n`);
-  await rm(root, { recursive: true, force: true });
   for (const entry of report.checks) process.stdout.write(`PASS ${entry.name}\n`);
   process.stdout.write(`${report.passed ? "PASS" : "FAIL"} ${join(OUT, "report.json")}\n`);
   if (report.error) process.stdout.write(`${report.error}\n`);
