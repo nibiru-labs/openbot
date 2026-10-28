@@ -403,14 +403,15 @@ behind it exists.
 | `agent-publish-v1` | Preview, publish and unpublish an agent template | `agentTemplates` |
 | `agent-session-settings-v1` | Read, set and reset the session settings of an agent | `agent` |
 | `connectors-v1` | The GitHub connector and the messaging connections of the host | `githubConnector`, `messaging` |
-| `mcp-servers-v1` | The MCP servers of the host: list, save, remove, enable, test | `mcpServers` |
+| `mcp-servers-v1` | The MCP servers of the host: list, save, remove, enable or disable, test. List, save, remove and enable or disable return the full list, including stored `env` and header values; test returns only its tool count and error. `requireAdmin` on all five routes | `mcpServers` |
 | `mcp-sign-in-v1` | Start, watch, cancel and end the MCP sign-ins of the host | `mcpServers` |
 | `mcp-sign-in-app-v1` | The OAuth app of a saved MCP http row | `mcpServers` |
 | `onepassword-connector-v1` | The 1Password connector of the host | `onePasswordConnector` |
 | `provider-accounts-v1` | The provider accounts of the host: list, usage, sign-in, rename, remove | `providerAdmin` |
 | `provider-host-sign-in-v1` | A provider sign-in in the browser of the host | `providerAdmin` |
 | `providers-v2` | The managed runtime routes of Gemini (`antigravity`) | `providerAdmin` |
-| `providers-v5` | Code sign-in for Codex, Claude, Grok, Cursor and Cline; API keys and managed runtimes include Pi and Muse | `providerAdmin` |
+| `providers-v5` | Code sign-in for Codex, Claude, Grok, Cursor and Cline; API keys and managed runtimes include Pi and Muse. From protocol 7; frozen provider lists | `providerAdmin` |
+| `providers-v8` | Same routes as `providers-v5` under `/v1/admin/providers/v8/*`; the wire accepts an open provider id and runtime rows use `id`. Code-login start requires a known provider with code sign-in; submit forwards the code, and cancel is a no-op when no code-sign-in flow exists. Cancel always returns an empty response. Protocol 8 only; key-only providers included | `providerAdmin` |
 | `sign-in-relay-v1` | A sign-in that the admin finishes in the browser of their own computer | `providerAdmin`, `mcpServers` |
 | `routine-results-v1` | List the messaging connections and their places; read and set where an agent routine sends its answers. Deliveries stay on the host | none: only the mobile app sends it |
 | `webhook-tests-v1` | Send one signed test event to a webhook routine | `events` |
@@ -422,8 +423,13 @@ use their own paths. `storage-v1` and `hosted-sites-v1` need an admin for a dele
 their sections above.
 
 Every group but `agentTemplates` reaches a joined server with a required server id, through
-`scopedHandler` or `scopedQueryHandler`. A key travels only towards the host; no response carries
-one, except the `vault-v1` reveal: it answers the one secret that the admin asked to show or copy.
+`scopedHandler` or `scopedQueryHandler`. A provider API key or MCP OAuth client secret travels only
+towards the host: provider key routes answer only `missing`, `saved` or `unreadable`, and
+`mcp-sign-in-app-v1` answers only whether a client secret is on file. `mcp-servers-v1` returns the
+full list, including stored `env` and header values, on list, save, remove and enable or disable;
+test returns only its tool count and error. `requireAdmin` is the only gate on all five routes, so
+reading is as privileged as writing. The `vault-v1` reveal answers
+the one password, card number or security code that the admin asked to show or copy.
 `providers-v1` has no progress event, so the renderer reads runtime status again every second while a
 host download runs. Publishing, macOS permissions, the browser sign-in and folder import stay on the
 host.
@@ -448,6 +454,22 @@ the admin only opens the page. The ACP `cursor_login` method stops when it canno
 so a peer never starts it. Cline uses a device code: the host runs `cline auth -p cline`, which
 prints the code before its page. The parser accepts a link only after its line ends, because a
 chunk can stop inside one.
+
+`providers-v5` adds Pi and Muse to the managed runtime routes and keeps the frozen provider lists of
+`providers-v4`. The runtime snapshot names each provider in a fixed object
+(`team-protocol/providers-v5.ts`). Its API key routes accept only the providers in
+`PROVIDERS_V5_RUNTIME_PROVIDERS`; they refuse a key-only provider (Inception, DeepSeek and
+OpenRouter). A client advertises it on protocol 7 and later, not in the bootstrap list.
+
+`providers-v8` supersedes `providers-v5` for route choice on protocol 8. Its routes are the same under
+`/v1/admin/providers/v8/*`. At the wire level, a provider id may be any value that `OPEN_PROVIDER_ID`
+matches, and the runtime snapshot lists each row with an `id` field instead of one fixed object
+(`team-protocol/providers-v8.ts`). The host rejects an id it does not know. Code-login start also
+rejects a known provider without code sign-in. Submit passes the code to the provider login handler.
+Cancel does nothing when no code-sign-in flow exists. The service returns the current status in that
+case, but the route discards it and returns an empty object, as it does after a cancel. API key routes accept
+providers whose keys the host supports, including key-only providers.
+A client prefers `providers-v8` when the host advertises it; otherwise it falls back to `providers-v5`.
 
 When the account is an owner or admin of the active remote server, the server serves `providers-v1`,
 and the server has no agent, the workspace shows `ServerOnboarding` before the first-agent form, on
