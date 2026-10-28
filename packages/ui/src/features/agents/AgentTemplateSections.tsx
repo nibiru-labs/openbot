@@ -1,7 +1,7 @@
 import type { AgentTemplateSkill, MarketplaceAgentRoutine } from "@openbot/contracts/ipc";
 import type { AppTranslate } from "@openbot/i18n";
 import { Button, ChevronDown, ChevronRight, Text } from "@openbot/ui";
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, createUniqueId, For, Show } from "solid-js";
 import { useText } from "../../text";
 import { MarkdownMessageText } from "../conversation/MarkdownMessageText";
 import { routineScheduleSummary } from "../conversation/routine-schedule-ui";
@@ -79,6 +79,7 @@ export function TemplateSkills(props: { skills: readonly AgentTemplateSkill[]; e
 function EmbeddedSkill(props: { name: string; markdown: string }) {
   const { t } = useText();
   const [open, setOpen] = createSignal(false);
+  const skillTextId = createUniqueId();
   return (
     <>
       <Button
@@ -87,6 +88,7 @@ function EmbeddedSkill(props: { name: string; markdown: string }) {
         size="sm"
         class="agent-template-skill-toggle"
         aria-expanded={open() ? "true" : "false"}
+        aria-controls={skillTextId}
         data-cuelume-tap={open() ? "close" : "open"}
         onClick={() => setOpen(!open())}
       >
@@ -99,7 +101,9 @@ function EmbeddedSkill(props: { name: string; markdown: string }) {
         {t("agentTemplate.skill.local")}
       </Text>
       <Show when={open()}>
-        <pre class="agent-template-skill-text">{props.markdown}</pre>
+        <pre id={skillTextId} class="agent-template-skill-text">
+          {props.markdown}
+        </pre>
       </Show>
     </>
   );

@@ -274,32 +274,44 @@ export interface SwitchFieldProps extends Omit<SwitchProps<"div">, "aria-label" 
   id?: string;
   label: JSX.Element;
   description?: JSX.Element;
+  /** Put the switch before the label in DOM order so reading order matches a leading switch layout. */
+  switchFirst?: boolean;
 }
 
 export function SwitchField(props: SwitchFieldProps): JSX.Element {
   const generatedId = `switch-field-${createUniqueId()}`;
   const switchId = () => props.id ?? generatedId;
   const descriptionId = () => `${switchId()}-description`;
-  const others = omit(props, "class", "switchClass", "id", "label", "description");
+  const others = omit(props, "class", "switchClass", "id", "label", "description", "switchFirst");
+
+  const copy = (
+    <span class="ui-switch-copy">
+      <label class="ui-switch-label" for={switchId()} onPointerDown={(event) => event.preventDefault()}>
+        {props.label}
+      </label>
+      <Show when={props.description}>
+        <span id={descriptionId()} class="ui-switch-description">
+          {props.description}
+        </span>
+      </Show>
+    </span>
+  );
+  const control = (
+    <Switch
+      id={switchId()}
+      class={props.switchClass}
+      aria-describedby={props.description ? descriptionId() : undefined}
+      {...others}
+    />
+  );
 
   return (
     <div class={cx("ui-switch-field", props.class)}>
-      <span class="ui-switch-copy">
-        <label class="ui-switch-label" for={switchId()} onPointerDown={(event) => event.preventDefault()}>
-          {props.label}
-        </label>
-        <Show when={props.description}>
-          <span id={descriptionId()} class="ui-switch-description">
-            {props.description}
-          </span>
-        </Show>
-      </span>
-      <Switch
-        id={switchId()}
-        class={props.switchClass}
-        aria-describedby={props.description ? descriptionId() : undefined}
-        {...others}
-      />
+      <Show when={props.switchFirst} fallback={copy}>
+        {control}
+      </Show>
+      <Show when={props.switchFirst}>{copy}</Show>
+      <Show when={!props.switchFirst}>{control}</Show>
     </div>
   );
 }

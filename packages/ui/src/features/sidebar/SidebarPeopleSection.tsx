@@ -49,6 +49,12 @@ export function SidebarPeopleSection(sectionProps: { sectionId: string }) {
             <For each={orderedPeople()}>
               {(member) => {
                 const thread = () => directThreadByMember().get(member.id);
+                const rowAriaLabel = () => {
+                  const parts = [teamMemberName(member), thread()?.lastMessage.text ?? presence(member.online)];
+                  const unread = thread()?.unreadCount ?? 0;
+                  if (unread > 0) parts.push(t("sidebar.people.unread", { count: unread }));
+                  return parts.join(". ");
+                };
                 return (
                   /* biome-ignore lint/a11y/noStaticElementInteractions: Native drag belongs to the wrapper around the accessible button. */
                   <div
@@ -65,7 +71,7 @@ export function SidebarPeopleSection(sectionProps: { sectionId: string }) {
                       variant="ghost"
                       type="button"
                       class={["agent-row person-row", { "agent-row-active": props.activeDirectMemberId === member.id }]}
-                      aria-label={`${teamMemberName(member)}. ${thread()?.lastMessage.text ?? presence(member.online)}`}
+                      aria-label={rowAriaLabel()}
                       aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
                       aria-pressed={props.activeDirectMemberId === member.id ? "true" : "false"}
                       data-cuelume-tap="navigate"

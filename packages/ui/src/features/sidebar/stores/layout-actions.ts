@@ -283,10 +283,24 @@ export function createSidebarLayoutActions(deps: {
     reorderPinnedItem(key, targetKey);
   }
 
+  function moveChatByKeyboard(chatId: string, direction: -1 | 1): void {
+    const sectionId = assignedSectionId(chatId);
+    const chatIds = (filteredChatsBySection().get(sectionId) ?? []).map((item) => item.id);
+    const index = chatIds.indexOf(chatId);
+    const targetChatId = chatIds[index + direction];
+    if (index < 0 || !targetChatId) return;
+    moveDraggedChat(chatId, {
+      sectionId,
+      chatId: targetChatId,
+      placement: direction < 0 ? "before" : "after",
+    });
+  }
+
   return {
     assignChatSection,
     commitSidebarDrop,
     duplicateSection,
+    moveChatByKeyboard,
     moveDraggedChat,
     movePersonByKeyboard,
     movePinnedItem,

@@ -20,7 +20,7 @@ import {
   SelectValue,
   Workflow,
 } from "@openbot/ui";
-import { createSignal, createStore, Show } from "solid-js";
+import { createSignal, createStore, createUniqueId, Show } from "solid-js";
 import type { AgentProfile } from "../../data";
 import { useText } from "../../text";
 import { AgentAvatar } from "../agents/AgentAvatar";
@@ -115,6 +115,7 @@ export function DiagramView(props: DiagramViewProps) {
   const { t } = useText();
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | null>(null);
   const [panels, setPanels] = createStore({ inspector: true, chat: false });
+  const inspectorId = createUniqueId();
   const now = () => (props.now ? new Date(props.now) : new Date());
   const routines = () =>
     props.diagram.nodes.filter((node): node is Extract<DiagramNode, { kind: "routine" }> => node.kind === "routine");
@@ -185,6 +186,7 @@ export function DiagramView(props: DiagramViewProps) {
               class="header-panel-toggle"
               aria-label={t(panels.inspector ? "diagram.inspector.close" : "diagram.inspector.label")}
               aria-expanded={panels.inspector ? "true" : "false"}
+              aria-controls={inspectorId}
               title={t(panels.inspector ? "diagram.inspector.close" : "diagram.inspector.label")}
               onClick={() =>
                 setPanels((state) => {
@@ -279,6 +281,7 @@ export function DiagramView(props: DiagramViewProps) {
 
         <Show when={panels.inspector && !empty()}>
           <DiagramInspector
+            id={inspectorId}
             diagram={props.diagram}
             agents={props.agents}
             selectedNodeId={selectedNodeId()}

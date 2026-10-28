@@ -201,6 +201,22 @@ try {
     return drop(sectionId, channel, agent);
   });
 
+  /** The action `moveChatByKeyboard` sends for Alt+ArrowUp or Alt+ArrowDown in a section. */
+  async function keyboardMove(sectionId: string, name: string, direction: -1 | 1): Promise<string[]> {
+    const before = shown(sectionId);
+    const index = before.indexOf(name);
+    const targetName = before[index + direction];
+    assert.ok(
+      index >= 0 && targetName,
+      `Cannot move ${name} ${direction < 0 ? "up" : "down"} in ${JSON.stringify(before)}`,
+    );
+    return drop(sectionId, name, targetName);
+  }
+
+  await step("keyboard move a chat up in its section", async () => keyboardMove(sectionId, "Vanda", -1));
+
+  await step("keyboard move a chat down in its section", async () => keyboardMove(sectionId, "Vanda", 1));
+
   report.passed = true;
 } finally {
   await runCauseEffect(agents.stop()).catch(() => undefined);

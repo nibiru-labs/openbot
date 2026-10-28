@@ -1,4 +1,5 @@
 import { Button, Minus, Plus } from "@openbot/ui";
+import { onToolbarFocusIn, onToolbarKeyDown, syncToolbarTabindex } from "@openbot/ui/utils";
 import { useText } from "../../text";
 
 /** The view of a zoomed image: its scale and its offset. */
@@ -31,7 +32,14 @@ export function ZoomControls(props: {
   const { t, format } = useText();
   const level = () => format.percent(props.zoom, { maximumFractionDigits: 0 });
   return (
-    <div class={props.class} role="toolbar" aria-label={t("chat.preview.zoomLabel")}>
+    <div
+      class={props.class}
+      role="toolbar"
+      aria-label={t("chat.preview.zoomLabel")}
+      ref={(element) => syncToolbarTabindex(element)}
+      onFocusIn={onToolbarFocusIn}
+      onKeyDown={onToolbarKeyDown}
+    >
       <Button
         type="button"
         variant="ghost"

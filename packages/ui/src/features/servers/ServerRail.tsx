@@ -423,19 +423,6 @@ function ServerRailButton(
               })
             }
             onKeyDown={(event: KeyboardEvent & { currentTarget: HTMLButtonElement }) => {
-              if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-                event.preventDefault();
-                const bounds = event.currentTarget.getBoundingClientRect();
-                event.currentTarget.dispatchEvent(
-                  new MouseEvent("contextmenu", {
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: bounds.right,
-                    clientY: bounds.top,
-                  }),
-                );
-                return;
-              }
               if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
               event.preventDefault();
               props.onMove?.(event.key === "ArrowUp" ? -1 : 1);

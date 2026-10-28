@@ -388,9 +388,6 @@ export function FirstRunFlow(props: FirstRunFlowProps) {
 
           <Show when={state.step !== "choose"}>
             <div class="onboarding-actions">
-              <Button type="button" variant="outline" class="onboarding-back" disabled={busy()} onClick={previousStep}>
-                {t("common.back")}
-              </Button>
               <Button
                 type="button"
                 variant="default"
@@ -401,6 +398,9 @@ export function FirstRunFlow(props: FirstRunFlowProps) {
                 onClick={nextStep}
               >
                 {mainLabel()}
+              </Button>
+              <Button type="button" variant="outline" class="onboarding-back" disabled={busy()} onClick={previousStep}>
+                {t("common.back")}
               </Button>
               {/* Named by the button above, so the reason is read out with it rather than hunted for. */}
               <Show when={blockedReason()}>

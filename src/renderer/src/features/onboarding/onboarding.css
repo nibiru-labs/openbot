@@ -368,10 +368,6 @@
   border-radius: var(--openbot-radius-pill);
 }
 
-.onboarding-next {
-  order: -1;
-}
-
 .onboarding-next-reason {
   margin: 0;
   color: var(--openbot-text-muted);

@@ -6,6 +6,7 @@ import { AgentAvatar } from "@openbot/ui/features/agents/AgentAvatar";
 import { agentAccessLockLabel } from "@openbot/ui/features/agents/agent-access";
 import { RemoteDesktopIcon } from "@openbot/ui/features/conversation/ConversationIcons";
 import { SidePanelToggle, type SidePanelToggleProps } from "@openbot/ui/features/conversation/SidePanel";
+import { REMOTE_DESKTOP_WORKSPACE_ID } from "@openbot/ui/features/remote-desktop/RemoteDesktopWorkspace";
 import { useText } from "@openbot/ui/text";
 import type { ComponentProps, JSX } from "@solidjs/web";
 import { Show } from "solid-js";
@@ -98,6 +99,7 @@ export function ConversationHeader(props: ConversationHeaderProps) {
               class="header-panel-toggle remote-desktop-button"
               aria-label={t(control().active ? "conversation.header.resumeRemote" : "conversation.header.openRemote")}
               aria-expanded={control().visible ? "true" : "false"}
+              aria-controls={REMOTE_DESKTOP_WORKSPACE_ID}
               disabled={!control().enabled}
               onClick={(event) => control().onOpen(event.currentTarget)}
               data-cuelume-tap="open"

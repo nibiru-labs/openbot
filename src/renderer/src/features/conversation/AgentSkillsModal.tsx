@@ -14,7 +14,6 @@ import {
   DropdownMenu,
   Ellipsis,
   IconButton,
-  SlidingTabs,
   Store,
   Switch,
   Trash2,
@@ -430,13 +429,11 @@ export function AgentSkillsModal(props: AgentSkillsModalProps) {
               </div>
             </header>
 
-            <SlidingTabs.Root
-              class="agent-memories-body agent-skills-tabs"
-              value={filter()}
-              onChange={(value) => setFilter(value)}
-            >
+            <div class="agent-memories-body agent-skills-tabs">
               <Show when={!selectedSkill() && mutable()}>
                 <SkillLibraryToolbar
+                  value={filter()}
+                  onChange={setFilter}
                   localTab={localLibrary()}
                   canCreate={Boolean(props.onCreateSkill) && !atCap()}
                   onCreate={() => {
@@ -446,10 +443,10 @@ export function AgentSkillsModal(props: AgentSkillsModalProps) {
                 />
               </Show>
 
-              <SlidingTabs.ContentSlot class="agent-skills-tab-slot">
+              <div class="agent-skills-tab-slot">
                 <Show when={filter()} keyed>
                   {(selectedFilter) => (
-                    <SlidingTabs.Content value={selectedFilter} class="agent-skills-tab-content">
+                    <div class="agent-skills-tab-content" data-selected="" data-filter={selectedFilter}>
                       <Show
                         when={!libraryOpen()}
                         fallback={
@@ -664,11 +661,11 @@ export function AgentSkillsModal(props: AgentSkillsModalProps) {
                           </Show>
                         </div>
                       </Show>
-                    </SlidingTabs.Content>
+                    </div>
                   )}
                 </Show>
-              </SlidingTabs.ContentSlot>
-            </SlidingTabs.Root>
+              </div>
+            </div>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>

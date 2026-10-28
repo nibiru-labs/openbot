@@ -3,7 +3,7 @@ import type { WebhookTestResult } from "@openbot/contracts/ipc-events";
 import type { AppTextKey } from "@openbot/i18n";
 import { Button, Check, ChevronDown, ChevronRight, Text, Webhook } from "@openbot/ui";
 import type { JSX } from "@solidjs/web";
-import { createEffect, createStore, Show } from "solid-js";
+import { createEffect, createStore, createUniqueId, Show } from "solid-js";
 import { useText } from "../../text";
 import { CodeBlock } from "./CodeBlock";
 import { RoutineWebhookSecretField, RoutineWebhookUrlField } from "./RoutineWebhookEndpoint";
@@ -72,6 +72,7 @@ function curlExample(url: string): string {
  */
 export function RoutineWebhookTrigger(props: RoutineWebhookTriggerProps) {
   const { t, errorMessage } = useText();
+  const examplePanelId = createUniqueId();
   const [steps, setSteps] = createStore<WebhookStepsState>({
     urlCopied: false,
     secretCopied: false,
@@ -228,6 +229,7 @@ export function RoutineWebhookTrigger(props: RoutineWebhookTriggerProps) {
                 size="sm"
                 class="routine-webhook-disclosure"
                 aria-expanded={steps.exampleOpen ? "true" : "false"}
+                aria-controls={examplePanelId}
                 onClick={() =>
                   setSteps((state) => {
                     state.exampleOpen = !state.exampleOpen;
@@ -243,9 +245,11 @@ export function RoutineWebhookTrigger(props: RoutineWebhookTriggerProps) {
                 {t("routine.webhook.howToSign")}
               </Button>
               <Show when={steps.exampleOpen}>
-                <CodeBlock
-                  block={{ type: "code", language: "bash", code: curlExample(props.url ?? "https://<endpoint>") }}
-                />
+                <div id={examplePanelId}>
+                  <CodeBlock
+                    block={{ type: "code", language: "bash", code: curlExample(props.url ?? "https://<endpoint>") }}
+                  />
+                </div>
                 <Text variant="caption" tone="muted">
                   {t("routine.webhook.howToSignHint")}
                 </Text>

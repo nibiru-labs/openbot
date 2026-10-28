@@ -14,10 +14,10 @@ import {
   Hash,
   Input,
   Kbd,
+  RadioGroup,
   Search,
   type Settings,
   Spinner,
-  Tabs,
 } from "@openbot/ui";
 import type { AgentMessage, AgentProfile } from "@openbot/ui/data";
 import { AgentAvatar } from "@openbot/ui/features/agents/AgentAvatar";
@@ -446,17 +446,74 @@ function DialogExitMotion(props: { dialog: () => HTMLElement | undefined }) {
   return undefined;
 }
 
-/** The pill behind the selected filter. It moves only after its first place, so it does not slide in on open. */
-function FilterPill() {
-  let element: HTMLDivElement | undefined;
-  let frame: number | undefined;
-  onSettled(() => {
-    frame = requestAnimationFrame(() => element?.removeAttribute("data-initializing"));
-  });
-  onCleanup(() => {
-    if (frame !== undefined) cancelAnimationFrame(frame);
-  });
-  return <Tabs.Indicator ref={element} class="global-search-filter-pill" data-initializing="" />;
+/** Filter pills are one choice from many, not tabs over separate panels. */
+function SearchFilterRadios(props: {
+  value: SearchTab;
+  tabs: readonly SearchTab[];
+  onChange: (value: SearchTab) => void;
+}) {
+  const { t } = useText();
+  let group: HTMLElement | undefined;
+  let pill: HTMLSpanElement | undefined;
+  let chosen = -1;
+  let placed = false;
+
+  const placePill = (slide: boolean) => {
+    if (!group || !pill) return;
+    const control = group.querySelectorAll<HTMLElement>(".global-search-filter-control")[chosen];
+    pill.hidden = !control;
+    if (!control) return;
+    const still = !slide || !placed;
+    if (still) pill.dataset.initializing = "";
+    pill.style.width = `${control.offsetWidth}px`;
+    pill.style.transform = `translateX(${control.offsetLeft}px)`;
+    if (still) {
+      pill.getBoundingClientRect();
+      delete pill.dataset.initializing;
+    }
+    placed = true;
+  };
+
+  createEffect(
+    () => group?.querySelector<HTMLElement>('.global-search-filter-control[data-checked="true"]'),
+    (control) => {
+      if (!group || !control) return;
+      const controls = [...group.querySelectorAll<HTMLElement>(".global-search-filter-control")];
+      chosen = controls.indexOf(control);
+      placePill(true);
+    },
+  );
+
+  const resize = new ResizeObserver(() => placePill(false));
+  onCleanup(() => resize.disconnect());
+
+  return (
+    <RadioGroup.Root
+      ref={(element: HTMLElement) => {
+        group = element;
+        resize.observe(element);
+      }}
+      class="global-search-filters"
+      aria-label={t("conversation.globalSearch.filter")}
+      orientation="horizontal"
+      value={props.value}
+      onChange={(value) => {
+        if (isSearchTab(value)) props.onChange(value);
+      }}
+    >
+      <span ref={pill} class="global-search-filter-pill" data-initializing="" aria-hidden="true" />
+      <For each={props.tabs}>
+        {(value) => (
+          <RadioGroup.Item class="global-search-filter-item" value={value}>
+            <RadioGroup.ItemInput />
+            <RadioGroup.ItemControl class="global-search-filter-control">
+              <RadioGroup.ItemLabel>{t(TAB_LABEL[value])}</RadioGroup.ItemLabel>
+            </RadioGroup.ItemControl>
+          </RadioGroup.Item>
+        )}
+      </For>
+    </RadioGroup.Root>
+  );
 }
 
 function SectionRow(props: { section: GlobalSearchSection; spaced: boolean; row: VirtualRowProps }) {
@@ -861,20 +918,7 @@ export function GlobalSearch(props: GlobalSearchProps) {
                 spellcheck={false}
                 onKeyDown={onInputKeyDown}
               />
-              <Tabs.Root
-                value={tab()}
-                onChange={(value) => {
-                  if (isSearchTab(value)) setTab(value);
-                }}
-                class="global-search-filters"
-              >
-                <Tabs.List aria-label={t("conversation.globalSearch.filter")}>
-                  <FilterPill />
-                  <For each={visibleTabs()}>
-                    {(value) => <Tabs.Trigger value={value}>{t(TAB_LABEL[value])}</Tabs.Trigger>}
-                  </For>
-                </Tabs.List>
-              </Tabs.Root>
+              <SearchFilterRadios value={tab()} tabs={visibleTabs()} onChange={setTab} />
             </Combobox.Control>
 
             {/* The always-open results are the top Kobalte layer, so they get outside presses, not the dialog.

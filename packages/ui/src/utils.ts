@@ -72,3 +72,56 @@ export function createPressedPopupCue(): { ref: (element: HTMLElement) => void; 
     cue: () => (closing() ? "close" : ""),
   };
 }
+
+const TOOLBAR_FOCUSABLE =
+  'button:not([disabled]):not([aria-hidden="true"]), input:not([disabled]):not([aria-hidden="true"]), [role="button"]:not([disabled]):not([aria-hidden="true"])';
+
+/** Controls in a toolbar that arrow keys may visit, in DOM order. */
+export function toolbarFocusables(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(TOOLBAR_FOCUSABLE)];
+}
+
+/** Puts roving tabindex on toolbar controls. The focused item is tabbable; the rest are not. */
+export function syncToolbarTabindex(root: HTMLElement, focused?: HTMLElement | null): void {
+  const items = toolbarFocusables(root);
+  if (items.length === 0) return;
+  const active = focused && items.includes(focused) ? focused : items[0];
+  for (const item of items) {
+    item.tabIndex = item === active ? 0 : -1;
+  }
+}
+
+/** Arrow keys, Home and End move focus within a toolbar. Attach to the toolbar root. */
+export function onToolbarKeyDown(event: KeyboardEvent): void {
+  const root = event.currentTarget;
+  if (!(root instanceof HTMLElement)) return;
+  const items = toolbarFocusables(root);
+  if (items.length === 0) return;
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const index = items.indexOf(target);
+  if (index < 0) return;
+
+  let next = -1;
+  if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % items.length;
+  if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (index - 1 + items.length) % items.length;
+  if (event.key === "Home") next = 0;
+  if (event.key === "End") next = items.length - 1;
+  if (next < 0) return;
+
+  event.preventDefault();
+  const nextTarget = items[next];
+  if (nextTarget) {
+    syncToolbarTabindex(root, nextTarget);
+    nextTarget.focus({ preventScroll: true });
+  }
+}
+
+/** Keeps roving tabindex aligned when focus enters a toolbar control. */
+export function onToolbarFocusIn(event: FocusEvent): void {
+  const root = event.currentTarget;
+  const target = event.target;
+  if (!(root instanceof HTMLElement) || !(target instanceof HTMLElement)) return;
+  if (!toolbarFocusables(root).includes(target)) return;
+  syncToolbarTabindex(root, target);
+}

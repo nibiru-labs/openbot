@@ -23,6 +23,7 @@ export * from "./select";
 export * from "./server-gradient-logo";
 export * from "./settings";
 export * from "./slider";
+export * from "./sliding-radio-group";
 export * from "./sliding-tabs";
 export * from "./surface";
 export * from "./switch";

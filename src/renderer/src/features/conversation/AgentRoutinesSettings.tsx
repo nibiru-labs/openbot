@@ -858,6 +858,7 @@ export function AgentRoutinesSettings(props: AgentRoutinesSettingsProps) {
               <div class="agent-routine-editor-actions">
                 <SwitchField
                   class="agent-routine-active-toggle"
+                  switchFirst
                   label={current().active ? t("routine.settings.active") : t("routine.settings.paused")}
                   checked={current().active}
                   onChange={(active) => changeDraft((value) => ({ ...value, active }))}

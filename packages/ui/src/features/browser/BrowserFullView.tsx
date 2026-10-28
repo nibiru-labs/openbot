@@ -1,4 +1,4 @@
-import { Alert, AlertContent, AlertDescription, AlertTitle, Button, Minimize2, Tabs } from "@openbot/ui";
+import { Alert, AlertContent, AlertDescription, AlertTitle, Button, Minimize2 } from "@openbot/ui";
 import { CloseIcon, PlusIcon } from "@openbot/ui/features/conversation/ConversationIcons";
 import { useText } from "@openbot/ui/text";
 import { clamp } from "@openbot/ui/utils";
@@ -184,8 +184,7 @@ export default function BrowserFullView(props: BrowserFullViewProps) {
   );
 
   return (
-    <Tabs.Root
-      as="section"
+    <section
       ref={(element: HTMLElement) => (view = element)}
       hidden={!props.open}
       aria-hidden={props.open ? undefined : "true"}
@@ -203,8 +202,6 @@ export default function BrowserFullView(props: BrowserFullViewProps) {
           : undefined
       }
       aria-label={t("browser.panel.label")}
-      value={props.activeTab?.id ?? "__empty"}
-      activationMode="automatic"
     >
       <div class="browser-full-top window-drag">
         <BrowserPageCover value={cover}>
@@ -234,10 +231,8 @@ export default function BrowserFullView(props: BrowserFullViewProps) {
         {hideBrowserButton()}
       </div>
       <div class="browser-full-card">
-        {/* The narrow row has no tab list, so the panel names itself. */}
-        <Tabs.Content
-          forceMount
-          value={props.activeTab?.id ?? "__empty"}
+        {/* The narrow row has no tab row, so the panel names itself. */}
+        <section
           aria-label={!narrow() && props.activeTab ? undefined : t("browser.panel.label")}
           class="browser-full-browser"
         >
@@ -295,9 +290,9 @@ export default function BrowserFullView(props: BrowserFullViewProps) {
               </div>
             </Show>
           </div>
-        </Tabs.Content>
+        </section>
       </div>
       {props.dialogs}
-    </Tabs.Root>
+    </section>
   );
 }

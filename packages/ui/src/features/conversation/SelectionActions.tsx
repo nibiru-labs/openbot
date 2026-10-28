@@ -6,10 +6,10 @@ import {
   serializeSelectionInstruction,
 } from "@openbot/contracts/selection-instruction";
 import { Button, Input, TextQuote } from "@openbot/ui";
-import { clamp } from "@openbot/ui/utils";
+import { clamp, onToolbarFocusIn, onToolbarKeyDown, syncToolbarTabindex } from "@openbot/ui/utils";
 import { Portal } from "@solidjs/web";
 import type { Element as SolidElement } from "solid-js";
-import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, createUniqueId, For, onSettled, Show } from "solid-js";
 import { useText } from "../../text";
 
 const MESSAGE_TEXT_SELECTOR = "[data-selection-message-id]";
@@ -47,6 +47,27 @@ export interface SelectionActionsPosition {
   top: number;
   left: number;
   placement: "top" | "bottom";
+}
+
+/** Puts focus on the message block that held a selection, without scrolling the page. */
+export function focusMessageBlock(element: HTMLElement | null | undefined): void {
+  if (!element?.isConnected) return;
+  if (!element.hasAttribute("tabindex")) element.tabIndex = -1;
+  element.focus({ preventScroll: true });
+}
+
+/** Moves focus to the first control in an open selection toolbar. */
+export function focusSelectionToolbar(bar: HTMLElement | null | undefined): void {
+  if (!bar) return;
+  const target = bar.querySelector<HTMLElement>(
+    'input:not([disabled]):not([aria-hidden="true"]), button:not([disabled]):not([aria-hidden="true"])',
+  );
+  if (target) {
+    syncToolbarTabindex(bar, target);
+    target.focus({ preventScroll: true });
+  } else {
+    syncToolbarTabindex(bar);
+  }
 }
 
 export function messageTextSelection(selection: Selection | null): MessageTextSelection | null {
@@ -99,15 +120,24 @@ export function MessageSelectionActions(props: {
   const [selection, setSelection] = createSignal<MessageTextSelection | null>(null);
   const [fallbackHighlight, setFallbackHighlight] = createSignal(false);
   let lastContextKey: string | undefined;
+  let selectionReturnFocus: HTMLElement | undefined;
 
   const clearSelection = () => {
     setSelection(null);
+    selectionReturnFocus = undefined;
     clearPersistentHighlight();
+  };
+
+  const returnSelectionFocus = () => {
+    const block = selectionReturnFocus;
+    selectionReturnFocus = undefined;
+    focusMessageBlock(block);
   };
 
   // Only for deliberate dismissals: the composer is contenteditable, so its caret is the document
   // selection and clearing it here would wipe the caret out from under the person typing.
   const dismiss = () => {
+    returnSelectionFocus();
     clearSelection();
     window.getSelection()?.removeAllRanges();
   };
@@ -130,6 +160,7 @@ export function MessageSelectionActions(props: {
       clearSelection();
       return;
     }
+    selectionReturnFocus = messageTextBlock(next.range.startContainer) ?? undefined;
     setSelection(next);
   };
 
@@ -226,6 +257,7 @@ export function SelectionActionsBar(props: {
   const { t } = useText();
   const [prompt, setPrompt] = createSignal("");
   const [expanded, setExpanded] = createSignal(false);
+  const morePresetsId = createUniqueId();
   const [mode, setMode] = createSignal<"idle" | "sending" | "error">("idle");
   const [lastInstruction, setLastInstruction] = createSignal("");
   const [position, setPosition] = createSignal<SelectionActionsPosition | null>(null);
@@ -338,6 +370,7 @@ export function SelectionActionsBar(props: {
     window.addEventListener("scroll", schedulePosition, true);
     schedulePosition();
     updateWidth();
+    queueMicrotask(() => focusSelectionToolbar(bar));
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", schedulePosition);
@@ -392,11 +425,16 @@ export function SelectionActionsBar(props: {
         onPointerDown={(event) => event.stopPropagation()}
       >
         <div
-          ref={(element) => (bar = element)}
+          ref={(element) => {
+            bar = element;
+            syncToolbarTabindex(element);
+          }}
           class="selection-actions-bar"
           role="toolbar"
           aria-label={t("chat.selection.label")}
           style={{ width: barWidth() ? `${barWidth()}px` : undefined }}
+          onFocusIn={onToolbarFocusIn}
+          onKeyDown={onToolbarKeyDown}
         >
           <div
             ref={(element) => (content = element)}
@@ -523,7 +561,7 @@ export function SelectionActionsBar(props: {
                   onSelect={() => void submit(SELECTION_ACTION_INSTRUCTIONS.Improve)}
                 />
                 <Show when={expanded()}>
-                  <div class="selection-actions-more-presets">
+                  <div id={morePresetsId} class="selection-actions-more-presets">
                     <PresetButton
                       label={t("chat.selection.shorten")}
                       icon={<ShortenIcon />}
@@ -548,6 +586,7 @@ export function SelectionActionsBar(props: {
                   class="selection-actions-icon-button selection-actions-expand"
                   aria-label={t(expanded() ? "chat.selection.showFewer" : "chat.selection.showMore")}
                   aria-expanded={expanded() ? "true" : "false"}
+                  aria-controls={morePresetsId}
                   data-cuelume-tap={expanded() ? "close" : "open"}
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={() => setExpanded((value) => !value)}

@@ -13,7 +13,7 @@ import {
   Info,
   LoaderCircle,
 } from "@openbot/ui";
-import { prefersReducedMotion } from "@openbot/ui/utils";
+import { onToolbarFocusIn, onToolbarKeyDown, prefersReducedMotion, syncToolbarTabindex } from "@openbot/ui/utils";
 import {
   createEffect,
   createMemo,
@@ -746,6 +746,9 @@ export function MessageActions(props: {
       aria-label={
         props.message.author === "you" ? t("chat.actions.userLabel") : t("chat.actions.label", { name: authorName() })
       }
+      ref={(element) => syncToolbarTabindex(element)}
+      onFocusIn={onToolbarFocusIn}
+      onKeyDown={onToolbarKeyDown}
     >
       <Button
         variant="ghost"

@@ -122,6 +122,7 @@ export function SidebarPinnedGroup() {
                       ]}
                       aria-label={rowLabel()}
                       title={stateLabel() || undefined}
+                      aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
                       aria-pressed={active() ? "true" : "false"}
                       data-cuelume-navigate=""
                       onClick={() => selectChat(item.chat)}

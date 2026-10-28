@@ -28,6 +28,9 @@ type ViewerState = "idle" | "connecting" | "connected" | "error";
 // Room for Moonlight's own WebRTC timeout and for the host to start the streams queued before this one.
 const STREAM_READY_TIMEOUT_MS = 60_000;
 type RemoteDisplay = RemoteDesktopSession["displays"][number];
+
+/** The workspace the remote-desktop header button opens and closes. */
+export const REMOTE_DESKTOP_WORKSPACE_ID = "remote-desktop-workspace";
 const viewerMessageSchema = z.object({
   source: z.literal("openbot-moonlight"),
   type: z.literal("viewer-state"),
@@ -175,6 +178,7 @@ export function RemoteDesktopWorkspace(props: RemoteDesktopWorkspaceProps) {
   return (
     <Portal mount={props.mount ?? document.body}>
       <main
+        id={REMOTE_DESKTOP_WORKSPACE_ID}
         ref={(element) => (workspaceElement = element)}
         class={[
           "remote-desktop-workspace",

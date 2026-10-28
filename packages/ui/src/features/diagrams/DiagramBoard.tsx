@@ -10,7 +10,7 @@
  */
 
 import { Button, ContextMenu, Minus, Plus, Scan } from "@openbot/ui";
-import { prefersReducedMotion } from "@openbot/ui/utils";
+import { onToolbarFocusIn, onToolbarKeyDown, prefersReducedMotion, syncToolbarTabindex } from "@openbot/ui/utils";
 import type { JSX } from "@solidjs/web";
 import { createMemo, createSignal, createStore, For, onSettled, Show } from "solid-js";
 import type { AgentProfile } from "../../data";
@@ -448,6 +448,7 @@ export function DiagramBoard(props: DiagramBoardProps) {
               document.activeElement.blur();
           }}
         >
+          {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would restyle the pannable canvas and its controls. */}
           <div
             ref={(element) => (viewport = element)}
             class="diagram-board-viewport"
@@ -458,8 +459,7 @@ export function DiagramBoard(props: DiagramBoardProps) {
             }}
             data-connecting={interaction.source ? "" : undefined}
             data-dragging={interaction.dragging ? "" : undefined}
-            // The canvas takes the arrow keys, so a screen reader passes them through to it.
-            role="application"
+            role="group"
             aria-label={t("diagram.board.label", { name: props.diagram.name })}
             tabindex="0"
             onKeyDown={(event: KeyboardEvent) => {
@@ -673,7 +673,15 @@ export function DiagramBoard(props: DiagramBoardProps) {
         )}
       </Show>
 
-      <div class="diagram-board-zoom" role="toolbar" aria-label={t("diagram.zoom.label")} data-diagram-overlay="">
+      <div
+        class="diagram-board-zoom"
+        role="toolbar"
+        aria-label={t("diagram.zoom.label")}
+        data-diagram-overlay=""
+        ref={(element) => syncToolbarTabindex(element)}
+        onFocusIn={onToolbarFocusIn}
+        onKeyDown={onToolbarKeyDown}
+      >
         <Button
           type="button"
           variant="outline"
