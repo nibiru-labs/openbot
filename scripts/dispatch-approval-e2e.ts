@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type { AgentApproval } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 import { AttentionRegistry } from "../src/backend/agent/attention-registry";
 import type { AgentClient } from "../src/backend/agent-client";
 import { dispatchResultMailboxText } from "../src/backend/dispatch/dispatch-delivery";
@@ -37,7 +37,9 @@ await mkdir(resolve(out, ".."), { recursive: true });
 const root = await mkdtemp(resolve(out, "../dispatch-approval-"));
 const binary = join(root, "openswarm");
 const launches = join(root, "launches.txt");
-const report: { passed: boolean; checks: string[]; error?: string } = { passed: false, checks: [] };
+/** The M3 acceptance cases: a risky dispatch is declined, times out, is granted, and asks again after a revoke. */
+const m3 = { declined: false, timedOut: false, granted: false, revoked: false };
+const report: { passed: boolean; checks: string[]; m3: typeof m3; error?: string } = { passed: false, checks: [], m3 };
 const caller = {
   agentId: "agent-approval",
   threadId: "thread-approval",
@@ -73,16 +75,39 @@ async function launchCount(): Promise<number> {
   }
 }
 
+/** How long an unanswered approval card waits before the dispatch call gives up. */
+const APPROVAL_TIMEOUT_MS = 2_000;
+
+type ExerciseAnswer = "accept" | "decline" | "abort" | "turn-end" | "provider-lost" | "automatic" | "safe" | "timeout";
+
+/** Waits for a promise with a deadline, so a check cannot hang the script. */
+async function withDeadline<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function exercise(
   name: string,
   input: DispatchWork,
-  answer: "accept" | "decline" | "abort" | "turn-end" | "provider-lost" | "automatic" | "safe",
+  answer: ExerciseAnswer,
   workspaceSandboxed = false,
+  timeoutMs = 10_000,
 ) {
   sequence += 1;
   const requestId = `request-${sequence}`;
   const signal = new AbortController();
   const raised = Promise.withResolvers<AgentApproval>();
+  const released = Promise.withResolvers<void>();
+  let cardRaised = false;
   const registry = new AttentionRegistry({
     conversation: {
       agentForThread: () => caller.agentId,
@@ -98,7 +123,12 @@ async function exercise(
     approvalAutomation: automation,
     workspaceSandboxed: () => workspaceSandboxed,
     emit: (event) => {
-      if (event.type === "approval") raised.resolve(event.approval);
+      if (event.type === "approval") {
+        cardRaised = true;
+        raised.resolve(event.approval);
+      }
+      if (event.type === "agent-input-resolved" && event.kind === "approval" && event.requestId === requestId)
+        released.resolve();
     },
     emitError: (_code, error) => {
       throw error;
@@ -131,8 +161,35 @@ async function exercise(
         },
         { requireExplicitGrant: true },
       );
-    }).pipe(Effect.timeout("10 seconds")),
+    }).pipe(Effect.timeout(timeoutMs)),
   );
+  if (answer === "timeout") {
+    // Nobody answered the card: the call runs out of time and the pending approval is released.
+    await Promise.race([
+      raised.promise,
+      result.then(
+        () => {
+          throw new Error(`${name}: the dispatch did not wait for approval.`);
+        },
+        () => {
+          throw new Error(`${name}: the dispatch ended before the approval was raised.`);
+        },
+      ),
+    ]);
+    assert.equal(registry.localAttention(caller.agentId).approvals.length, 1, `${name}: the approval must be pending.`);
+    assert.equal(await launchCount(), expectedLaunches, `${name}: an executor started while the approval was pending.`);
+    const outcome = await result.then(
+      (value): { ok: true; value: unknown } => ({ ok: true, value }),
+      (error: unknown): { ok: false; error: unknown } => ({ ok: false, error }),
+    );
+    assert.equal(outcome.ok, false, `${name}: the dispatch must not finish after the timeout.`);
+    assert.ok(!outcome.ok && Cause.isTimeoutError(outcome.error), `${name}: the dispatch must fail with a timeout.`);
+    await withDeadline(released.promise, 5_000, `${name}: the pending approval was not released.`);
+    assert.equal(await launchCount(), expectedLaunches, `${name}: an executor started after the timeout.`);
+    assert.equal(registry.localAttention(caller.agentId).approvals.length, 0, `${name}: no stale approval.`);
+    report.checks.push(name);
+    return;
+  }
   if (answer !== "automatic" && answer !== "safe") {
     await Promise.race([
       raised.promise,
@@ -160,6 +217,8 @@ async function exercise(
   const runs = answer === "accept" || answer === "automatic" || answer === "safe";
   assert.equal(response.success, runs, name);
   assert.equal(asked, answer !== "safe", name);
+  if (answer === "automatic")
+    assert.equal(cardRaised, false, `${name}: the standing grant must answer without a card.`);
   if (runs) expectedLaunches += 1;
   else
     assert.equal(
@@ -469,11 +528,20 @@ esac
   await exercise("lost provider starts nothing", { ...task, risk: true }, "provider-lost");
   await Effect.runPromise(automation.set({ agentId: "agent-other", autoApprove: true }));
   await exercise("another agent's grant does not apply", { ...task, risk: true }, "decline");
+
+  // M3 acceptance: a risky dispatch is declined, times out, is granted, and asks again after a revoke.
+  const m3Risky = { ...task, card: "Run a database migration." };
+  await exercise("M3 declined risky dispatch starts nothing and the agent sees the refusal", m3Risky, "decline");
+  m3.declined = true;
+  await exercise("M3 risky dispatch that times out starts nothing", m3Risky, "timeout", false, APPROVAL_TIMEOUT_MS);
+  m3.timedOut = true;
   await Effect.runPromise(automation.set({ agentId: caller.agentId, autoApprove: true }));
-  await exercise("explicit per-agent grant permits dispatch", { ...task, risk: true }, "automatic");
+  await exercise("M3 granted risky dispatch starts the executor", m3Risky, "automatic");
+  m3.granted = true;
   await exercise("workspace sandbox still requires approval", { ...task, risk: true }, "decline", true);
   await Effect.runPromise(automation.set({ agentId: caller.agentId, autoApprove: false }));
-  await exercise("revoked grant requires approval", { ...task, risk: true }, "decline");
+  await exercise("M3 revoked grant asks again on the next risky dispatch", m3Risky, "decline");
+  m3.revoked = true;
   report.passed = true;
 } catch (error) {
   report.error = error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
