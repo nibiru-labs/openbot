@@ -6,18 +6,30 @@
 // count of the write for the truth, so a short write left a truncated ZIP that the export reported
 // as a saved file. The check holds that the export writes the whole archive when a write is short,
 // and that it fails when a write makes no progress.
+//
+// The export of an agent with files read every file whole, so the memory of the process grew with
+// the size of the file. A check now exports a file of 64 MiB in an isolated child process and
+// holds that the memory of the process stays far below the size of the file. The other checks hold
+// that the archive holds every file with its bytes and its mode, that an empty file and a file of
+// exactly one chunk travel whole, and that a file that is gone is reported and left out.
 
 import { mock } from "bun:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, open, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdir, mkdtemp, open, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AgentSummary } from "@openbot/contracts/ipc";
+import { sourceText } from "@openbot/i18n/source";
 import { Effect, Schema } from "effect";
 import { strToU8, unzipSync, Zip, ZipPassThrough, zipSync } from "fflate";
 import { runCauseEffect } from "../src/backend/effect-boundary";
+import { executableEntries, sha256 } from "../src/main/agent-archive";
 import {
+  agentPrefix,
+  decodeTransferManifest,
   INSTANCE_TRANSFER_FORMAT,
   INSTANCE_TRANSFER_MANIFEST,
   INSTANCE_TRANSFER_VERSION,
@@ -30,12 +42,21 @@ import { SkillMarketplaceFailure } from "../src/main/skill-marketplace-service";
 // whose buffer is full. A limit of zero writes no byte at all. The built-ins of node have no seam
 // to inject a fault into, so the check takes the module apart and puts the fault into the open.
 // The limit is off until a check sets it, so the other checks write their files as they do.
+// A path in `deletedPaths` is gone when the export reads it, like a file that a running agent
+// deletes after the export found it.
 const realFs = await import("node:fs/promises");
 const realOpen = realFs.open;
+const realLstat = realFs.lstat;
 let writeLimit = Number.POSITIVE_INFINITY;
+const deletedPaths = new Set<string>();
 
 mock.module("node:fs/promises", () => ({
   ...realFs,
+  lstat: async (path: Parameters<typeof realLstat>[0]) => {
+    const info = await realLstat(path);
+    if (typeof path === "string" && deletedPaths.has(path)) await realFs.rm(path, { force: true });
+    return info;
+  },
   open: async (...args: Parameters<typeof realOpen>) => {
     const handle = await realOpen(...args);
     return {
@@ -97,6 +118,42 @@ function unexpected(operation: string): Error {
   return new Error(`Unexpected boundary call: ${operation}`);
 }
 
+/** The library of the checks: no export publishes a skill, so every call must fail. */
+const library: ReturnType<InstanceTransferOptions["skills"]["library"]> = {
+  list: () => Effect.fail(new LocalSkillFailure({ cause: unexpected("library.list") })),
+  create: (_agentId, _folder) => Effect.fail(new LocalSkillFailure({ cause: unexpected("library.create") })),
+  revise: (_agentId, _id, _revision, _folder) =>
+    Effect.fail(new LocalSkillFailure({ cause: unexpected("library.revise") })),
+  withdraw: (_id, _revision) => Effect.fail(new LocalSkillFailure({ cause: unexpected("library.withdraw") })),
+};
+
+/** The settings of the checks: no export carries settings, so every call must fail. */
+function settingsPort(): InstanceTransferOptions["settings"] {
+  return {
+    mcpServers: () => {
+      throw unexpected("mcpServers");
+    },
+    saveMcpServer: (_config) => Effect.fail(unexpected("saveMcpServer")),
+    customProviders: () => {
+      throw unexpected("customProviders");
+    },
+    saveCustomProvider: (_input) => Effect.fail(unexpected("saveCustomProvider")),
+    customAgents: () => {
+      throw unexpected("customAgents");
+    },
+    providersOff: () => {
+      throw unexpected("providersOff");
+    },
+    sidebar: () => {
+      throw unexpected("sidebar");
+    },
+    mutateSidebar: (_action) => Effect.fail(unexpected("mutateSidebar")),
+    routineFlowLinks: (_agentId) => Effect.fail(unexpected("routineFlowLinks")),
+    connectRoutineFlow: (_input) => Effect.fail(unexpected("connectRoutineFlow")),
+    signedInProviders: () => [],
+  };
+}
+
 function service(uploadDirectory: string): InstanceTransferService {
   // These checks transfer an empty instance. Other boundary calls must fail.
   const agents: InstanceTransferOptions["agents"] = {
@@ -136,38 +193,11 @@ function service(uploadDirectory: string): InstanceTransferService {
     setAvatar: (_agentId, _image) => Effect.fail(unexpected("setAvatar")),
     deleteAgent: (_agentId) => Effect.fail(unexpected("deleteAgent")),
   };
-  const library: ReturnType<InstanceTransferOptions["skills"]["library"]> = {
-    list: () => Effect.fail(new LocalSkillFailure({ cause: unexpected("library.list") })),
-    create: (_agentId, _folder) => Effect.fail(new LocalSkillFailure({ cause: unexpected("library.create") })),
-    revise: (_agentId, _id, _revision, _folder) =>
-      Effect.fail(new LocalSkillFailure({ cause: unexpected("library.revise") })),
-    withdraw: (_id, _revision) => Effect.fail(new LocalSkillFailure({ cause: unexpected("library.withdraw") })),
-  };
   const skills: InstanceTransferOptions["skills"] = {
     library: () => library,
     installLocal: (_input) => Effect.fail(new SkillMarketplaceFailure({ cause: unexpected("installLocal") })),
   };
-  const settings: InstanceTransferOptions["settings"] = {
-    mcpServers: () => {
-      throw unexpected("mcpServers");
-    },
-    saveMcpServer: (_config) => Effect.fail(unexpected("saveMcpServer")),
-    customProviders: () => {
-      throw unexpected("customProviders");
-    },
-    saveCustomProvider: (_input) => Effect.fail(unexpected("saveCustomProvider")),
-    customAgents: () => Effect.fail(unexpected("customAgents")),
-    providersOff: () => {
-      throw unexpected("providersOff");
-    },
-    sidebar: () => {
-      throw unexpected("sidebar");
-    },
-    mutateSidebar: (_action) => Effect.fail(unexpected("mutateSidebar")),
-    routineFlowLinks: (_agentId) => Effect.fail(unexpected("routineFlowLinks")),
-    connectRoutineFlow: (_input) => Effect.fail(unexpected("connectRoutineFlow")),
-    signedInProviders: () => [],
-  };
+  const settings: InstanceTransferOptions["settings"] = settingsPort();
   const options: InstanceTransferOptions = {
     uploadDirectory,
     sharedRoot: join(dirname(uploadDirectory), "shared"),
@@ -178,6 +208,90 @@ function service(uploadDirectory: string): InstanceTransferService {
     timezone: () => "UTC",
   };
   return new InstanceTransferService(options);
+}
+
+/** The size of the chunk that the export reads from a file. */
+const CHUNK_SIZE = 64 * 1024;
+/** The size of the file that the export must hold in bounded memory. */
+const LARGE_BYTES = 64 * 1024 * 1024;
+/** The name of the file of the workspace that the export reads in chunks. */
+const LARGE_NAME = "large.bin";
+/** The agent of the exports that carry files. */
+const agent: AgentSummary = {
+  id: "agent-1",
+  name: "Agent One",
+  title: "",
+  description: "",
+  notifications: false,
+  provider: "codex",
+  model: "gpt-5.5",
+  reasoningEffort: "medium",
+  threadId: null,
+  workspacePath: "",
+  preview: "",
+  updatedAt: null,
+  avatarSeed: "agent-1",
+  avatarHue: null,
+  avatarUrl: null,
+};
+
+/** A service that exports one agent with the files of its workspace. */
+function fileService(workspace: string, sharedRoot: string): InstanceTransferService {
+  const summary: AgentSummary = { ...agent, workspacePath: workspace };
+  const agents: InstanceTransferOptions["agents"] = {
+    listAgents: () => [summary],
+    listRoutines: () => [],
+    listMemories: () => [],
+    getMemorySelection: () => ({ selections: [] }),
+    setMemoryInclusion: (_input) => {
+      throw unexpected("setMemoryInclusion");
+    },
+    resolveAvatar: () => null,
+    listModels: () => [],
+    createAgentProfile: (_input) => Effect.fail(unexpected("createAgentProfile")),
+    updateAgent: (_input) => Effect.fail(unexpected("updateAgent")),
+    createRoutine: (_input, _options) => {
+      throw unexpected("createRoutine");
+    },
+    createMemory: (_input) => {
+      throw unexpected("createMemory");
+    },
+    memoryLimit: () => 0,
+    initializeMemorySelection: (_agentId) => {
+      throw unexpected("initializeMemorySelection");
+    },
+    setAvatar: (_agentId, _image) => Effect.fail(unexpected("setAvatar")),
+    deleteAgent: (_agentId) => Effect.fail(unexpected("deleteAgent")),
+  };
+  const options: InstanceTransferOptions = {
+    sharedRoot,
+    appVersion: "e2e",
+    agents,
+    skills: {
+      library: () => library,
+      installLocal: (_input) => Effect.fail(new SkillMarketplaceFailure({ cause: unexpected("installLocal") })),
+    },
+    settings: settingsPort(),
+    timezone: () => "UTC",
+  };
+  return new InstanceTransferService(options);
+}
+
+/** The hash of a file, read in chunks so the memory of the process stays small. */
+async function fileHash(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  const handle = await open(path, "r");
+  try {
+    const buffer = new Uint8Array(CHUNK_SIZE);
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, 0, CHUNK_SIZE, null);
+      if (bytesRead === 0) break;
+      hash.update(buffer.subarray(0, bytesRead));
+    }
+  } finally {
+    await handle.close();
+  }
+  return hash.digest("hex");
 }
 
 async function names(directory: string): Promise<string[]> {
@@ -362,6 +476,139 @@ async function checkArchiveWrite(root: string): Promise<void> {
   writeLimit = Number.POSITIVE_INFINITY;
 }
 
+/** The peak of the memory of the process, in bytes. */
+function peakMemory(): number {
+  return process.resourceUsage().maxRSS * 1024;
+}
+
+/** What a child process reports about the file it read and the memory it used. */
+const decodeMeasurement = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.Struct({ peak: Schema.Number, size: Schema.Number, hash: Schema.String })),
+);
+
+async function checkExportContent(root: string): Promise<void> {
+  writeLimit = Number.POSITIVE_INFINITY;
+  const workspace = join(root, "content", "workspace");
+  await mkdir(workspace, { recursive: true });
+  // An empty file, a file of exactly one chunk, a file of one chunk and one byte, and a file with
+  // the mode of an executable.
+  await writeFile(join(workspace, "empty.bin"), new Uint8Array(0));
+  await writeFile(join(workspace, "chunk.bin"), new Uint8Array(CHUNK_SIZE).fill(0x41));
+  await writeFile(join(workspace, "chunk-plus.bin"), new Uint8Array(CHUNK_SIZE + 1).fill(0x42));
+  await writeFile(join(workspace, "script.sh"), "#!/bin/sh\necho synthetic\n");
+  await chmod(join(workspace, "script.sh"), 0o755);
+
+  const current = fileService(workspace, join(root, "content", "shared"));
+  const path = join(root, "content", "transfer.zip");
+  const result = await run(
+    current.exportTo(path, { agentIds: [agent.id], includeFiles: true, includeSettings: false }),
+  );
+  assert.equal(result.saved, true, "The export did not save a file.");
+  assert.deepEqual(result.warnings, [], "The export reported a warning.");
+  const bytes = new Uint8Array(await readFile(path));
+  const entries = unzipSync(bytes);
+
+  // The manifest travels as the export wrote it.
+  const manifestBytes = entries[INSTANCE_TRANSFER_MANIFEST];
+  assert.ok(manifestBytes, "The archive holds no manifest.");
+  const decoded = decodeTransferManifest(manifestBytes);
+  assert.deepEqual(decoded.warnings, [], "The manifest holds a warning.");
+  assert.equal(decoded.manifest.agents.length, 1, "The manifest holds another number of agents.");
+  const [exported] = decoded.manifest.agents;
+  assert.ok(exported, "The manifest holds no agent.");
+  assert.equal(exported.key, agent.id, "The manifest holds another agent key.");
+  assert.equal(exported.name, agent.name, "The manifest holds another agent name.");
+  const folder = exported.files;
+  assert.ok(folder, "The manifest holds no folder of files.");
+  assert.equal(folder, `${agentPrefix(agent.id)}workspace`, "The manifest holds another folder.");
+
+  // Every file travels with its bytes.
+  for (const name of ["empty.bin", "chunk.bin", "chunk-plus.bin", "script.sh"]) {
+    const entry: Uint8Array | undefined = entries[`${folder}/${name}`];
+    assert.ok(entry, `The archive holds no ${name}.`);
+    const source = await readFile(join(workspace, name));
+    assert.equal(entry.byteLength, source.byteLength, `The archive holds another size of ${name}.`);
+    assert.equal(sha256(entry), sha256(source), `The archive holds another content of ${name}.`);
+  }
+
+  // The mode of the file stays, so the import restores the bits.
+  const executable = executableEntries(bytes);
+  assert.ok(executable.has(`${folder}/script.sh`), "The archive lost the mode of the script.");
+  assert.equal(executable.size, 1, "The archive holds another executable file.");
+}
+
+async function checkExportMissingFile(root: string): Promise<void> {
+  writeLimit = Number.POSITIVE_INFINITY;
+  const workspace = join(root, "missing", "workspace");
+  await mkdir(workspace, { recursive: true });
+  const gone = join(workspace, "gone.bin");
+  await writeFile(gone, "gone\n");
+  await writeFile(join(workspace, "kept.bin"), "kept\n");
+  const current = fileService(workspace, join(root, "missing", "shared"));
+  const path = join(root, "missing", "transfer.zip");
+  // The file system reports the file as gone when the export reads it, like a file that a running
+  // agent deletes after the export found it.
+  deletedPaths.add(gone);
+  try {
+    const result = await run(
+      current.exportTo(path, { agentIds: [agent.id], includeFiles: true, includeSettings: false }),
+    );
+    assert.equal(result.saved, true, "The export did not save a file.");
+    assert.deepEqual(
+      result.warnings,
+      [sourceText("error.import.transferFilesGone", { number: 1 })],
+      "The export did not report the file that was gone.",
+    );
+  } finally {
+    deletedPaths.delete(gone);
+  }
+  const entries = unzipSync(new Uint8Array(await readFile(path)));
+  const folder = `${agentPrefix(agent.id)}workspace/`;
+  assert.ok(entries[`${folder}kept.bin`], "The archive holds no file.");
+  assert.ok(!entries[`${folder}gone.bin`], "The archive holds the file that was gone.");
+}
+
+async function checkExportMemory(root: string): Promise<void> {
+  writeLimit = Number.POSITIVE_INFINITY;
+  const workspace = join(root, "memory", "workspace");
+  await mkdir(workspace, { recursive: true });
+  const source = join(workspace, LARGE_NAME);
+  const fixture = await open(source, "w");
+  try {
+    const block = new Uint8Array(1024 * 1024).fill(0x5a);
+    for (let written = 0; written < LARGE_BYTES; written += block.length) await fixture.write(block);
+  } finally {
+    await fixture.close();
+  }
+  const output = join(root, "memory", "transfer.zip");
+
+  // The export runs in a child process, so the memory of this process does not count.
+  const exported = spawnSync(
+    process.execPath,
+    [...process.execArgv, fileURLToPath(import.meta.url), "--export", workspace, output],
+    { encoding: "utf8" },
+  );
+  assert.equal(exported.status, 0, exported.stderr);
+  const measurement = decodeMeasurement(exported.stdout);
+
+  // The way that reads the whole file grows the memory of the process by the size of the file.
+  const whole = spawnSync(
+    process.execPath,
+    [...process.execArgv, fileURLToPath(import.meta.url), "--read-whole", source],
+    { encoding: "utf8" },
+  );
+  assert.equal(whole.status, 0, whole.stderr);
+  const baseline = decodeMeasurement(whole.stdout);
+
+  assert.equal(measurement.size, LARGE_BYTES, "The archive holds another size of the large file.");
+  assert.equal(measurement.hash, await fileHash(source), "The archive holds another content of the large file.");
+  assert.equal(baseline.hash, measurement.hash, "The baseline read another file.");
+  assert.ok(
+    measurement.peak < baseline.peak - LARGE_BYTES / 2,
+    `The export held the file in the memory of the process: ${measurement.peak} bytes of peak memory, the whole-file way ${baseline.peak} bytes.`,
+  );
+}
+
 interface Report {
   status: "running" | "passed" | "failed";
   checks: Array<{ name: string; status: "passed" | "failed" }>;
@@ -372,6 +619,26 @@ if (process.argv[2] === "--seed") {
   const directory = process.argv[3];
   assert.ok(directory, "The seed directory is required.");
   process.stdout.write(JSON.stringify(await seed(directory)));
+} else if (process.argv[2] === "--export") {
+  // The export of the child process, with the memory of the process after it.
+  const workspace = process.argv[3];
+  const output = process.argv[4];
+  assert.ok(workspace && output, "The workspace and the output path are required.");
+  const current = fileService(workspace, join(dirname(output), "shared"));
+  await run(current.exportTo(output, { agentIds: [agent.id], includeFiles: true, includeSettings: false }));
+  // The peak of the memory is read before the archive is read, so the reading does not count.
+  const peak = peakMemory();
+  const entries = unzipSync(new Uint8Array(await readFile(output)));
+  const entry: Uint8Array | undefined = entries[`${agentPrefix(agent.id)}workspace/${LARGE_NAME}`];
+  assert.ok(entry, "The archive holds no large file.");
+  process.stdout.write(JSON.stringify({ peak, size: entry.byteLength, hash: sha256(entry) }));
+} else if (process.argv[2] === "--read-whole") {
+  // The way that read every file whole, as the reference of the memory.
+  const path = process.argv[3];
+  assert.ok(path, "The path is required.");
+  const bytes = await readFile(path);
+  const peak = peakMemory();
+  process.stdout.write(JSON.stringify({ peak, size: bytes.byteLength, hash: sha256(bytes) }));
 } else {
   const reportPath = fileURLToPath(new URL("../.openbot-build/transfer-upload-cleanup-e2e.json", import.meta.url));
   const root = await mkdtemp(join(tmpdir(), "transfer-upload-cleanup-"));
@@ -385,6 +652,9 @@ if (process.argv[2] === "--seed") {
       ["preparation-retry", () => checkRetry(root)],
       ["local-file-and-invalid-upload", () => checkLocal(root)],
       ["archive-write", () => checkArchiveWrite(root)],
+      ["export-content", () => checkExportContent(root)],
+      ["export-missing-file", () => checkExportMissingFile(root)],
+      ["export-bounded-memory", () => checkExportMemory(root)],
     ];
     for (const [name, check] of checks) {
       activeCheck = name;

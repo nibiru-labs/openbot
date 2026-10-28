@@ -11,7 +11,7 @@
 // here and never replace an MCP server, provider or custom agent that this computer has.
 
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { type FileHandle, lstat, mkdir, open, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import type { AgentProviderId } from "@openbot/contracts/agent-providers";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
@@ -260,8 +260,7 @@ export class InstanceTransferService {
       const resolved = this.options.agents.resolveAvatar(agent.id);
       if (resolved) {
         avatar = `${prefix}avatar.${AVATAR_EXTENSIONS[resolved.mimeType]}`;
-        const avatarPath = resolved.path;
-        entries.push({ name: avatar, read: () => readFile(avatarPath) });
+        entries.push({ name: avatar, path: resolved.path });
       }
 
       const skills: string[] = [];
@@ -280,7 +279,7 @@ export class InstanceTransferService {
         skills.push(folder);
         for (const file of skill.files) {
           bytes += file.size;
-          entries.push({ name: `${folder}/${file.name}`, read: () => readFile(file.path) });
+          entries.push({ name: `${folder}/${file.name}`, path: file.path });
         }
       }
 
@@ -293,7 +292,7 @@ export class InstanceTransferService {
             bytes += file.size;
             entries.push({
               name: `${files}/${file.name}`,
-              read: () => readFile(file.path),
+              path: file.path,
               executable: file.executable,
             });
           }
@@ -353,7 +352,7 @@ export class InstanceTransferService {
         bytes += file.size;
         entries.push({
           name: `${SHARED_FOLDER}/${file.name}`,
-          read: () => readFile(file.path),
+          path: file.path,
           executable: file.executable,
         });
       }
@@ -371,7 +370,7 @@ export class InstanceTransferService {
       signedIn: this.options.settings.signedInProviders(),
     };
     const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
-    entries.unshift({ name: INSTANCE_TRANSFER_MANIFEST, read: () => Promise.resolve(manifestBytes) });
+    entries.unshift({ name: INSTANCE_TRANSFER_MANIFEST, bytes: manifestBytes });
     const gone = yield* writeZipEffect(path, entries);
     return {
       saved: true,
@@ -1119,11 +1118,17 @@ function isSharedData(name: string): boolean {
   return lower === SHARED_DATA || lower.startsWith(`${SHARED_DATA}/`);
 }
 
-interface ZipEntry {
-  name: string;
-  read: () => Promise<Uint8Array>;
-  executable?: boolean;
-}
+/**
+ * An entry of the archive. The manifest is bytes that the service holds. Every other entry is a
+ * file that the export reads in chunks, so the memory of the process does not grow with the size
+ * of the file.
+ */
+type ZipEntry =
+  | { name: string; bytes: Uint8Array; executable?: boolean }
+  | { name: string; path: string; executable?: boolean };
+
+/** The size of the chunk that the export reads from a file and writes to the archive. */
+const CHUNK_SIZE = 64 * 1024;
 
 /** Writes the archive to `<path>.part` one file at a time, then renames it. */
 const writeZipEffect = Effect.fn("InstanceTransfer.writeZip")(function* (
@@ -1153,15 +1158,6 @@ const writeZipEffect = Effect.fn("InstanceTransfer.writeZip")(function* (
           );
       });
       for (const entry of entries) {
-        let data: Uint8Array;
-        try {
-          data = await entry.read();
-        } catch (cause) {
-          // A running agent can delete a file after the walk; the export goes on without it.
-          if (!isMissingFileError(cause)) throw cause;
-          gone += 1;
-          continue;
-        }
         // Stored, not compressed: compression would run on the main thread.
         const file = new ZipPassThrough(entry.name);
         if (entry.executable !== undefined) {
@@ -1169,8 +1165,33 @@ const writeZipEffect = Effect.fn("InstanceTransfer.writeZip")(function* (
           file.os = 3;
           file.attrs = (entry.executable ? 0o100755 : 0o100644) * 0x10000;
         }
-        zip.add(file);
-        file.push(data, true);
+        if ("path" in entry) {
+          const source = await openEntry(entry.path);
+          // A running agent can delete a file after the walk; the export goes on without it.
+          if (!source) {
+            gone += 1;
+            continue;
+          }
+          try {
+            zip.add(file);
+            const buffer = new Uint8Array(CHUNK_SIZE);
+            for (;;) {
+              const { bytesRead } = await source.read(buffer, 0, CHUNK_SIZE, null);
+              if (bytesRead === 0) break;
+              file.push(buffer.subarray(0, bytesRead));
+              // The chunk stays in the memory of the process until the write of it is done, so the
+              // export waits for that write before it reads the next chunk.
+              await pending;
+              if (error) throw error;
+            }
+            file.push(new Uint8Array(0), true);
+          } finally {
+            await source.close();
+          }
+        } else {
+          zip.add(file);
+          file.push(entry.bytes, true);
+        }
         await pending;
         if (error) throw error;
       }
@@ -1184,6 +1205,19 @@ const writeZipEffect = Effect.fn("InstanceTransfer.writeZip")(function* (
     return gone;
   }).pipe(Effect.tapError(() => archiveCall(() => rm(part, { force: true })).pipe(Effect.ignore)));
 });
+
+/**
+ * Opens the file of an entry. A file that is gone is not an error: the export goes on without it
+ * and reports how many files it missed.
+ */
+async function openEntry(path: string): Promise<FileHandle | null> {
+  try {
+    return await open(path, "r");
+  } catch (cause) {
+    if (!isMissingFileError(cause)) throw cause;
+    return null;
+  }
+}
 
 function failure(error: unknown): ArchiveOperationError {
   return archiveFailure(causeOf(error));
