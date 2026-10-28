@@ -613,6 +613,8 @@ export function prometheusMetrics(signal: SignalService): string {
     `openbot_remote_signal_messages_total ${metrics.relayedMessages}`,
     "# TYPE openbot_remote_auth_failures_total counter",
     `openbot_remote_auth_failures_total ${metrics.authenticationFailures}`,
+    "# TYPE openbot_remote_auth_unavailable_total counter",
+    `openbot_remote_auth_unavailable_total ${metrics.authenticationUnavailable}`,
     "# TYPE openbot_remote_protocol_failures_total counter",
     `openbot_remote_protocol_failures_total ${metrics.protocolFailures}`,
     "# TYPE openbot_remote_slack_deliveries_total counter",

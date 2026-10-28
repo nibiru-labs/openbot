@@ -3,8 +3,8 @@ import { extname } from "node:path";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger } from "@openbot/logging";
 import { Effect, Schema } from "effect";
-import { agentLaunchPath, resolveAgentCommand } from "../acp-agent-command";
-import { cliSpawnTarget } from "../cli";
+import { resolveAgentCommand } from "../acp-agent-command";
+import { agentLaunchPath, cliSpawnTarget } from "../cli";
 import { endProcessTree } from "../windows-process-tree";
 
 export class DispatchFailed extends Schema.TaggedError<DispatchFailed>()("DispatchFailed", {

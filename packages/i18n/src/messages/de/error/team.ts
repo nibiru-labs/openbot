@@ -10,6 +10,7 @@ export const messages = {
   "error.team.accountChangedDuringCreate":
     "Das angemeldete Konto wurde während der Erstellung dieses Servers geändert.",
   "error.team.notConfigured": "Dieser OpenBot wurde nicht eingerichtet.",
+  "error.team.keyRotationMissing": "Es wartet keine Änderung des Serverschlüssels.",
   "error.team.serverNotActive": "Dieser Server ist für das angemeldete Konto nicht mehr aktiv.",
   "error.team.logoInvalid": "Wähle ein gültiges PNG-, JPEG- oder WebP-Bild mit höchstens 512 KB.",
   "error.team.ownerMembershipConflict":
@@ -62,14 +63,17 @@ export const messages = {
   "error.team.channelDeleteUnsupported": "Diese Verbindung unterstützt das Löschen von Kanälen nicht.",
   "error.team.membersCannotDeleteChannels": "Mitglieder können keine Kanäle löschen.",
   "error.team.membersCannotArchiveChannels": "Mitglieder können keine Kanäle archivieren.",
+  "error.team.membersCannotRestoreChannels": "Mitglieder können keine Kanäle wiederherstellen.",
   "error.team.sharedDataUnsupported": "Diese Verbindung unterstützt keine geteilten Daten.",
   "error.team.agentInstallUnsupported": "Diese Verbindung unterstützt das Hinzufügen von Agenten nicht.",
   "error.team.agentHideUnsupported": "Diese Verbindung unterstützt das Ausblenden von Agenten nicht.",
   "error.team.agentPublishUnsupported": "Diese Verbindung unterstützt das Veröffentlichen von Agenten nicht.",
   "error.team.agentUpdateUnsupported": "Diese Verbindung unterstützt das Aktualisieren von Agenten nicht.",
   "error.team.contextResetUnsupported": "Diese Verbindung unterstützt das Starten eines neuen Chats nicht.",
+  "error.team.contextCompactUnsupported": "Das Komprimieren des Kontexts wird von dieser Verbindung nicht unterstützt.",
   "error.team.workspaceDirectoryUnsupported": "Diese Verbindung unterstützt das Anzeigen von Ordnern nicht.",
   "error.team.conversationFileSearchUnsupported": "Diese Verbindung unterstützt das Suchen von Dateien nicht.",
+  "error.team.sideQuestionUnsupported": "Diese Verbindung unterstützt keine Nebenfragen.",
   "error.team.routineFlowsUnsupported":
     "Dieser Server unterstützt keine Routinenabläufe. Aktualisiere OpenBot auf dem Computer, auf dem er läuft.",
   "error.team.routineCanvasTooLarge":
@@ -86,7 +90,10 @@ export const messages = {
   "error.team.hostIdentityUnsupported": "Diese Verbindung unterstützt keine Änderungen der Serveridentität.",
   "error.team.hostUpdateUnsupported": "Diese Verbindung unterstützt keine Host-Aktualisierungen.",
   "error.team.hostTimezoneUnsupported": "Diese Verbindung unterstützt die Zeitzone des Servers nicht.",
+  "error.team.routineResultsUnsupported": "Diese Verbindung unterstützt keine Ziele für Routinen.",
   "error.team.agentMemoryLimitUnsupported": "Diese Verbindung unterstützt das Erinnerungslimit der Agenten nicht.",
+  "error.team.promptCacheTtlUnsupported": "Diese Verbindung unterstützt die Prompt-Cache-Dauer nicht.",
+  "error.team.providerDefaultUnsupported": "Diese Verbindung unterstützt den Standardanbieter nicht.",
   "error.team.attachmentNameRequired": "Ein sicherer Anhangsname ist erforderlich.",
   "error.team.attachmentNotFound": "Anhang nicht gefunden.",
   "error.team.sharedFileTooLarge": "Die geteilte Datei überschreitet die Grenze von 100 MB.",

@@ -3,12 +3,11 @@ import {
   attachmentFileExtension,
   supportedAttachmentExtensions,
 } from "@openbot/contracts/attachment-files";
+import { isAvatarMimeType } from "@openbot/contracts/avatar-images";
 import type {
   AccountUsage,
   AgentEvent,
-  AgentModelOption,
   AgentStatus,
-  AgentSummary,
   AttachmentSummary,
   AvatarImageInput,
   BrowserLiveViewEvent,
@@ -17,6 +16,8 @@ import type {
   BrowserPreview,
   BrowserTab,
   CancelQueuedMessageInput,
+  ClientAgentModelOption,
+  ClientAgentSummary,
   ConversationPage,
   ConversationReadState,
   ConversationSearchPage,
@@ -25,10 +26,10 @@ import type {
   EditQueuedMessageInput,
   HiddenAgentsSnapshot,
   InvitePreview,
+  LocalBrowserSecretResponse,
   QueueSnapshot,
   ReorderQueueInput,
   RespondToApprovalInput,
-  RespondToBrowserSecretInput,
   RespondToBrowserTakeoverInput,
   RespondToPromptInput,
   Routine,
@@ -51,9 +52,9 @@ import {
   canAdministerServer,
   decodeWorkspaceDirectory,
   isAccountUsage,
-  isAgentModelOption,
   isAgentStatus,
-  isAgentSummary,
+  isClientAgentModelOption,
+  isClientAgentSummary,
   isConversationMessage,
   isConversationReadState,
   isConversationWithReadState,
@@ -95,6 +96,7 @@ import {
 import { runTeamEffect } from "@openbot/team-client";
 import { bytesToBase64 } from "@openbot/team-client/base64";
 import { createRemoteBrowserView, type RemoteBrowserView } from "@openbot/team-client/browser-view";
+import { verifyEd25519Base64Url } from "@openbot/team-client/ed25519";
 import {
   RemoteDirectoryError,
   RemoteTeamDirectoryClient,
@@ -122,10 +124,9 @@ import {
   type TeamApiRequest,
   type TeamChannelsApi,
   type TeamRoutineFlowsApi,
+  teamAgentRoutinesApi,
   teamChannelsApi,
   teamRoutineFlowsApi,
-  testAgentRoutine,
-  updateAgentRoutine,
   updateQueuedMessage,
   uploadAttachmentDraft,
 } from "@openbot/team-client/team-api-requests";
@@ -181,7 +182,7 @@ export interface WebWorkspaceRuntime {
   /** Behind `browser-user-control`: the owning agent waits on the tab until the release. */
   takeBrowserControl(tabId: string): Promise<void>;
   releaseBrowserControl(tabId: string): Promise<void>;
-  respondToBrowserSecret?: (input: RespondToBrowserSecretInput) => Promise<void>;
+  respondToBrowserSecret?: (input: LocalBrowserSecretResponse) => Promise<void>;
   getSidebarLayout?: () => Promise<SidebarLayoutSnapshot>;
   mutateSidebarLayout?: (action: SidebarLayoutAction) => Promise<SidebarLayoutSnapshot>;
   /** The host's channel routes. A channel page arrives without host file URLs. */
@@ -197,7 +198,7 @@ export interface WebWorkspaceRuntime {
   acceptInvite(url: string): Promise<RemoteTeamHost>;
   connect(host: RemoteTeamHost): Promise<string[]>;
   disconnect(): Promise<void>;
-  listAgents(): Promise<AgentSummary[]>;
+  listAgents(): Promise<ClientAgentSummary[]>;
   conversation(agentId: string, before?: string): Promise<ConversationPage>;
   /** The page of an agent's conversation around one message, or the newest page from an older host. */
   conversationAround?: (agentId: string, messageId: string) => Promise<ConversationPage>;
@@ -248,10 +249,12 @@ export interface WebWorkspaceRuntime {
   setAgentHidden?: (input: SetAgentHiddenInput) => Promise<HiddenAgentsSnapshot>;
   react(input: SetMessageReactionInput): Promise<void>;
   setAvatar(agentId: string, image: AvatarImageInput | null): Promise<void>;
-  models(): Promise<AgentModelOption[]>;
+  /** The agent image as a data URL. The browser cannot open the host's `openbot-avatar:` URL. */
+  agentAvatar(agentId: string, avatarUrl: string): Promise<string>;
+  models(): Promise<ClientAgentModelOption[]>;
   status(): Promise<AgentStatus>;
   accountUsage?: () => Promise<AccountUsage>;
-  createAgent(input: CreateAgentInput): Promise<AgentSummary>;
+  createAgent(input: CreateAgentInput): Promise<ClientAgentSummary>;
   duplicateAgent(agentId: string): Promise<DuplicateAgentResult>;
   updateAgent(input: UpdateAgentInput): Promise<void>;
   deleteAgent(agentId: string): Promise<void>;
@@ -274,7 +277,7 @@ export interface WebRuntimeEvents {
   /** A host that this tab has not opened revoked its session. */
   hostSessionRevoked?(): void;
   /** An event of a host this tab has not opened that a notification can show. */
-  hostNotice?(hostId: string, event: WebHostNotice, agents: AgentSummary[]): void;
+  hostNotice?(hostId: string, event: WebHostNotice, agents: ClientAgentSummary[]): void;
 }
 
 /** The host speaks no Team API protocol that this web build speaks. The workspace shows it in full. */
@@ -337,6 +340,7 @@ export function createWebWorkspaceRuntime(
     fetch: accountFetch,
     // `bun run dev:api` serves this page and the account service from `http://localhost:<port>`.
     inviteLinks: { allowLocalDevelopmentApiUrl: import.meta.env.DEV },
+    verifyHostKeySignature: verifyEd25519Base64Url,
     hostKeys: {
       get: async (id) => localStorage.getItem(`openbot.web.host-key:${accountId}:${id}`),
       set: async (id, key) => localStorage.setItem(`openbot.web.host-key:${accountId}:${id}`, key),
@@ -406,7 +410,7 @@ export function createWebWorkspaceRuntime(
         // Without a listener, the status connections read no agent list.
         ...(events.hostNotice
           ? {
-              onNotice: (hostId: string, event: WebHostNotice, agents: AgentSummary[]) =>
+              onNotice: (hostId: string, event: WebHostNotice, agents: ClientAgentSummary[]) =>
                 events.hostNotice?.(hostId, event, agents),
             }
           : {}),
@@ -593,6 +597,7 @@ export function createWebWorkspaceRuntime(
     return teamApi(method, path, decode, body);
   }
   const routineFlows = teamRoutineFlowsApi(routineFlowsRequest);
+  const agentRoutines = teamAgentRoutinesApi(teamApi);
   const browserView = createRemoteBrowserView(
     (data) => peer.sendHostStreamData(data),
     request,
@@ -881,7 +886,7 @@ export function createWebWorkspaceRuntime(
       }
     },
     async listAgents() {
-      return guardedListDecoder(isAgentSummary, "agents")(await request("GET", TEAM_API_ROUTES.agents.all));
+      return guardedListDecoder(isClientAgentSummary, "agents")(await request("GET", TEAM_API_ROUTES.agents.all));
     },
     async conversation(id, before) {
       if (!capabilities.includes("conversation-pagination")) {
@@ -931,6 +936,22 @@ export function createWebWorkspaceRuntime(
         { name: "avatar", mimeType: image.mimeType, base64: bytesToBase64(image.bytes) },
       );
     },
+    async agentAvatar(agentId, avatarUrl) {
+      const version = new URL(avatarUrl).searchParams.get("v");
+      if (!version) throw new Error(currentText().t("error.remote.invalidData"));
+      const value = await request(
+        "GET",
+        `${TEAM_API_ROUTES.agent.avatar(agentId)}?${new URLSearchParams({ v: version })}`,
+      );
+      if (
+        !isDynamicRecord(value) ||
+        !isString(value.mimeType) ||
+        !isAvatarMimeType(value.mimeType) ||
+        !isString(value.base64)
+      )
+        throw new Error(currentText().t("error.remote.invalidData"));
+      return `data:${value.mimeType};base64,${value.base64}`;
+    },
     async send(id, text, attachmentDraftIds, replyToMessageId = null, clientMessageId) {
       const result = await request("POST", TEAM_API_ROUTES.agent.messages(id), {
         text,
@@ -972,6 +993,8 @@ export function createWebWorkspaceRuntime(
       const supported = supportedAttachmentExtensions({
         eml: capabilities.includes("eml-attachments"),
         media: capabilities.includes("media-attachments"),
+        zip: capabilities.includes("zip-attachments"),
+        mp4: capabilities.includes("mp4-attachments"),
       });
       if (extension && !supported.includes(extension)) throw new Error(currentText().t("webClient.error.fileType"));
       if (file.size > MOBILE_ATTACHMENT_BYTES) throw new Error(currentText().t("error.remote.attachmentTooLarge"));
@@ -1024,15 +1047,16 @@ export function createWebWorkspaceRuntime(
       return decodeWorkspaceDirectory(await request("POST", WORKSPACE_DIRECTORY_ROUTES.list, { agentId, path }));
     },
     routineFlows,
-    updateRoutine: (input) =>
-      runTeamEffect(updateAgentRoutine(teamApi, input).pipe(Effect.mapError((error) => error.cause))),
-    testRoutine: (input) =>
-      runTeamEffect(testAgentRoutine(teamApi, input).pipe(Effect.mapError((error) => error.cause))),
+    updateRoutine: agentRoutines.updateRoutine,
+    testRoutine: agentRoutines.testRoutine,
     listHiddenAgents: () => runTeamEffect(listHiddenAgents(teamApi).pipe(Effect.mapError((error) => error.cause))),
     setAgentHidden: (input) =>
       runTeamEffect(setAgentHidden(teamApi, input).pipe(Effect.mapError((error) => error.cause))),
     async models() {
-      return guardedListDecoder(isAgentModelOption, "models")(await request("GET", TEAM_API_ROUTES.agents.models));
+      return guardedListDecoder(
+        isClientAgentModelOption,
+        "models",
+      )(await request("GET", TEAM_API_ROUTES.agents.models));
     },
     async status() {
       const value = await request("GET", TEAM_API_ROUTES.agents.status);
@@ -1046,7 +1070,7 @@ export function createWebWorkspaceRuntime(
     },
     async createAgent(input) {
       const value = await request("POST", TEAM_API_ROUTES.agents.all, { ...input });
-      if (!isAgentSummary(value)) throw new Error(currentText().t("error.remote.invalidData"));
+      if (!isClientAgentSummary(value)) throw new Error(currentText().t("error.remote.invalidData"));
       return value;
     },
     async duplicateAgent(agentId) {
@@ -1055,7 +1079,7 @@ export function createWebWorkspaceRuntime(
       const operationId = duplicateOperationIds.get(operationKey) ?? crypto.randomUUID();
       duplicateOperationIds.set(operationKey, operationId);
       const value = await request("POST", TEAM_API_ROUTES.agent.duplicate(agentId), { operationId });
-      if (!isDynamicRecord(value) || !isAgentSummary(value.agent) || !isSidebarLayoutSnapshot(value.layout))
+      if (!isDynamicRecord(value) || !isClientAgentSummary(value.agent) || !isSidebarLayoutSnapshot(value.layout))
         throw new Error(currentText().t("error.remote.invalidData"));
       duplicateOperationIds.delete(operationKey);
       return { agent: value.agent, layout: value.layout } satisfies DuplicateAgentResult;

@@ -53,6 +53,21 @@ const dangerSpec: UiConfirmSpec = {
   ],
 };
 
+/** The plan card of `acknowledge_request`. The host presses Start when nobody answers in 10 s. */
+const planSpec: UiConfirmSpec = {
+  type: "confirm",
+  title: "On it. This is my plan for the 502 on staging.",
+  fields: [
+    { label: "First", value: "Read the nginx and API logs on staging" },
+    { label: "Then", value: "Fix the cause, for example restart the API container" },
+  ],
+  actions: [
+    { id: "start", label: "Start", style: "primary" },
+    { id: "alternative", label: "Only find the cause" },
+    { id: "cancel", label: "Cancel", style: "ghost" },
+  ],
+};
+
 const choiceSpec: UiChoiceSpec = {
   type: "choice",
   title: "Who should get the offer?",
@@ -179,6 +194,44 @@ export const ConfirmAnswered: Story = {
 
 export const ConfirmExpired: Story = {
   render: (args) => <LiveConfirm spec={confirmSpec} state={{ status: "expired" }} onRespond={args.onRespond} />,
+};
+
+/** A draft taller than the preview box scrolls inside it, and "Show all" under it opens the rest. */
+export const ConfirmLongPreview: Story = {
+  render: (args) => (
+    <LiveConfirm
+      spec={{
+        ...confirmSpec,
+        preview: Array.from({ length: 6 }, () => confirmSpec.preview).join("\n\n"),
+      }}
+      onRespond={args.onRespond}
+    />
+  ),
+};
+
+/** Start counts down to the time the host answers. Cancel sits at the far end, and there is no Skip. */
+export const PlanCountdown: Story = {
+  render: (args) => (
+    <LiveConfirm
+      spec={planSpec}
+      state={{ status: "pending", autoAnswer: { actionId: "start", at: new Date(Date.now() + 10_000).toISOString() } }}
+      onRespond={args.onRespond}
+    />
+  ),
+};
+
+/** Nobody answered in time, so the host pressed Start. */
+export const PlanAutoAnswered: Story = {
+  render: (args) => (
+    <LiveConfirm
+      spec={planSpec}
+      state={{
+        ...answered(planSpec, { actionId: "start" }),
+        autoAnswer: { actionId: "start", at: new Date().toISOString(), done: true },
+      }}
+      onRespond={args.onRespond}
+    />
+  ),
 };
 
 export const ChoicePending: Story = {

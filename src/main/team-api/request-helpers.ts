@@ -10,6 +10,8 @@
 import type { IncomingMessage } from "node:http";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import {
+  type AgentAccessLevel,
+  agentAccessRank,
   type ConversationMessageSender,
   type ConversationPageAnchor,
   type ConversationSnapshot,
@@ -50,6 +52,7 @@ import { TEAM_PROTOCOL_V2_MAX_JSON_FRAME_BYTES } from "@openbot/contracts/team-p
 import { sourceText } from "@openbot/i18n/source";
 import { readBodyWithin } from "../http-body";
 import { HttpError } from "./http-error";
+import type { TeamApiRequestContext } from "./request-context";
 
 export const JSON_LIMIT = 1024 * 1024;
 /** A response body leaves room in one WebRTC frame for the response envelope around it. */
@@ -195,6 +198,22 @@ export function requireVisibleBodyAgent(body: DynamicRecord, hiddenAgentIds: Rea
   if (isString(body.agentId) && hiddenAgentIds.has(body.agentId)) {
     throw new HttpError(404, sourceText("error.team.agentNotFound"));
   }
+}
+
+/**
+ * A write to one agent needs the level that it changes: `chat` to talk to the agent, `manage` to change
+ * it. A `none` agent never gets here; the router answers 404 for it.
+ */
+export function requireAgentLevel(
+  context: Pick<TeamApiRequestContext, "agentLevel">,
+  agentId: string,
+  required: Exclude<AgentAccessLevel, "none">,
+): void {
+  if (agentAccessRank(context.agentLevel(agentId)) >= agentAccessRank(required)) return;
+  throw new HttpError(
+    403,
+    sourceText(required === "manage" ? "error.team.agentManageDenied" : "error.team.agentViewOnly"),
+  );
 }
 
 export function parseBrowserBounds(value: unknown): {

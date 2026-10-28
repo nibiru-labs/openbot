@@ -18,15 +18,22 @@ import { isDynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-
 import { sourceText } from "@openbot/i18n/source";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { AgentRoutineStore } from "./agent-routine-store";
+import { AGENT_THREAD_MIGRATION_SQL } from "./agent-threads/agent-thread-schema";
+import { BROWSER_PROFILE_SCHEMA_SQL } from "./browser-profiles/browser-profile-schema";
 import { ChannelRoutineStore } from "./channel-routine-store";
 import { ChannelStore } from "./channel-store";
 import { ConversationReadStore } from "./conversation-read-store";
 import { runCauseEffect } from "./effect-boundary";
 import { OpenBotDatabase } from "./openbot-database";
+import { migrateOpenBotDatabase } from "./openbot-database-schema";
+import { ROUTINE_BACKOFF_SCHEMA_SQL } from "./routine-backoff/routine-backoff-schema";
+import { WORKFLOW_SCHEMA_SQL } from "./workflows/workflow-schema";
 
 const roots: string[] = [];
+const migrationDatabases: DatabaseSync[] = [];
 
 afterEach(async () => {
+  for (const database of migrationDatabases.splice(0)) database.close();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -114,6 +121,10 @@ describe("OpenBotDatabase", () => {
         "projection_direct_threads",
         "projection_direct_messages",
         "projection_direct_reads",
+        "browser_profiles",
+        "workflows",
+        "projection_agent_threads",
+        "routine_backoff",
         "projection_channel_memories",
         "projection_channel_routines",
         "projection_channel_routine_triggers",
@@ -168,6 +179,10 @@ describe("OpenBotDatabase", () => {
       { version: 43 },
       { version: 44 },
       { version: 45 },
+      { version: 46 },
+      { version: 47 },
+      { version: 48 },
+      { version: 49 },
     ]);
     database.close();
   });
@@ -1477,6 +1492,7 @@ describe("OpenBotDatabase", () => {
       analyticsRelease.exec(`DROP TABLE projection_channel_${table}`);
     analyticsRelease.exec("DROP TABLE projection_channels");
     analyticsRelease.exec("DELETE FROM schema_migrations WHERE version >= 17");
+    removeForkTail(analyticsRelease);
     analyticsRelease.close();
 
     const migrated = new OpenBotDatabase(root);
@@ -1536,6 +1552,10 @@ describe("OpenBotDatabase", () => {
       { version: 43 },
       { version: 44 },
       { version: 45 },
+      { version: 46 },
+      { version: 47 },
+      { version: 48 },
+      { version: 49 },
     ]);
     expect(migrated.connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     migrated.close();
@@ -1564,9 +1584,10 @@ describe("OpenBotDatabase", () => {
     removeProviderHistorySchema(legacy);
     legacy
       .prepare(
-        "DELETE FROM schema_migrations WHERE version IN (29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45)",
+        "DELETE FROM schema_migrations WHERE version IN (29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49)",
       )
       .run();
+    removeForkTail(legacy);
     if (failFirst) legacy.exec("CREATE TABLE provider_history_imports_thread (conflict TEXT)");
     legacy.close();
 
@@ -1668,9 +1689,10 @@ describe("OpenBotDatabase", () => {
       ALTER TABLE projection_provider_sessions_v18 RENAME TO projection_provider_sessions;
       CREATE INDEX provider_sessions_thread
         ON projection_provider_sessions(thread_id, provider, state);
-      DELETE FROM schema_migrations WHERE version IN (19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45);
+      DELETE FROM schema_migrations WHERE version IN (19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49);
       PRAGMA foreign_keys = ON;
     `);
+    removeForkTail(legacy);
     legacy.close();
 
     const migrated = new OpenBotDatabase(root);
@@ -1696,7 +1718,7 @@ describe("OpenBotDatabase", () => {
         .get(),
     ).toMatchObject({ sql: expect.not.stringContaining("CHECK(provider") });
     expect(migrated.connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-      version: 45,
+      version: 49,
     });
     migrated.close();
   });
@@ -1715,8 +1737,9 @@ describe("OpenBotDatabase", () => {
     removeProviderHistorySchema(legacy);
     legacy.exec(`
       DROP TABLE projection_mcp_servers;
-      DELETE FROM schema_migrations WHERE version IN (20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45);
+      DELETE FROM schema_migrations WHERE version IN (20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49);
     `);
+    removeForkTail(legacy);
     legacy.close();
 
     const migrated = new OpenBotDatabase(root);
@@ -1740,7 +1763,7 @@ describe("OpenBotDatabase", () => {
       { name: "Filesystem" },
     ]);
     expect(reopened.connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-      version: 45,
+      version: 49,
     });
     reopened.close();
   });
@@ -1781,8 +1804,9 @@ describe("OpenBotDatabase", () => {
         DROP TABLE projection_messaging_memories;
         DROP TABLE projection_messaging_threads;
         DROP TABLE projection_messaging_connections;
-        DELETE FROM schema_migrations WHERE version IN (25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45);
+        DELETE FROM schema_migrations WHERE version IN (25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49);
       `);
+      removeForkTail(legacy);
       // The squatted name is the index's: the tables use IF NOT EXISTS, so only the index can collide.
       if (failFirst) legacy.exec("CREATE TABLE messaging_threads_agent (conflict TEXT)");
       legacy.close();
@@ -1806,7 +1830,7 @@ describe("OpenBotDatabase", () => {
       expect(migrated.listAgents()).toEqual([agent]);
       expect(migrated.readConversation(agent.id, agent.threadId).messages).toEqual(conversation.messages);
       expect(connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-        version: 45,
+        version: 49,
       });
       expect(connection.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
       expect(connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
@@ -1862,8 +1886,9 @@ describe("OpenBotDatabase", () => {
          '2026-09-14T10:00:00.000Z', '2026-09-14T10:00:00.000Z'),
         ('mcp-2', 'computer_use_saved', 'stdio', 1, 'other', '[]', '[]', '[]', '', '', '[]', 1,
          '2026-09-14T10:00:00.000Z', '2026-09-14T10:00:00.000Z');
-      DELETE FROM schema_migrations WHERE version IN (21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45);
+      DELETE FROM schema_migrations WHERE version IN (21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49);
     `);
+    removeForkTail(legacy);
     legacy.close();
 
     const migrated = new OpenBotDatabase(root);
@@ -1965,6 +1990,10 @@ describe("OpenBotDatabase", () => {
       { version: 43 },
       { version: 44 },
       { version: 45 },
+      { version: 46 },
+      { version: 47 },
+      { version: 48 },
+      { version: 49 },
     ]);
     migrated.close();
   });
@@ -2068,6 +2097,10 @@ describe("OpenBotDatabase", () => {
       { version: 43 },
       { version: 44 },
       { version: 45 },
+      { version: 46 },
+      { version: 47 },
+      { version: 48 },
+      { version: 49 },
     ]);
     retried.close();
   });
@@ -2164,6 +2197,7 @@ describe("OpenBotDatabase", () => {
         SELECT RAISE(ABORT, 'blocked session refresh');
       END;
     `);
+    removeForkTail(legacy);
     legacy.close();
 
     const failed = new OpenBotDatabase(root);
@@ -2685,6 +2719,7 @@ describe("OpenBotDatabase", () => {
         ON projection_provider_sessions(thread_id, provider, state);
       PRAGMA foreign_keys = ON;
     `);
+      removeForkTail(legacy);
       const originalSessions = legacy.prepare("SELECT * FROM projection_provider_sessions ORDER BY id").all();
       if (failFirst)
         legacy.exec(`
@@ -2813,6 +2848,7 @@ describe("OpenBotDatabase", () => {
         ON projection_provider_sessions(thread_id, provider, state);
       PRAGMA foreign_keys = ON;
     `);
+      removeForkTail(legacy);
       const originalSessions = legacy.prepare("SELECT * FROM projection_provider_sessions ORDER BY id").all();
       const originalIndexes = legacy.prepare("PRAGMA index_list(projection_provider_sessions)").all();
       const originalIndexColumns = legacy.prepare("PRAGMA index_info(provider_sessions_thread)").all();
@@ -2860,7 +2896,7 @@ describe("OpenBotDatabase", () => {
       expect(migrated.connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(migrated.connection.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
       expect(migrated.connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-        version: 45,
+        version: 49,
       });
       expect(
         migrated.connection.prepare("SELECT provider_session_id FROM projection_turns WHERE turn_id = ?").get("turn-1"),
@@ -2957,6 +2993,7 @@ describe("OpenBotDatabase", () => {
         ON projection_provider_sessions(thread_id, provider, state);
       PRAGMA foreign_keys = ON;
     `);
+      removeForkTail(legacy);
       const originalSessions = legacy.prepare("SELECT * FROM projection_provider_sessions ORDER BY id").all();
       const originalIndexes = legacy.prepare("PRAGMA index_list(projection_provider_sessions)").all();
       const originalIndexColumns = legacy.prepare("PRAGMA index_info(provider_sessions_thread)").all();
@@ -3001,7 +3038,7 @@ describe("OpenBotDatabase", () => {
       expect(connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(connection.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
       expect(connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-        version: 45,
+        version: 49,
       });
       expect(
         connection.prepare("SELECT provider_session_id FROM projection_turns WHERE turn_id = ?").get("turn-1"),
@@ -3119,6 +3156,7 @@ describe("OpenBotDatabase", () => {
         ON projection_provider_sessions(thread_id, provider, state);
       PRAGMA foreign_keys = ON;
     `);
+      removeForkTail(legacy);
       const originalSessions = legacy.prepare("SELECT * FROM projection_provider_sessions ORDER BY id").all();
       const originalIndexes = legacy.prepare("PRAGMA index_list(projection_provider_sessions)").all();
       const originalIndexColumns = legacy.prepare("PRAGMA index_info(provider_sessions_thread)").all();
@@ -3163,7 +3201,7 @@ describe("OpenBotDatabase", () => {
       expect(connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(connection.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
       expect(connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-        version: 45,
+        version: 49,
       });
       expect(
         connection.prepare("SELECT provider_session_id FROM projection_turns WHERE turn_id = ?").get("turn-1"),
@@ -3294,6 +3332,7 @@ describe("OpenBotDatabase", () => {
         ON projection_provider_sessions(thread_id, provider, state);
       PRAGMA foreign_keys = ON;
     `);
+      removeForkTail(legacy);
       const originalSessions = legacy.prepare("SELECT * FROM projection_provider_sessions ORDER BY id").all();
       const originalIndexes = legacy.prepare("PRAGMA index_list(projection_provider_sessions)").all();
       const originalIndexColumns = legacy.prepare("PRAGMA index_info(provider_sessions_thread)").all();
@@ -3338,7 +3377,7 @@ describe("OpenBotDatabase", () => {
       expect(connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(connection.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
       expect(connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-        version: 45,
+        version: 49,
       });
       expect(
         connection.prepare("SELECT provider_session_id FROM projection_turns WHERE turn_id = ?").get("turn-1"),
@@ -3466,6 +3505,8 @@ describe("OpenBotDatabase", () => {
         ALTER TABLE projection_channel_routines DROP COLUMN limit_policy;
         DELETE FROM schema_migrations WHERE version > ${source};
       `);
+      removeForkTail(legacy);
+      removeForkTail(legacy);
       const routineRows = (db: DatabaseSync) => ({
         agent: db.prepare("SELECT * FROM projection_agent_routines ORDER BY routine_id").all(),
         channel: db.prepare("SELECT * FROM projection_channel_routines ORDER BY routine_id").all(),
@@ -3507,7 +3548,7 @@ describe("OpenBotDatabase", () => {
       expect(connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(connection.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
       expect(connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-        version: 45,
+        version: 49,
       });
       const agentRoutines = new AgentRoutineStore(migrated);
       expect(agentRoutines.get(agent.id, agentRoutine.id)?.limitPolicy).toBe("wait");
@@ -3624,6 +3665,7 @@ describe("OpenBotDatabase", () => {
         ON projection_provider_sessions(thread_id, provider, state);
       PRAGMA foreign_keys = ON;
     `);
+      removeForkTail(legacy);
       const originalSessions = legacy.prepare("SELECT * FROM projection_provider_sessions ORDER BY id").all();
       const originalIndexes = legacy.prepare("PRAGMA index_list(projection_provider_sessions)").all();
       const originalIndexColumns = legacy.prepare("PRAGMA index_info(provider_sessions_thread)").all();
@@ -3672,7 +3714,7 @@ describe("OpenBotDatabase", () => {
       expect(connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(connection.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
       expect(connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-        version: 45,
+        version: 49,
       });
       expect(
         connection.prepare("SELECT provider_session_id FROM projection_turns WHERE turn_id = ?").get("turn-1"),
@@ -3862,6 +3904,7 @@ describe("OpenBotDatabase", () => {
         }
         DELETE FROM schema_migrations WHERE version > ${source};
       `);
+      removeForkTail(legacy);
       const routineRows = (db: DatabaseSync) => ({
         routines: db
           .prepare("SELECT routine_id, agent_id, name, instruction, active FROM projection_agent_routines")
@@ -3899,7 +3942,7 @@ describe("OpenBotDatabase", () => {
       expect(migrated.readConversation(agent.id, agent.threadId).messages).toEqual(conversation.messages);
       expect(routineRows(connection)).toEqual(original);
       expect(connection.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({
-        version: 45,
+        version: 49,
       });
       expect(connection.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
       expect(connection.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
@@ -3969,8 +4012,9 @@ describe("OpenBotDatabase", () => {
     const database = await createDatabase();
     const userDataPath = database.userDataPath;
     database.connection.exec(
-      "DROP TABLE projection_agent_tasks; DELETE FROM schema_migrations WHERE version IN (38, 39, 40, 41, 42, 43, 44, 45)",
+      "DROP TABLE projection_agent_threads; DELETE FROM schema_migrations WHERE version IN (38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49)",
     );
+    removeForkTail(database.connection);
     damageProbeTable(database);
 
     // The first start applies the migration; the second has none to run and must still check.
@@ -3981,6 +4025,97 @@ describe("OpenBotDatabase", () => {
     }
   });
 });
+
+describe("OpenBot database schema migration", () => {
+  it("repairs fork version 45 and upgrades upstream version 47 and the baseline", () => {
+    const fork = migrationDatabaseAt(44);
+    seedMigrationRoutine(fork);
+    fork.exec(ROUTINE_BACKOFF_SCHEMA_SQL);
+    fork
+      .prepare("INSERT INTO routine_backoff VALUES (?, ?, ?, ?, ?, ?)")
+      .run("routine-migration", "stable-answer", 3, 2, "2026-10-30T12:00:00.000Z", "2026-10-27T12:00:00.000Z");
+    fork.prepare("INSERT INTO schema_migrations VALUES (45, ?)").run("2026-10-27T12:00:00.000Z");
+    const backoffBefore = fork.prepare("SELECT * FROM routine_backoff").all();
+    fork.exec(`CREATE TEMP TRIGGER fail_browser_profile_marker BEFORE INSERT ON schema_migrations
+      WHEN new.version = 46 BEGIN SELECT RAISE(ABORT, 'fixture stop'); END;`);
+
+    expect(() => migrateOpenBotDatabase(fork)).toThrow("migration to version 46 failed");
+    expect(fork.prepare("SELECT version FROM schema_migrations WHERE version = 45").all()).toEqual([{ version: 45 }]);
+    expect(fork.prepare("SELECT name FROM sqlite_master WHERE name = 'browser_profiles'").all()).toEqual([]);
+    expect(fork.prepare("SELECT * FROM routine_backoff").all()).toEqual(backoffBefore);
+
+    fork.exec("DROP TRIGGER fail_browser_profile_marker");
+    migrateOpenBotDatabase(fork);
+    expect(fork.prepare("SELECT * FROM routine_backoff").all()).toEqual(backoffBefore);
+    expect(
+      fork
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('browser_profiles', 'workflows', 'projection_agent_threads') ORDER BY name",
+        )
+        .all(),
+    ).toEqual([{ name: "browser_profiles" }, { name: "projection_agent_threads" }, { name: "workflows" }]);
+    expect(fork.prepare("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 5").all()).toEqual([
+      { version: 49 },
+      { version: 48 },
+      { version: 47 },
+      { version: 46 },
+      { version: 45 },
+    ]);
+    expect(fork.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(fork.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+
+    const upstream = migrationDatabaseAt(44);
+    upstream.exec(BROWSER_PROFILE_SCHEMA_SQL + WORKFLOW_SCHEMA_SQL + AGENT_THREAD_MIGRATION_SQL);
+    upstream.exec("INSERT INTO schema_migrations VALUES (45, 'upstream'), (46, 'upstream'), (47, 'upstream')");
+    seedMigrationRoutine(upstream);
+    const routineBefore = upstream.prepare("SELECT * FROM projection_agent_routines").all();
+    upstream.exec(`CREATE TEMP TRIGGER fail_backoff_marker BEFORE INSERT ON schema_migrations
+      WHEN new.version = 49 BEGIN SELECT RAISE(ABORT, 'fixture stop'); END;`);
+    expect(() => migrateOpenBotDatabase(upstream)).toThrow("migration to version 49 failed");
+    expect(upstream.prepare("SELECT name FROM sqlite_master WHERE name = 'routine_backoff'").all()).toEqual([]);
+    expect(upstream.prepare("SELECT version FROM schema_migrations WHERE version = 49").all()).toEqual([]);
+    expect(upstream.prepare("SELECT * FROM projection_agent_routines").all()).toEqual(routineBefore);
+
+    upstream.exec("DROP TRIGGER fail_backoff_marker");
+    migrateOpenBotDatabase(upstream);
+    expect(upstream.prepare("SELECT * FROM projection_agent_routines").all()).toEqual(routineBefore);
+    expect(upstream.prepare("SELECT * FROM routine_backoff").all()).toEqual([]);
+    expect(upstream.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 49 });
+    expect(upstream.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(upstream.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+
+    const baseline = migrationDatabaseAt(8);
+    seedMigrationRoutine(baseline);
+    const baselineRoutine = baseline.prepare("SELECT * FROM projection_agent_routines").all();
+    migrateOpenBotDatabase(baseline);
+    expect(baseline.prepare("SELECT * FROM projection_agent_routines").all()).toEqual(
+      baselineRoutine.map((row) => ({ ...row, limit_policy: "wait", missed_policy: "skip" })),
+    );
+    expect(baseline.prepare("SELECT * FROM routine_backoff").all()).toEqual([]);
+    expect(baseline.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 49 });
+    expect(baseline.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(baseline.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+  });
+});
+
+function migrationDatabaseAt(version: number): DatabaseSync {
+  const database = new DatabaseSync(":memory:");
+  migrationDatabases.push(database);
+  database.exec("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)");
+  database.exec(`CREATE TEMP TRIGGER stop_at_version BEFORE INSERT ON schema_migrations WHEN new.version > ${version}
+    BEGIN SELECT RAISE(ABORT, 'fixture stop'); END;`);
+  expect(() => migrateOpenBotDatabase(database)).toThrow(`migration to version ${version + 1} failed`);
+  database.exec("DROP TRIGGER stop_at_version");
+  return database;
+}
+
+function seedMigrationRoutine(database: DatabaseSync): void {
+  database
+    .prepare(`INSERT INTO projection_agent_routines
+    (routine_id, agent_id, name, instruction, active, timezone, created_at, updated_at, last_event_sequence)
+    VALUES ('routine-migration', 'agent-migration', 'Migration test', 'Keep this routine.', 1, 'UTC', ?, ?, 1)`)
+    .run("2026-10-27T12:00:00.000Z", "2026-10-27T12:00:00.000Z");
+}
 
 /** Breaks a NOT NULL rule in a new table, as a damaged page would, and closes the database cleanly. */
 function damageProbeTable(database: OpenBotDatabase): void {
@@ -4013,6 +4148,7 @@ function downgradeToV11(database: DatabaseSync): void {
     ALTER TABLE projection_reactions_v11 RENAME TO projection_reactions;
     DELETE FROM schema_migrations WHERE version >= 12;
   `);
+  removeForkTail(database);
 }
 
 // One agent whose id, thread, message text and hosted-site history all still spell the id `bot-<uuid>`.
@@ -4288,6 +4424,7 @@ function removeSchemaAfterVersion14(db: DatabaseSync): void {
   db.exec("DROP TABLE agent_usage_records; DROP TABLE agent_usage_checkpoints; DROP TABLE agent_usage_activity");
   removeProviderHistorySchema(db);
   db.exec("DELETE FROM schema_migrations WHERE version >= 15");
+  removeForkTail(db);
 }
 
 /** Migration 30's webhook tables, children first. */
@@ -4308,5 +4445,18 @@ const PROVIDER_HISTORY_TABLES_DROP_SQL = `
 function removeProviderHistorySchema(db: DatabaseSync): void {
   db.exec(
     "DROP TABLE IF EXISTS provider_history_staging; DROP TABLE IF EXISTS provider_history_turns; DROP TABLE IF EXISTS provider_history_imports",
+  );
+}
+
+/** Remove only empty additions when a fresh test database is rewound below version 38. */
+function removeForkTail(db: DatabaseSync): void {
+  for (const entry of db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'workflow%'")
+    .all()
+    .reverse()) {
+    db.exec(`DROP TABLE "${entry.name}"`);
+  }
+  db.exec(
+    "DROP TABLE IF EXISTS routine_backoff; DROP TABLE IF EXISTS browser_profiles; DROP TABLE IF EXISTS projection_agent_threads",
   );
 }

@@ -6,6 +6,7 @@
 //
 // The route sets compare `url.pathname` for equality and share no path, so the order of the checks
 // below does not change which codec a route gets.
+import { isChannelAttentionRoute, withChannelAttention } from "./channel-attention-v1";
 import { channelRequest, channelResponse, isChannelRoute } from "./channels-v1";
 import { isChannelHistoryExtentRoute, withChannelHistoryExtent } from "./history-extent-v1";
 import { isMcpRoute, mcpRequest, mcpResponse } from "./mcp-v1";
@@ -19,6 +20,11 @@ export interface TeamSideRouteOptions {
    * capability; a client passes `true`, because a host sends the extent only when it was negotiated.
    */
   historyExtent?: boolean;
+  /**
+   * channel-attention-v1: a channel summary keeps its threads and preview author, and a channel page
+   * keeps its UI blocks. A host passes the negotiated capability; a client passes `true`, as above.
+   */
+  channelAttention?: boolean;
 }
 
 export interface TeamSideRouteCodec {
@@ -30,9 +36,13 @@ const CHANNEL_CODEC: TeamSideRouteCodec = {
   request: channelRequest,
   response: (path, status, value, options) => {
     const projected = channelResponse(path, status, value);
-    return options?.historyExtent && status < 400 && isChannelHistoryExtentRoute(path)
-      ? withChannelHistoryExtent(projected, value)
-      : projected;
+    const extended =
+      options?.historyExtent && status < 400 && isChannelHistoryExtentRoute(path)
+        ? withChannelHistoryExtent(projected, value)
+        : projected;
+    return options?.channelAttention && status < 400 && isChannelAttentionRoute(path)
+      ? withChannelAttention(path, extended, value)
+      : extended;
   },
 };
 const MCP_CODEC: TeamSideRouteCodec = { request: mcpRequest, response: mcpResponse };

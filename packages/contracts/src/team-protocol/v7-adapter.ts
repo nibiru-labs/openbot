@@ -41,12 +41,14 @@ import { isHistoryExtentRoute, withPageHistoryExtent } from "./history-extent-v1
 import { decodeHostAnalyticsV1Response } from "./host-analytics-v1";
 import { decodeMessageClientId } from "./message-client-id-v1";
 import { decodeProfileV7Request, decodeProfileV7Response } from "./profile-v7";
+import { withConversationPromptMultiSelect } from "./prompt-multi-select-v1";
 import { decodeQueueEditRequest, isQueueEditRoute } from "./queue-edit-v1";
 import {
   decodeRemoteDesktopSetupRequest,
   decodeRemoteDesktopSetupResponse,
   isRemoteDesktopSetupRoute,
 } from "./remote-desktop-setup-v1";
+import { withConversationSubagents } from "./subagents-v1";
 import { withConversationUiBlocks } from "./ui-blocks-v1";
 import { decodeTeamProtocolV7HttpRequest, decodeTeamProtocolV7HttpResponse } from "./v7";
 import type { TeamProtocolV7BaseJsonObject, TeamProtocolV7BaseJsonValue } from "./v7-base";
@@ -207,25 +209,37 @@ export function decodeTeamProtocolV7CurrentHttpRequest(
 /**
  * `historyExtent` is the negotiated history-extent-v1 capability: only then does a page carry its
  * unloaded length beside the frozen keys. `uiBlocks` is the negotiated ui-blocks-v1 capability: only
- * then does a conversation message carry its `uiBlock`. Without them the output is the released
- * projection.
+ * then does a conversation message carry its `uiBlock`. `subagents` is the negotiated subagents-v1
+ * capability: only then does a conversation message carry its `subagents`. `promptMultiSelect` is the
+ * negotiated prompt-multi-select-v1 capability: only then does a prompt question carry `multiSelect`.
+ * Without them the output is the released projection.
  */
 export function encodeTeamProtocolV7CurrentHttpResponse(
   method: string,
   path: string,
   status: number,
   value: unknown,
-  options: { preserveSemanticTags?: boolean; historyExtent?: boolean; uiBlocks?: boolean } = {},
+  options: {
+    preserveSemanticTags?: boolean;
+    historyExtent?: boolean;
+    uiBlocks?: boolean;
+    subagents?: boolean;
+    promptMultiSelect?: boolean;
+  } = {},
 ): string {
-  const { historyExtent, uiBlocks, ...frozen } = options;
+  const { historyExtent, uiBlocks, subagents, promptMultiSelect, ...frozen } = options;
   const encoded = encodeFrozenResponse(method, path, status, value, frozen);
   if (status >= 400) return encoded;
   const withExtent = historyExtent && isHistoryExtentRoute(method, path);
   const withBlocks = uiBlocks && isConversationRoute(method, path);
-  if (!withExtent && !withBlocks) return encoded;
+  const withSubagents = subagents && isConversationRoute(method, path);
+  const withMultiSelect = promptMultiSelect && isConversationRoute(method, path);
+  if (!withExtent && !withBlocks && !withSubagents && !withMultiSelect) return encoded;
   let output: TeamProtocolV7BaseJsonValue = JSON.parse(encoded);
   if (withExtent) output = withPageHistoryExtent(output, value);
   if (withBlocks) output = withConversationUiBlocks(output, value);
+  if (withSubagents) output = withConversationSubagents(output, value);
+  if (withMultiSelect) output = withConversationPromptMultiSelect(output, value);
   return JSON.stringify(output);
 }
 
@@ -290,8 +304,9 @@ function encodeFrozenResponse(
 }
 
 /**
- * A host sends the history extent only under history-extent-v1, and a UI block only under
- * ui-blocks-v1, so a present one is always kept.
+ * A host sends the history extent only under history-extent-v1, a UI block only under ui-blocks-v1,
+ * the subagents only under subagents-v1, and a multi-select flag only under prompt-multi-select-v1,
+ * so a present one is always kept.
  */
 export function decodeTeamProtocolV7CurrentHttpResponse(
   method: string,
@@ -301,9 +316,13 @@ export function decodeTeamProtocolV7CurrentHttpResponse(
 ): TeamProtocolV7BaseJsonValue {
   const decoded = decodeFrozenResponse(method, path, status, value);
   if (status >= 400) return decoded;
-  // The conversation page route carries both.
+  // The conversation page route carries all three.
   const withExtent = isHistoryExtentRoute(method, path) ? withPageHistoryExtent(decoded, value) : decoded;
-  return isConversationRoute(method, path) ? withConversationUiBlocks(withExtent, value) : withExtent;
+  if (!isConversationRoute(method, path)) return withExtent;
+  return withConversationPromptMultiSelect(
+    withConversationSubagents(withConversationUiBlocks(withExtent, value), value),
+    value,
+  );
 }
 
 function decodeFrozenResponse(

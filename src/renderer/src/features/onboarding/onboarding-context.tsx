@@ -1,10 +1,13 @@
 import type { AgentModelId, AgentProviderId, AppSetupState } from "@openbot/contracts/ipc";
 import { errorReference } from "@openbot/user-errors";
 import { createSignal, createStore, onSettled } from "solid-js";
-import { desktopAnalytics } from "../../analytics";
+import { type DesktopAnalyticsProperties, desktopAnalytics } from "../../analytics";
 import { createSimpleContext } from "../../simple-context";
 import { firstRunTransition } from "./first-run-transition";
 import { onboardingPort } from "./onboarding-port";
+
+/** How first run went: the path the user took, and whether they skipped a step. */
+export type OnboardingJourney = Pick<DesktopAnalyticsProperties<"onboarding_completed">, "path" | "skipped">;
 
 /** The first read of the saved setup. */
 interface SetupRead {
@@ -50,6 +53,8 @@ const Setup = createSimpleContext({
 
     onSettled(() => {
       void readSetupState();
+      // A joined owner or admin can change the default provider of this computer from a phone.
+      return onboardingPort().onSetupState(setSetupState);
     });
 
     async function retrySetupRead(): Promise<void> {
@@ -82,8 +87,15 @@ const Setup = createSimpleContext({
       return previous.preferredModel ?? null;
     }
 
-    /** An omitted model keeps the current provider's model; null clears it. */
-    async function saveSetup(preferredProvider: AgentProviderId, preferredModel?: AgentModelId | null) {
+    /**
+     * An omitted model keeps the current provider's model; null clears it. `journey` tells analytics
+     * how first run went.
+     */
+    async function saveSetup(
+      preferredProvider: AgentProviderId,
+      preferredModel?: AgentModelId | null,
+      journey: OnboardingJourney = {},
+    ) {
       const wasCompleted = setupState()?.completed === true;
       const analytics = desktopAnalytics.scope();
       const state = await onboardingPort().saveSetup({
@@ -96,7 +108,7 @@ const Setup = createSimpleContext({
         await firstRunTransition("open", () => {
           setSetupState(state);
         });
-        analytics.track("onboarding_completed", { preferred_provider: preferredProvider });
+        analytics.track("onboarding_completed", { preferred_provider: preferredProvider, ...journey });
       } else {
         setSetupState(state);
       }

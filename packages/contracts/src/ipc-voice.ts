@@ -6,6 +6,8 @@ export const VOICE_AUDIO_LIMITS = {
   bitsPerSample: 16,
   maximumSeconds: 120,
   maximumWavBytes: 3_840_044,
+  /** A kept recording is Opus in WebM: 120 s at 32 kbps is about 480 KB, and the rest is room for VBR. */
+  maximumRecordingBytes: 1_048_576,
 } as const;
 
 export interface VoiceTranscriptionInput {
@@ -17,7 +19,7 @@ export interface VoiceTranscriptionResult {
 }
 
 /** The local speech recognition models. Saved in `voice-preference.json`; never rename one. */
-export const LOCAL_VOICE_MODEL_IDS = ["parakeet-tdt-0.6b-v3", "whisper-turbo"] as const;
+export const LOCAL_VOICE_MODEL_IDS = ["parakeet-tdt-0.6b-v3", "bark-3.0-plus", "whisper-turbo"] as const;
 export type LocalVoiceModelId = (typeof LOCAL_VOICE_MODEL_IDS)[number];
 
 /**
@@ -34,7 +36,10 @@ export const DEFAULT_VOICE_MODEL_ID: VoiceModelId = "parakeet-tdt-0.6b-v3";
 interface VoiceModelCapabilities {
   /** The product name. It is not translated. */
   name: string;
-  /** True when the model takes a fixed language. Parakeet always finds the language itself. */
+  /**
+   * True when the model takes a fixed language. Parakeet always finds the language itself, and Bark
+   * recognizes English only.
+   */
   supportsLanguage: boolean;
   /**
    * True when the composer shows text while you speak. Whisper reads 30 s for each pass, so it
@@ -65,6 +70,14 @@ export const VOICE_MODELS: readonly VoiceModelInfo[] = [
     id: "parakeet-tdt-0.6b-v3",
     name: "Parakeet TDT 0.6B v3",
     bytes: 670_478_772,
+    supportsLanguage: false,
+    livePreview: true,
+  },
+  {
+    kind: "local",
+    id: "bark-3.0-plus",
+    name: "Underdog Bark 3.0 Plus",
+    bytes: 684_624_267,
     supportsLanguage: false,
     livePreview: true,
   },
@@ -240,4 +253,96 @@ export function isLocalVoiceModelId(value: unknown): value is LocalVoiceModelId 
 
 export function isVoiceLanguage(value: unknown): value is VoiceLanguage {
   return value === AUTOMATIC_VOICE_LANGUAGE || isOneOf(WHISPER_LANGUAGES, value);
+}
+
+/**
+ * Supertonic 3, the local model that reads replies aloud. Saved in `speech-preference.json` and
+ * named in model statuses; never rename it.
+ */
+export const SPEECH_MODEL_ID = "supertonic-3";
+export type SpeechModelId = typeof SPEECH_MODEL_ID;
+
+export const SPEECH_MODEL = {
+  id: SPEECH_MODEL_ID,
+  /** The product name. It is not translated. */
+  name: "Supertonic 3",
+  /** The download size of all files. */
+  bytes: 145_296_838,
+} as const;
+
+/** The voice styles of Supertonic 3: five female and five male. Saved in `speech-preference.json`. */
+export const SPEECH_VOICES = ["F1", "F2", "F3", "F4", "F5", "M1", "M2", "M3", "M4", "M5"] as const;
+export type SpeechVoice = (typeof SPEECH_VOICES)[number];
+
+/** The languages Supertonic 3 reads. Each one has a `language.name.*` catalog name. */
+export const SPEECH_LANGUAGES = [
+  "ar",
+  "bg",
+  "cs",
+  "da",
+  "de",
+  "el",
+  "en",
+  "es",
+  "et",
+  "fi",
+  "fr",
+  "hi",
+  "hr",
+  "hu",
+  "id",
+  "it",
+  "ja",
+  "ko",
+  "lt",
+  "lv",
+  "nl",
+  "pl",
+  "pt",
+  "ro",
+  "ru",
+  "sk",
+  "sl",
+  "sv",
+  "tr",
+  "uk",
+  "vi",
+] as const;
+export type SpeechLanguage = (typeof SPEECH_LANGUAGES)[number];
+
+export interface SpeechSettings {
+  /** Read the reply to a dictated message aloud. */
+  readReplies: boolean;
+  voice: SpeechVoice;
+}
+
+export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = { readReplies: false, voice: "F1" };
+
+export interface SpeechModelStatus extends Omit<VoiceModelStatus, "modelId"> {
+  modelId: SpeechModelId;
+}
+
+export const SPEECH_LIMITS = {
+  /** The longest text of one `speak` request. The renderer sends a reply in parts. */
+  maximumTextLength: 1_000,
+} as const;
+
+/** One part of a reply to read aloud, in one language. */
+export interface SpeechInput {
+  text: string;
+  language: SpeechLanguage;
+}
+
+/** The speech of one `SpeechInput`: little-endian 16-bit mono PCM. */
+export interface SpeechAudio {
+  pcm: Uint8Array;
+  sampleRate: number;
+}
+
+export function isSpeechVoice(value: unknown): value is SpeechVoice {
+  return isOneOf(SPEECH_VOICES, value);
+}
+
+export function isSpeechLanguage(value: unknown): value is SpeechLanguage {
+  return isOneOf(SPEECH_LANGUAGES, value);
 }

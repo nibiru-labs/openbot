@@ -5,9 +5,11 @@ import { currentDevicePlatform } from "../../send-shortcut-preference";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationPanels } from "./ConversationPanels";
+import { ConversationThread } from "./ConversationThread";
 import { ConversationTimeline } from "./ConversationTimeline";
 import { ConversationViewScopeContext, createConversationViewScope } from "./conversation-scope";
 import type { ConversationProps } from "./conversation-types";
+import { conversationOwnerId } from "./stores/composer-store";
 
 /** @internal Keeps file-drag state active while the pointer moves between conversation descendants. */
 function isDragLeavingConversation(currentTarget: HTMLElement, relatedTarget: EventTarget | null): boolean {
@@ -23,7 +25,6 @@ export function ConversationView(props: ConversationProps) {
     dropActive,
     filePreviewOpen,
     filesOpen,
-    taskPanelOpen,
     activeRightPanel,
     settingsOpen,
     sidePanel,
@@ -35,6 +36,7 @@ export function ConversationView(props: ConversationProps) {
     setDropActive,
     settingsPanelWidth,
     submitting,
+    sideThreadOpen,
   } = scope;
   const { t } = useText();
   createEffect(
@@ -57,8 +59,9 @@ export function ConversationView(props: ConversationProps) {
               browserSidebarOpen() ||
               filePreviewOpen() ||
               filesOpen() ||
-              taskPanelOpen() ||
               activeRightPanel() === "question" ||
+              activeRightPanel() === "voice" ||
+              activeRightPanel() === "subagent" ||
               activeRightPanel() === "side-panel",
             "side-panel-docked": sidePanelOpen(),
             "side-panel-maximized": sidePanelOpen() && sidePanel().maximized,
@@ -82,8 +85,8 @@ export function ConversationView(props: ConversationProps) {
         }}
       >
         <MessageSelectionActions
-          contextKey={props.agent?.id}
-          disabled={!props.agent || !agentReady() || submitting()}
+          contextKey={conversationOwnerId(props)}
+          disabled={!conversationOwnerId(props) || props.channel?.readOnly() === true || !agentReady() || submitting()}
           onSend={sendSelectionInstruction}
           onQuote={quoteSelection}
           quoteShortcut={(props.platform ?? currentDevicePlatform()) === "darwin" ? "meta" : "ctrl"}
@@ -94,9 +97,13 @@ export function ConversationView(props: ConversationProps) {
         <ConversationHeader />
         {props.notice}
 
+        {/* A side thread covers the agent's own chat and its message box. They stay mounted, so the way
+            back keeps their rows and scroll position and does not build the chat again. */}
         <ConversationTimeline />
-
         <ConversationComposer />
+        <Show when={sideThreadOpen()}>
+          <ConversationThread />
+        </Show>
 
         <ConversationPanels onOpenUsage={props.onOpenUsage} />
       </main>

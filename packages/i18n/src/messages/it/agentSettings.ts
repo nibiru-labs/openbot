@@ -23,7 +23,7 @@ export const messages = {
   "agentSettings.backupModels.intro":
     "Quando {model} raggiunge il limite di utilizzo prima che {name} inizi a scrivere, {name} ti chiede quale modello usare.",
   "agentSettings.backupModels.introAutomatic":
-    "Quando {model} raggiunge il limite di utilizzo prima che {name} inizi a scrivere, {name} passa al primo modello disponibile nell'ordine.",
+    "Quando {model} raggiunge il limite di utilizzo o fallisce per un errore del provider prima che {name} inizi a scrivere, {name} passa al primo modello disponibile nell'ordine.",
   "agentSettings.backupModels.ask": "Chiedi prima di cambiare",
   "agentSettings.backupModels.order": "Ordine",
   "agentSettings.backupModels.listLabel": "Modelli di riserva, in ordine",
@@ -36,7 +36,7 @@ export const messages = {
   "agentSettings.backupModels.unavailable": "Non disponibile ora · saltato",
   "agentSettings.backupModels.withAccount": "{model} · {account}",
   "agentSettings.backupModels.note":
-    "{name} non cambia mai dopo aver iniziato a scrivere. Torna a {model} quando il limite termina.",
+    "{name} non cambia mai dopo aver iniziato a scrivere. Torna a {model} quando il limite termina, o 10 minuti dopo un errore del provider.",
   "agentSettings.groups.brain": "Cervello",
   "agentSettings.groups.knows": "Cosa sa",
   "agentSettings.groups.does": "Cosa fa",
@@ -58,7 +58,7 @@ export const messages = {
   "agentSettings.avatar.image": "Immagine",
   "agentSettings.avatar.replaceImage": "Sostituisci l'immagine",
   "agentSettings.avatar.uploadImage": "Carica un'immagine",
-  "agentSettings.avatar.imageHint": "PNG, JPEG o WebP · ritaglio quadrato",
+  "agentSettings.avatar.imageHint": "PNG, JPEG, GIF o WebP · ritaglio quadrato",
   "agentSettings.avatar.generatedFace": "Volto generato",
   "agentSettings.avatar.resetToId": "Ripristina da ID",
   "agentSettings.avatar.newSet": "Nuovo set",
@@ -74,7 +74,6 @@ export const messages = {
   "agentSettings.avatar.processFailed": "Impossibile elaborare l'avatar dell'agente.",
 
   "agentSettings.runtime.model": "Modello dell'agente",
-  "agentSettings.runtime.modelBusy": "Attendi la fine del lavoro in corso prima di cambiare modello.",
   "agentSettings.runtime.modelUnavailable": "I modelli sono disponibili dopo la connessione di una CLI dell'agente.",
   "agentSettings.runtime.reasoning": "Ragionamento",
   "agentSettings.runtime.reasoningLabel": "Livello di ragionamento dell'agente",
@@ -84,8 +83,8 @@ export const messages = {
   "agentSettings.runtime.accessLabel": "Accesso dell'agente",
   "agentSettings.runtime.busyMessage": "Durante il lavoro",
   "agentSettings.runtime.busyMessageLabel": "Messaggi mentre l'agente lavora",
-  "agentSettings.runtime.taskLimit": "Attività parallele",
-  "agentSettings.runtime.taskLimitLabel": "Attività eseguite contemporaneamente",
+  "agentSettings.runtime.taskLimit": "Thread in parallelo",
+  "agentSettings.runtime.taskLimitLabel": "Thread eseguiti contemporaneamente",
   "agentSettings.runtime.workingDirectory": "Cartella di lavoro",
   "agentSettings.runtime.notAvailable": "Non ancora disponibile",
   "agentSettings.runtime.fullAccessNote":
@@ -105,7 +104,7 @@ export const messages = {
     "{provider} non può indirizzare un turno in corso. I messaggi inviati mentre lavora restano in coda.",
   "agentSettings.taskLimit.default": "Predefinito ({count})",
   "agentSettings.taskLimit.oneTurn":
-    "{provider} esegue un turno alla volta. Le attività e la chat di questo agente si aspettano a vicenda.",
+    "{provider} esegue un turno alla volta. I thread di questo agente si aspettano a vicenda.",
 
   "agentSettings.notifications.title": "Notifiche",
 
@@ -149,6 +148,21 @@ export const messages = {
   "agentSettings.automation.title": "Script locali",
   "agentSettings.automation.description":
     "Permetti agli script sull'host di inviare messaggi, eseguire routine, rispondere alle domande e accettare o rifiutare le approvazioni",
+  "agentSettings.agentNewChat.title": "L'agente avvia nuove chat",
+  "agentSettings.agentNewChat.description":
+    "L'agente può avviare una nuova chat quando la sua diventa lunga. Prima salva delle note.",
+  "agentSettings.quickAcknowledgement.title": "Mostra il piano prima delle attività lunghe",
+  "agentSettings.quickAcknowledgement.description":
+    "Prima di un'attività lunga, l'agente mostra il suo piano. Inizia dopo 10 s o quando premi Avvia.",
+  "agentSettings.browserProfile.label": "Profilo del browser",
+  "agentSettings.browserProfile.shared": "Condiviso",
+  "agentSettings.browserProfile.agent": "Solo questo agente",
+  "agentSettings.browserProfile.missing": "Profilo eliminato",
+  "agentSettings.browserProfile.new": "Nuovo profilo",
+  "agentSettings.browserProfile.manageTitle": "Profili del browser",
+  "agentSettings.browserProfile.manageDescription":
+    "Ogni profilo mantiene accessi e cookie propri. Una modifica chiude le schede aperte dell'agente.",
+  "agentSettings.browserProfile.manage": "Gestisci",
   "agentSettings.runtime.workspaceEnforcedProcess":
     "L'intero processo di {provider} gira in una sandbox, quindi una scrittura all'esterno non riesce. Disponibile solo su macOS.",
 } as const satisfies PartialTranslation<typeof source>;

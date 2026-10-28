@@ -252,6 +252,18 @@ export function parseHostedServerClaim(value: unknown): HostedServerClaim | null
   };
 }
 
+/** Where the user opened the plan picker. Analytics only; it does not change the checkout. */
+export const HOSTED_SERVER_ENTRY_POINTS = [
+  "server_rail",
+  "settings_billing",
+  "upsell",
+  "empty_state",
+  "checkout_resume",
+  "drawer",
+  "onboarding",
+] as const;
+export type HostedServerEntryPoint = (typeof HOSTED_SERVER_ENTRY_POINTS)[number];
+
 export interface CreateHostedServerInput {
   name: string;
   plan: BillingPlanId;
@@ -259,6 +271,8 @@ export interface CreateHostedServerInput {
   currency: BillingCurrency;
   /** One ID for each opened create form, so a repeated submit does not create a second server. */
   requestId: string;
+  /** Older clients do not send it. */
+  entryPoint?: HostedServerEntryPoint;
 }
 
 /**
@@ -277,6 +291,8 @@ export interface HostedServerCatalogPlan {
   memberLimit: number;
   relativeSpeed: number;
   prices: Record<BillingCurrency, Record<BillingInterval, number>>;
+  /** No new server can take this plan. Older account servers do not send it. */
+  soldOut?: boolean;
 }
 
 export interface HostedServerCatalog {
@@ -305,7 +321,16 @@ export function parseCreateHostedServerInput(value: unknown): CreateHostedServer
   const name = parseHostedServerName(value.name);
   if (!name) return null;
   if (!isString(value.requestId) || !REQUEST_ID_PATTERN.test(value.requestId)) return null;
-  return { name, plan: value.plan, interval: value.interval, currency: value.currency, requestId: value.requestId };
+  const input: CreateHostedServerInput = {
+    name,
+    plan: value.plan,
+    interval: value.interval,
+    currency: value.currency,
+    requestId: value.requestId,
+  };
+  // An unknown entry point is left out, not refused: it is analytics only.
+  if (isOneOf(HOSTED_SERVER_ENTRY_POINTS, value.entryPoint)) input.entryPoint = value.entryPoint;
+  return input;
 }
 
 /** Returns null for a value that is not a checkout answer, or whose URL is not a Stripe Checkout page. */
@@ -344,13 +369,15 @@ export function parseHostedServerCatalog(value: unknown): HostedServerCatalog | 
     }
     const prices = parsePlanPrices(entry.prices);
     if (!prices) continue;
-    plans.push({
+    const plan: HostedServerCatalogPlan = {
       id: entry.id,
       diskGb: entry.diskGb,
       memberLimit: entry.memberLimit,
       relativeSpeed: entry.relativeSpeed,
       prices,
-    });
+    };
+    if (entry.soldOut === true) plan.soldOut = true;
+    plans.push(plan);
   }
   return { plans };
 }

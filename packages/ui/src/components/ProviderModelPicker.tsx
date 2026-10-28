@@ -1,13 +1,14 @@
 import { ProviderLogo } from "@openbot/brand";
 import type {
   AgentModelId,
-  AgentModelOption,
   AgentProviderId,
   AgentProviderStatus,
   AgentReasoningEffort,
   AgentStatus,
+  ClientAgentModelOption,
   CustomAgentSummary,
   CustomProviderSummary,
+  ForeignProviderId,
   ProviderAccountStatus,
   ProviderRuntimeStatus,
 } from "@openbot/contracts/ipc";
@@ -19,6 +20,7 @@ import {
   defaultProviderModel,
   isCustomProviderModelId,
   PICKER_PROVIDERS,
+  providerDisplayName,
 } from "@openbot/contracts/ipc";
 import type { AppTextKey, AppTranslate } from "@openbot/i18n";
 import {
@@ -35,8 +37,10 @@ import {
   SelectTrigger,
   SelectValue,
   SlidersHorizontal,
+  Switch,
   Tabs,
   Tooltip,
+  Zap,
 } from "@openbot/ui";
 import { ContentExitMotion } from "@openbot/ui/menu-motion";
 import { cx } from "@openbot/ui/utils";
@@ -58,7 +62,7 @@ import { SwapLabel, type SwapMotion } from "./SwapLabel";
 interface ProviderModelPickerProps {
   provider: AgentProviderId;
   value: AgentModelId;
-  modelOptions: AgentModelOption[];
+  modelOptions: ClientAgentModelOption[];
   agentStatus: AgentStatus;
   variant?: "pill" | "field";
   ariaLabel?: string;
@@ -67,9 +71,10 @@ interface ProviderModelPickerProps {
   icon?: JSX.Element;
   reasoningEffort?: AgentReasoningEffort | undefined;
   onReasoningEffortChange?: ((effort: AgentReasoningEffort) => void) | undefined;
+  /** Fast mode. The picker shows its switch only for a model with a fast tier, and only with `onFastModeChange`. */
+  fastMode?: boolean | undefined;
+  onFastModeChange?: ((fastMode: boolean) => void) | undefined;
   disabled?: boolean | undefined;
-  /** Keep approval controls available while model and effort changes are locked. */
-  modelChangesDisabled?: boolean;
   disabledReason?: string;
   runtimeStatuses?: Partial<Record<AgentProviderId, ProviderRuntimeStatus>> | undefined;
   onDownloadProvider?: ((provider: AgentProviderId) => void | Promise<void>) | undefined;
@@ -83,10 +88,7 @@ interface ProviderModelPickerProps {
   customAgents?: readonly CustomAgentSummary[] | undefined;
   /** Receives the picker trigger, so focus returns to it when the opened settings close. */
   onAddCustomProvider?: ((trigger: HTMLElement) => void) | undefined;
-  /**
-   * Opens the provider settings. With it, the rail leaves out the providers that cannot run, and a
-   * plus button after them opens the settings to connect one. Receives the picker trigger.
-   */
+  /** Opens the provider settings: a plus button after the rail, to connect one. Receives the picker trigger. */
   onManageProviders?: ((trigger: HTMLElement) => void) | undefined;
   /**
    * Gives each account of a provider with more than one its own rail entry, and passes the account
@@ -95,6 +97,11 @@ interface ProviderModelPickerProps {
   accountChoice?: boolean;
   /** The agent's account. Absent or unknown means the provider's own sign-in. */
   providerAccountId?: string | null | undefined;
+  /**
+   * The agent's provider when this build does not know it. The host still runs the agent, so the
+   * picker shows its model, and it cannot open until OpenBot is updated.
+   */
+  foreignProvider?: ForeignProviderId | undefined;
   /** `accountId` is passed only with `accountChoice`, for a provider with more than one account: null for its own sign-in. */
   onChange: (model: AgentModelId, provider: AgentProviderId, accountId?: string | null) => void;
 }
@@ -217,7 +224,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   let shownProvider = untrack(activeProvider);
 
   /** OpenCode and Custom tabs split one wire provider so each model appears once. */
-  function railModelOptions(rail: RailId): AgentModelOption[] {
+  function railModelOptions(rail: RailId): ClientAgentModelOption[] {
     if (rail === CUSTOM_RAIL) return props.modelOptions.filter((option) => isCustomModel(option, customIds()));
     if (rail === "opencode") {
       return props.modelOptions.filter(
@@ -316,12 +323,11 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   /** The entries listed when the picker opened. An open rail does not drop a tab under the pointer. */
   const [openedKeys, setOpenedKeys] = createSignal<readonly RailKey[]>([]);
   /**
-   * Where the settings can connect a provider, the rail lists only the usable ones. When none is,
-   * it lists all of them, so the panel always has a tab to show.
+   * The rail lists only the usable entries. When none is, it lists all of them, so the panel always
+   * has a tab to show and a provider to download or connect.
    */
   const visibleKeys = createMemo<RailKey[]>(
     () => {
-      if (!props.onManageProviders) return railKeys();
       const listed = open() ? openedKeys() : [];
       const usable = railKeys().filter((key) => entryUsable(key) || listed.includes(key));
       return usable.length ? usable : railKeys();
@@ -380,7 +386,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   }
 
   function selectModel(option: PickerModel, accountId: string | null): void {
-    if (props.disabled || props.modelChangesDisabled || !modelAvailable(option)) return;
+    if (props.disabled || !modelAvailable(option)) return;
     if (!showsReasoningEffort() && !option.variants.length) setOpen(false);
     props.onChange(option.id, option.provider, chosenAccount(option.provider, accountId));
   }
@@ -390,7 +396,20 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
     setSearch("");
   }
 
-  const triggerModelName = () => displayModelName(selectedModel()?.name, props.value);
+  /** The host's name for a provider that this build does not know. */
+  const foreignProviderName = () => {
+    const foreign = props.foreignProvider;
+    if (foreign === undefined) return undefined;
+    const hostLabel = props.agentStatus.providers?.find((status) => {
+      const id: string = status.id;
+      return id === foreign;
+    })?.displayName;
+    return providerDisplayName(foreign, hostLabel);
+  };
+  const foreignModelName = () =>
+    props.modelOptions.find((model) => model.provider === props.foreignProvider && model.id === props.value)?.name;
+  const triggerModelName = () =>
+    displayModelName(props.foreignProvider === undefined ? selectedModel()?.name : foreignModelName(), props.value);
   const field = () => props.variant === "field";
   const showsReasoningEffort = () => props.reasoningEffort !== undefined && props.onReasoningEffortChange !== undefined;
   /** An OpenCode model with variants: the chosen variant is its effort, and its name says so. */
@@ -406,17 +425,27 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   /** Only an effort that the model can use. */
   const triggerEffort = () => {
     const effort = props.reasoningEffort;
-    if (!showsReasoningEffort() || !effort || selectedHasVariants()) return;
+    if (props.foreignProvider !== undefined || !showsReasoningEffort() || !effort || selectedHasVariants()) return;
     const model = selectedModel();
     if (!model?.supportedReasoningEfforts.includes(effort) || model.reasoningEffortConfigurable === false) return;
     return reasoningLabel(effort, t);
   };
   /** The account name, only while the agent's provider lists more than one. */
   const triggerAccount = () => {
+    if (props.foreignProvider !== undefined) return null;
     const accounts = railAccounts(props.provider);
     return accounts.length ? providerAccountName(t, accounts, currentAccount() ?? DEFAULT_PROVIDER_ACCOUNT_ID) : null;
   };
-  const triggerSummary = () => [triggerModelName(), triggerEffort(), triggerAccount()].filter(Boolean).join(" · ");
+  /** Fast mode, only while the model has a fast tier: another model runs at standard speed. */
+  const triggerFast = () =>
+    props.foreignProvider === undefined &&
+    props.fastMode === true &&
+    props.onFastModeChange !== undefined &&
+    Boolean(selectedModel()?.fastServiceTier);
+  const triggerSummary = () =>
+    [triggerModelName(), triggerEffort(), triggerFast() ? t("provider.picker.fast") : null, triggerAccount()]
+      .filter(Boolean)
+      .join(" · ");
 
   return (
     <div
@@ -429,11 +458,13 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
           type="button"
           class={["provider-model-trigger", { "provider-model-trigger-field": field() }]}
           aria-label={`${props.ariaLabel ?? t("provider.picker.agentModel")}: ${triggerSummary()}`}
-          disabled={props.disabled}
+          disabled={props.disabled || props.foreignProvider !== undefined}
           title={
-            props.disabled || props.modelChangesDisabled
-              ? props.disabledReason
-              : `${railName(activeProvider(), t)} · ${triggerSummary()}`
+            foreignProviderName() !== undefined
+              ? t("provider.picker.updateToUse", { name: foreignProviderName() ?? "" })
+              : props.disabled
+                ? props.disabledReason
+                : `${railName(activeProvider(), t)} · ${triggerSummary()}`
           }
           onKeyDown={(event: KeyboardEvent) => {
             if (event.key !== "ArrowDown") return;
@@ -453,7 +484,12 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                 shownProvider = untrack(provider);
                 return (
                   <span class="provider-model-trigger-mark" data-entering={entering ? "" : undefined}>
-                    <ProviderMark provider={provider()} />
+                    <Show
+                      when={props.foreignProvider === undefined}
+                      fallback={<ProviderLogo provider="unknown" class="provider-model-mark" />}
+                    >
+                      <ProviderMark provider={provider()} />
+                    </Show>
                   </span>
                 );
               }}
@@ -465,6 +501,12 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                   <SwapLabel text={effort()} motion={TRIGGER_SWAP} />
                 </span>
               )}
+            </Show>
+            <Show when={triggerFast()}>
+              <span class="provider-model-trigger-effort provider-model-trigger-fast">
+                <Zap aria-hidden="true" />
+                <SwapLabel text={t("provider.picker.fast")} motion={TRIGGER_SWAP} />
+              </span>
             </Show>
             <Show when={triggerAccount()}>
               {(account) => (
@@ -482,7 +524,10 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
           class="provider-model-popover"
           aria-hidden={open() ? undefined : "true"}
           onKeyDown={(event) => {
-            if (event.key === "Escape") setOpen(false);
+            if (event.key !== "Escape") return;
+            // Handled: a form that closes on Escape, such as the new-agent form, stays open.
+            event.preventDefault();
+            setOpen(false);
           }}
         >
           <ContentExitMotion panel={() => popover} />
@@ -647,8 +692,8 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                 const available = () => status().state === "available";
                 // An account that is not signed in holds back the models its provider serves.
                 const modelEnabled = (model: PickerModel) =>
-                  modelAvailable(model) && (accountId() === null || available()) && props.modelChangesDisabled !== true;
-                const effortLocked = () => !available() || props.modelChangesDisabled === true;
+                  modelAvailable(model) && (accountId() === null || available());
+                const effortLocked = () => !available();
                 function chooseEffort(id: string): void {
                   if (props.disabled || effortLocked() || id === effortValue()) return;
                   const model = selected();
@@ -900,6 +945,17 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                         </Show>
                       </div>
                     </Show>
+                    <Show when={ownsSelection() && selectedModel()?.fastServiceTier && props.onFastModeChange}>
+                      <div class="provider-model-effort">
+                        <span>{t("provider.picker.fast")}</span>
+                        <Switch
+                          aria-label={t("provider.picker.fastLabel")}
+                          checked={props.fastMode === true}
+                          disabled={props.disabled || effortLocked()}
+                          onChange={(next) => props.onFastModeChange?.(next)}
+                        />
+                      </div>
+                    </Show>
                   </Tabs.Content>
                 );
               }}
@@ -941,7 +997,7 @@ function railDefaultModel(rail: RailId): AgentModelId | null {
 
 function providerAvailability(
   status: AgentStatus,
-  models: AgentModelOption[],
+  models: ClientAgentModelOption[],
   rail: RailId,
   t: AppTranslate,
 ): AgentProviderStatus {

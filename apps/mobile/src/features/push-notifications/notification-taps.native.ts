@@ -1,7 +1,16 @@
 import { isString } from "@openbot/contracts/runtime-values";
 import * as Notifications from "expo-notifications";
 import { useEffect, useRef } from "react";
-import { SOUND_PREVIEW_KEY } from "./push-notifications-native.types";
+import { type NotificationTarget, SOUND_PREVIEW_KEY } from "./push-notifications-native.types";
+
+/**
+ * expo-notifications 58 shows a notification that arrives in the foreground when no handler is set.
+ * `null` keeps the earlier behavior until `useNotificationTaps` sets its handler: at launch and on the
+ * sign-in screens, the app does not show it.
+ */
+export function installNotificationHandler(): void {
+  Notifications.setNotificationHandler(null);
+}
 
 /** The response that opened a chat last. A remount must not open it again. */
 let handled: string | null = null;
@@ -12,7 +21,7 @@ let handled: string | null = null;
  * into the notification data when they open the seal.
  * While the app is on screen, a notification of the chat that shows is not shown again.
  */
-export function useNotificationTaps(open: (agentId: string) => void, openChat: () => string | null): void {
+export function useNotificationTaps(open: (target: NotificationTarget) => void, openChat: () => string | null): void {
   const response = Notifications.useLastNotificationResponse();
   const openRef = useRef(open);
   openRef.current = open;
@@ -26,7 +35,7 @@ export function useNotificationTaps(open: (agentId: string) => void, openChat: (
         if (notification.request.content.data?.[SOUND_PREVIEW_KEY] === true) {
           return { shouldShowBanner: false, shouldShowList: false, shouldPlaySound: true, shouldSetBadge: false };
         }
-        const agentId = notificationAgentId(notification);
+        const agentId = notificationTarget(notification)?.agentId ?? null;
         const shown = agentId !== null && agentId === openChatRef.current();
         return { shouldShowBanner: !shown, shouldShowList: !shown, shouldPlaySound: !shown, shouldSetBadge: false };
       },
@@ -39,13 +48,21 @@ export function useNotificationTaps(open: (agentId: string) => void, openChat: (
     const identifier = response.notification.request.identifier;
     if (handled === identifier) return;
     handled = identifier;
-    const agentId = notificationAgentId(response.notification);
-    if (agentId) openRef.current(agentId);
+    const target = notificationTarget(response.notification);
+    if (target) openRef.current(target);
   }, [response]);
 }
 
-function notificationAgentId(notification: Notifications.Notification): string | null {
+function notificationTarget(notification: Notifications.Notification): NotificationTarget | null {
   // A notification that the extension could not open has no data.
-  const agentId = notification.request.content.data?.agentId;
-  return isString(agentId) && agentId ? agentId : null;
+  const data = notification.request.content.data;
+  const agentId = data?.agentId;
+  if (!isString(agentId) || !agentId) return null;
+  const serverId = data?.serverId;
+  const threadId = data?.threadId;
+  return {
+    agentId,
+    serverId: isString(serverId) && serverId ? serverId : null,
+    threadId: isString(threadId) && threadId ? threadId : null,
+  };
 }

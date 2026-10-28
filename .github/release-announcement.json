@@ -1,9 +1,10 @@
 {
-  "version": "0.44.3",
+  "version": "0.52.0",
   "highlights": [
-    "The rail on the right side of a long chat now shows your messages. Select one to go to it and its replies.",
-    "The chat rail stays in view and stays smooth while you scroll.",
-    "Side question in the composer + menu opens the side question pane again.",
-    "Agent templates that contain OpenBot's own skills install again."
+    "Give an agent more than one conversation: click + in the chat header to start a new thread. Your tasks are now threads.",
+    "Attach MP4 videos in chat, and see image files that an agent names as previews under its answer.",
+    "Connect Obsidian, Trello, Render, Neon, Prisma, Netlify, Railway, Atlassian, Todoist and Hugging Face from the new Marketplace.",
+    "OpenBot is now available in Dutch.",
+    "Workspace only Pi, Cursor and DeepSeek agents on macOS work again, and a provider CLI update no longer stops OpenBot at start."
   ]
 }

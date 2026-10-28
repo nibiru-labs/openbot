@@ -2,6 +2,7 @@ import type { AppInfo } from "@openbot/contracts/ipc";
 import type { AppTextKey } from "@openbot/i18n";
 import {
   Bell,
+  Bot,
   CircleArrowDown,
   CreditCard,
   Mic,
@@ -12,10 +13,10 @@ import {
   Smartphone,
   UserRound,
 } from "@openbot/ui";
-import { voiceSupported } from "../conversation/voice-status";
 
 export type SettingsTab =
   | "general"
+  | "agents"
   | "notifications"
   | "voice"
   | "dynamic-island"
@@ -55,20 +56,38 @@ export const navItems: ReadonlyArray<SettingsNavItem> = [
     descriptionKey: "settings.tab.general.description",
     icon: Settings,
     rows: [
+      { titleKey: "settings.appearance.theme.title", descriptionKey: "settings.appearance.theme.description" },
+      {
+        titleKey: "settings.appearance.transparentWindow.title",
+        descriptionKey: "settings.appearance.transparentWindow.description",
+      },
       { titleKey: "settings.language.title", descriptionKey: "settings.language.description" },
-      { titleKey: "settings.colorScheme.title", descriptionKey: "settings.colorScheme.description" },
+      { titleKey: "settings.interfaceSize.title", descriptionKey: "settings.interfaceSize.description" },
       { titleKey: "settings.logoColor.title", descriptionKey: "settings.logoColor.description" },
       { titleKey: "settings.sendShortcut.title", descriptionKey: "settings.sendShortcut.description" },
-      { titleKey: "settings.busyMessage.title", descriptionKey: "settings.busyMessage.description" },
-      { titleKey: "settings.agentMemoryLimit.title", descriptionKey: "settings.agentMemoryLimit.description" },
       { titleKey: "settings.tokenBudget.hour.title", descriptionKey: "settings.tokenBudget.hour.description" },
       { titleKey: "settings.tokenBudget.turn.title", descriptionKey: "settings.tokenBudget.turn.description" },
+      { titleKey: "settings.showAgentSteps.title", descriptionKey: "settings.showAgentSteps.description" },
       { titleKey: "settings.externalLinks.title", descriptionKey: "settings.externalLinks.description" },
       { titleKey: "settings.launchAtLogin.title", descriptionKey: "settings.launchAtLogin.description" },
       { titleKey: "settings.keepRemoteSessions.title", descriptionKey: "settings.keepRemoteSessions.description" },
       { titleKey: "settings.keepRunning.title", descriptionKey: "settings.keepRunning.description" },
+      { titleKey: "settings.keepAwake.title", descriptionKey: "settings.keepAwake.description" },
+      { titleKey: "settings.keepAwakeOnBattery.title", descriptionKey: "settings.keepAwakeOnBattery.description" },
       { titleKey: "settings.restoreWorkspace.title", descriptionKey: "settings.restoreWorkspace.description" },
       { titleKey: "settings.analytics.title", descriptionKey: "settings.analytics.description" },
+    ],
+  },
+  {
+    value: "agents",
+    titleKey: "settings.tab.agents.title",
+    descriptionKey: "settings.tab.agents.description",
+    icon: Bot,
+    rows: [
+      { titleKey: "agentSettings.automation.title" },
+      { titleKey: "agentSettings.agentNewChat.title" },
+      { titleKey: "agentSettings.quickAcknowledgement.title" },
+      { titleKey: "settings.busyMessage.title", descriptionKey: "settings.busyMessage.description" },
     ],
   },
   {
@@ -102,6 +121,11 @@ export const navItems: ReadonlyArray<SettingsNavItem> = [
     rows: [
       { titleKey: "settings.voice.models.title" },
       { titleKey: "settings.voice.language.title", descriptionKey: "settings.voice.language.description" },
+      {
+        titleKey: "settings.voice.speech.readReplies.title",
+        descriptionKey: "settings.voice.speech.readReplies.description",
+      },
+      { titleKey: "settings.voice.speech.voice.title" },
     ],
   },
   {
@@ -145,6 +169,10 @@ export const navItems: ReadonlyArray<SettingsNavItem> = [
       { titleKey: "settings.mobileConnect.signIn.title", descriptionKey: "settings.mobileConnect.signIn.description" },
       { titleKey: "settings.mobileConnect.link.title", descriptionKey: "settings.mobileConnect.link.description" },
       { titleKey: "settings.mobileConnect.devices.title" },
+      {
+        titleKey: "settings.mobileConnect.route.title",
+        descriptionKey: "settings.mobileConnect.route.description",
+      },
     ],
   },
   {
@@ -177,11 +205,18 @@ export function navItem(tab: SettingsTab): SettingsNavItem {
 }
 
 /**
- * Whether the settings panel and its search show the tab: no Dynamic Island off macOS and no Voice on
- * Linux. Hosted servers opens from its own entry, not from this panel.
+ * Whether the settings panel and its search show the tab. Hosted servers opens from its own entry, not
+ * from this panel.
  */
-export function settingsTabShown(tab: SettingsTab, platform: AppInfo["platform"] | undefined): boolean {
+export function settingsTabShown(tab: SettingsTab, dynamicIslandShown: boolean): boolean {
   if (tab === "hosted-servers") return false;
-  if (tab === "dynamic-island") return platform === "darwin";
-  return tab !== "voice" || voiceSupported(platform);
+  return tab !== "dynamic-island" || dynamicIslandShown;
+}
+
+/**
+ * The Dynamic Island exists only on macOS, and only the main window owns it: main rejects its calls
+ * from a chat window.
+ */
+export function dynamicIslandSettingsShown(platform: AppInfo["platform"] | undefined, chatWindow: boolean): boolean {
+  return platform === "darwin" && !chatWindow;
 }

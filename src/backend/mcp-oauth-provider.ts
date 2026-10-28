@@ -184,10 +184,12 @@ export interface McpSignIn {
   readonly provider: OAuthClientProvider;
   /**
    * Starts this sign-in for a server that answered without one. Some servers, such as Google's, list
-   * their tools to anyone and ask for a token only when a tool runs, so the SDK never gets the 401
-   * that starts a sign-in, and Sign in would end at once with nothing opened. Answers whether the
+   * their tools to anyone and ask for a token only when a tool runs, so the SDK never gets the 401 that
+   * starts a sign-in, and Sign in would end at once with nothing opened. Answers whether the
    * page opened: `false` when this address already holds a token, or when the server publishes no
-   * protected-resource metadata that names an authorization server.
+   * protected-resource metadata that names an authorization server. A metadata read that gets no
+   * answer or a server error is an error, not such a `false`: the server did not say that it wants
+   * no sign-in.
    */
   begin: () => Effect.Effect<boolean, McpOperationError>;
   /** Waits for the browser to come back, then trades the grant for a token set. */
@@ -453,10 +455,32 @@ export class McpOAuth implements McpOAuthAuthority {
           return yield* withTimeout(
             Effect.gen(function* () {
               // A server that answers without a sign-in and names no authorization server takes none:
-              // the SDK would otherwise guess `/authorize` at the server's own origin.
+              // the SDK would otherwise guess `/authorize` at the server's own origin. Any answer
+              // below 500 is such a server: a 404, a refusal, or a page that is not metadata. No
+              // answer, a server error, or a busy server (408, 429) says nothing about the server. It
+              // must not end the sign-in as if the server asked for none: that left the row showing
+              // the result of the earlier test, with no page and no words.
+              let metadataStatus: number | null = null;
+              const metadataFetch: FetchLike = async (input, init) => {
+                metadataStatus = null;
+                const response = await fetchFn(input, init);
+                metadataStatus = response.status;
+                return response;
+              };
               const metadata = yield* mcpCall(() =>
-                discoverOAuthProtectedResourceMetadata(resource, undefined, fetchFn),
-              ).pipe(Effect.catch(() => Effect.succeed(null)));
+                discoverOAuthProtectedResourceMetadata(resource, undefined, metadataFetch),
+              ).pipe(
+                Effect.catch(() => {
+                  if (
+                    metadataStatus !== null &&
+                    metadataStatus < 500 &&
+                    metadataStatus !== 408 &&
+                    metadataStatus !== 429
+                  )
+                    return Effect.succeed(null);
+                  return Effect.fail(new Error(sourceText("error.backend.mcpSignInMetadataUnreadable")));
+                }),
+              );
               if (!metadata?.authorization_servers?.length) return false;
               return (yield* mcpCall(() => auth(provider, { serverUrl: resource, fetchFn }))) === "REDIRECT";
             }),
@@ -1055,9 +1079,11 @@ class McpOAuthClientProvider implements OAuthClientProvider {
         if (!isAuthorizationUrlSafe(authorizationUrl))
           return yield* mcpFailure(new Error(sourceText("error.backend.mcpSignInNotWebPage")));
         const { app } = this.#record();
-        const url = app?.scope
-          ? withAppScope(authorizationUrl, app)
-          : withOfflineAccess(authorizationUrl, this.#discoveryState?.authorizationServerMetadata);
+        const url = withGoogleOfflineAccess(
+          app?.scope
+            ? withAppScope(authorizationUrl, app)
+            : withOfflineAccess(authorizationUrl, this.#discoveryState?.authorizationServerMetadata),
+        );
         yield* mcpCall(() => this.#options.openExternal(url.toString()));
       }),
     );
@@ -1300,6 +1326,21 @@ function withOfflineAccess(authorizationUrl: URL, metadata: OAuthDiscoveryState[
   if (scope.split(/\s+/).includes("offline_access")) return authorizationUrl;
   const url = new URL(authorizationUrl);
   url.searchParams.set("scope", `${scope} offline_access`);
+  if (!url.searchParams.has("prompt")) url.searchParams.set("prompt", "consent");
+  return url;
+}
+
+/**
+ * Google issues a refresh token only when the request says `access_type=offline`, and only at a
+ * consent, so `prompt=consent` comes with it. Its metadata lists no `offline_access` scope, so
+ * `withOfflineAccess` never adds one, and its access tokens last one hour: without this a sign-in
+ * to Google's MCP servers, such as Gmail or Drive, stopped working an hour later.
+ */
+function withGoogleOfflineAccess(authorizationUrl: URL): URL {
+  if (authorizationUrl.origin !== "https://accounts.google.com" || authorizationUrl.searchParams.has("access_type"))
+    return authorizationUrl;
+  const url = new URL(authorizationUrl);
+  url.searchParams.set("access_type", "offline");
   if (!url.searchParams.has("prompt")) url.searchParams.set("prompt", "consent");
   return url;
 }

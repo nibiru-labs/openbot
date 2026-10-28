@@ -29,7 +29,7 @@ export const messages = {
   "agentSettings.backupModels.intro":
     "Gdy {model} osiągnie limit użycia, zanim {name} zacznie pisać, {name} zapyta cię, którego modelu użyć.",
   "agentSettings.backupModels.introAutomatic":
-    "Gdy {model} osiągnie limit użycia, zanim {name} zacznie pisać, {name} przełączy się na pierwszy dostępny model w kolejności.",
+    "Gdy {model} osiągnie limit użycia lub zawiedzie z powodu błędu dostawcy, zanim {name} zacznie pisać, {name} przełączy się na pierwszy dostępny model w kolejności.",
   "agentSettings.backupModels.ask": "Pytaj przed przełączeniem",
   "agentSettings.backupModels.order": "Kolejność",
   "agentSettings.backupModels.listLabel": "Modele zapasowe w kolejności",
@@ -42,7 +42,7 @@ export const messages = {
   "agentSettings.backupModels.unavailable": "Chwilowo niedostępny · pominięto",
   "agentSettings.backupModels.withAccount": "{model} · {account}",
   "agentSettings.backupModels.note":
-    "{name} nigdy się nie przełącza po tym, jak zacznie pisać. Wraca do modelu {model}, gdy limit się skończy.",
+    "{name} nigdy się nie przełącza po tym, jak zacznie pisać. Wraca do modelu {model}, gdy limit się skończy, lub 10 minut po błędzie dostawcy.",
   "agentSettings.groups.brain": "Mózg",
   "agentSettings.groups.knows": "Wie",
   "agentSettings.groups.does": "Robi",
@@ -62,7 +62,7 @@ export const messages = {
   "agentSettings.avatar.image": "Obraz",
   "agentSettings.avatar.replaceImage": "Zastąp obraz",
   "agentSettings.avatar.uploadImage": "Prześlij obraz",
-  "agentSettings.avatar.imageHint": "PNG, JPEG lub WebP · kwadratowe kadrowanie",
+  "agentSettings.avatar.imageHint": "PNG, JPEG, GIF lub WebP · kwadratowe kadrowanie",
   "agentSettings.avatar.generatedFace": "Wygenerowana twarz",
   "agentSettings.avatar.resetToId": "Przywróć twarz z ID",
   "agentSettings.avatar.newSet": "Nowy zestaw",
@@ -77,7 +77,6 @@ export const messages = {
   "agentSettings.avatar.saveFailed": "Nie udało się zapisać awatara agenta.",
   "agentSettings.avatar.processFailed": "Nie udało się przetworzyć awatara agenta.",
   "agentSettings.runtime.model": "Model agenta",
-  "agentSettings.runtime.modelBusy": "Poczekaj, aż bieżąca praca się zakończy, zanim zmienisz model.",
   "agentSettings.runtime.modelUnavailable": "Modele będą dostępne po połączeniu CLI agenta.",
   "agentSettings.runtime.reasoning": "Rozumowanie",
   "agentSettings.runtime.reasoningLabel": "Poziom rozumowania agenta",
@@ -87,8 +86,8 @@ export const messages = {
   "agentSettings.runtime.accessLabel": "Dostęp agenta",
   "agentSettings.runtime.busyMessage": "Podczas pracy",
   "agentSettings.runtime.busyMessageLabel": "Wiadomości podczas pracy agenta",
-  "agentSettings.runtime.taskLimit": "Zadania naraz",
-  "agentSettings.runtime.taskLimitLabel": "Zadania, które działają w tym samym czasie",
+  "agentSettings.runtime.taskLimit": "Równoległe wątki",
+  "agentSettings.runtime.taskLimitLabel": "Wątki, które działają w tym samym czasie",
   "agentSettings.runtime.workingDirectory": "Katalog roboczy",
   "agentSettings.runtime.notAvailable": "Jeszcze niedostępne",
   "agentSettings.runtime.fullAccessNote":
@@ -106,8 +105,7 @@ export const messages = {
   "agentSettings.busyMessage.steerUnsupported":
     "{provider} nie może kierować trwającą turą. Wiadomości wysłane w trakcie pracy czekają w kolejce.",
   "agentSettings.taskLimit.default": "Domyślnie ({count})",
-  "agentSettings.taskLimit.oneTurn":
-    "{provider} wykonuje jedną turę naraz. Zadania i czat tego agenta czekają na siebie nawzajem.",
+  "agentSettings.taskLimit.oneTurn": "{provider} wykonuje jedną turę naraz. Wątki tego agenta czekają na siebie.",
   "agentSettings.notifications.title": "Powiadomienia",
   "agentSettings.newChat.title": "Nowy czat",
   "agentSettings.newChat.description": "Agent zapomni ten czat. Jego konfiguracja zostanie.",
@@ -168,6 +166,21 @@ export const messages = {
   "agentSettings.automation.title": "Lokalne skrypty",
   "agentSettings.automation.description":
     "Pozwól skryptom na hoście wysyłać wiadomości, uruchamiać rutyny, odpowiadać na pytania oraz akceptować lub odrzucać prośby o zatwierdzenie",
+  "agentSettings.agentNewChat.title": "Agent rozpoczyna nowe czaty",
+  "agentSettings.agentNewChat.description":
+    "Agent może rozpocząć nowy czat, gdy jego czat staje się długi. Najpierw zapisuje notatki.",
+  "agentSettings.quickAcknowledgement.title": "Pokaż plan przed długimi zadaniami",
+  "agentSettings.quickAcknowledgement.description":
+    "Przed długim zadaniem agent pokazuje swój plan. Zaczyna po 10 s lub po naciśnięciu Start.",
+  "agentSettings.browserProfile.label": "Profil przeglądarki",
+  "agentSettings.browserProfile.shared": "Wspólny",
+  "agentSettings.browserProfile.agent": "Tylko ten agent",
+  "agentSettings.browserProfile.missing": "Usunięty profil",
+  "agentSettings.browserProfile.new": "Nowy profil",
+  "agentSettings.browserProfile.manageTitle": "Profile przeglądarki",
+  "agentSettings.browserProfile.manageDescription":
+    "Każdy profil ma własne logowania i pliki cookie. Zmiana zamyka otwarte karty agenta.",
+  "agentSettings.browserProfile.manage": "Zarządzaj",
   "agentSettings.runtime.workspaceEnforcedProcess":
     "Cały proces {provider} działa w piaskownicy, więc zapis poza tymi folderami się nie powiedzie. Dostępne tylko w macOS.",
 } as const satisfies PartialTranslation<typeof source>;

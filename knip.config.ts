@@ -28,10 +28,26 @@ const config: KnipConfig = {
     // Rewrite and inspect macOS dylib load paths.
     "otool",
     "install_name_tool",
+    // Finds the Linux libraries that the remote desktop runtime bundles.
+    "ldd",
     // Stops a stuck packaged app during Windows package verification.
     "taskkill.exe",
+    // Finds the parent process of the stand-in CLI in the Windows Claude `.cmd` E2E script.
+    "tasklist",
     // Tunnels Slack to the local Signal and account API in `bun run dev:slack`.
     "cloudflared",
+    // Copies a profile database read-only for the agent threads upgrade E2E script.
+    "sqlite3",
+    // Speaks the English samples of the macOS dictation smoke test.
+    "say",
+    // Finds the child processes of the dev app in the channel E2E scripts.
+    "pgrep",
+    // Captures the transparent main window in the appearance E2E script on macOS.
+    "screencapture",
+    // Lists the browsers that macOS knows for the external link setting.
+    "osascript",
+    // Makes the FIFO whose opens never finish in the exit watchdog E2E script.
+    "mkfifo",
   ],
   workspaces: {
     ".": {
@@ -41,6 +57,9 @@ const config: KnipConfig = {
         // Each file in scripts/ is a command that package.json, CI or another script runs.
         "scripts/**/*.ts",
         "tools/**/*.ts",
+        // The prototype skill builds its stories on this helper. No story on main uses it, because
+        // prototype stories are deleted after the decision (.agents/skills/prototype/SKILL.md).
+        "src/renderer/stories/prototype-support.tsx",
       ],
       project: ["src/**/*.{ts,tsx,css}", "scripts/**/*.ts", "tools/**/*.ts"],
       ignoreDependencies: [
@@ -96,7 +115,8 @@ const config: KnipConfig = {
     },
     "packages/i18n": {
       // apps/auth-api/vite.config.ts puts this file in place of the static catalog modules by path.
-      entry: ["src/lazy-catalogs.ts"],
+      // Metro resolves mobile-catalogs.native.ts in place of mobile-catalogs.ts.
+      entry: ["src/lazy-catalogs.ts", "src/mobile-catalogs.native.ts"],
       project: ["src/**/*.{ts,tsx,css}"],
     },
     "packages/*": {

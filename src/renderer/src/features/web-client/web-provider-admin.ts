@@ -7,7 +7,13 @@ import type {
 } from "@openbot/contracts/ipc";
 import { decodeRegistryEntries, decodeRegistryInstallResult, decodeRegistryOperations } from "@openbot/contracts/ipc";
 import { ACP_REGISTRY_ROUTES } from "@openbot/contracts/team-protocol/acp-registry-v1";
+import { CLAUDE_API_KEY_CAPABILITY } from "@openbot/contracts/team-protocol/claude-api-key-v1";
+import {
+  PROVIDER_ACCOUNT_RELAY_CAPABILITY,
+  PROVIDER_ACCOUNT_RELAY_PROVIDERS,
+} from "@openbot/contracts/team-protocol/provider-account-relay-v1";
 import { PROVIDER_ACCOUNTS_CAPABILITY } from "@openbot/contracts/team-protocol/provider-accounts-v1";
+import { PROVIDER_USAGE_RESET_CAPABILITY } from "@openbot/contracts/team-protocol/provider-usage-reset-v1";
 import { PROVIDERS_ADMIN_ROUTES } from "@openbot/contracts/team-protocol/providers-v1";
 import {
   PROVIDERS_RUNTIMES_V2_CAPABILITY,
@@ -19,6 +25,7 @@ import {
 } from "@openbot/contracts/team-protocol/providers-v3";
 import { PROVIDERS_V4_CAPABILITY, PROVIDERS_V4_ROUTES } from "@openbot/contracts/team-protocol/providers-v4";
 import { PROVIDERS_V5_CAPABILITY, PROVIDERS_V5_ROUTES } from "@openbot/contracts/team-protocol/providers-v5";
+import { PROVIDERS_V8_CAPABILITY, PROVIDERS_V8_ROUTES } from "@openbot/contracts/team-protocol/providers-v8";
 import { runTeamEffect } from "@openbot/team-client";
 import {
   cancelProviderAccountSignIn,
@@ -38,8 +45,10 @@ import {
   providerAccountSignInStatus,
   providerAccountUsage,
   providerHostSignInStatus,
+  providerUsageResets,
   removeProviderAccount,
   renameProviderAccount,
+  resetProviderUsage,
   saveCustomProvider,
   setProviderApiKey,
   startProviderAccountSignIn,
@@ -71,7 +80,7 @@ import { webProviderRelay } from "./web-provider-relay";
 const CODE_LOGIN_POLL_MS = 3000;
 
 /**
- * The pages the key dialog and the Help menu link to. The desktop app keeps its table in main; the
+ * The pages the key dialog, the Help menu and the community card link to. The desktop app keeps its table in main; the
  * browser has no main process, so the pages it opens are listed here, and any other name is refused.
  */
 const WEB_EXTERNAL_DESTINATIONS: Partial<Record<ExternalDestination, string>> = {
@@ -81,6 +90,7 @@ const WEB_EXTERNAL_DESTINATIONS: Partial<Record<ExternalDestination, string>> = 
   changelog: "https://openbot.run/changelog",
   guides: "https://openbot.run/guides",
   discord: "https://discord.openbot.run",
+  x: "https://x.com/OpenBot_",
 };
 
 export function openWebDestination(destination: ExternalDestination): Promise<void> {
@@ -98,7 +108,7 @@ function webProviderAdmin(
   request: (serverId?: string) => TeamApiRequest,
   runtimeRoutes: () => ProviderRuntimeRoutes,
   signInRoutes: () => ProviderCodeLoginRoutes,
-  keyRoutes: () => typeof PROVIDERS_ADMIN_ROUTES | typeof PROVIDERS_V5_ROUTES,
+  keyRoutes: () => typeof PROVIDERS_ADMIN_ROUTES | typeof PROVIDERS_V5_ROUTES | typeof PROVIDERS_V8_ROUTES,
 ): ProviderAdminDesktopApi {
   return {
     startCodeLogin: async (provider, serverId) =>
@@ -113,7 +123,7 @@ function webProviderAdmin(
         submitProviderCodeLogin(
           request(serverId),
           input,
-          routes === PROVIDERS_V4_ROUTES ? routes : PROVIDERS_SIGN_IN_V3_ROUTES,
+          routes === PROVIDERS_V8_ROUTES || routes === PROVIDERS_V4_ROUTES ? routes : PROVIDERS_SIGN_IN_V3_ROUTES,
         ).pipe(Effect.mapError((error) => error.cause)),
       );
     },
@@ -189,6 +199,10 @@ function webProviderAdmin(
       runTeamEffect(renameProviderAccount(request(serverId), input).pipe(Effect.mapError((error) => error.cause))),
     removeAccount: async (input, serverId) =>
       runTeamEffect(removeProviderAccount(request(serverId), input).pipe(Effect.mapError((error) => error.cause))),
+    usageResets: async (provider, serverId) =>
+      runTeamEffect(providerUsageResets(request(serverId), provider).pipe(Effect.mapError((error) => error.cause))),
+    resetUsage: async (input, serverId) =>
+      runTeamEffect(resetProviderUsage(request(serverId), input).pipe(Effect.mapError((error) => error.cause))),
     ...webProviderRelay(request),
   };
 }
@@ -215,24 +229,30 @@ export function createWebProviderSettings(options: WebProviderSettingsOptions) {
   const admin = webProviderAdmin(
     options.request,
     () =>
-      serverSupportsCapability(options.server(), PROVIDERS_V5_CAPABILITY)
-        ? PROVIDERS_V5_ROUTES
-        : serverSupportsCapability(options.server(), PROVIDERS_V4_CAPABILITY)
-          ? PROVIDERS_V4_ROUTES
-          : serverSupportsCapability(options.server(), PROVIDERS_RUNTIMES_V2_CAPABILITY)
-            ? PROVIDERS_RUNTIMES_V2_ROUTES
-            : PROVIDERS_ADMIN_ROUTES,
+      serverSupportsCapability(options.server(), PROVIDERS_V8_CAPABILITY)
+        ? PROVIDERS_V8_ROUTES
+        : serverSupportsCapability(options.server(), PROVIDERS_V5_CAPABILITY)
+          ? PROVIDERS_V5_ROUTES
+          : serverSupportsCapability(options.server(), PROVIDERS_V4_CAPABILITY)
+            ? PROVIDERS_V4_ROUTES
+            : serverSupportsCapability(options.server(), PROVIDERS_RUNTIMES_V2_CAPABILITY)
+              ? PROVIDERS_RUNTIMES_V2_ROUTES
+              : PROVIDERS_ADMIN_ROUTES,
     // `providers-v1` signs in Codex only; the picker offers no other provider on such a host.
     () =>
-      serverSupportsCapability(options.server(), PROVIDERS_V4_CAPABILITY)
-        ? PROVIDERS_V4_ROUTES
-        : serverSupportsCapability(options.server(), PROVIDERS_SIGN_IN_V3_CAPABILITY)
-          ? PROVIDERS_SIGN_IN_V3_ROUTES
-          : PROVIDERS_ADMIN_ROUTES,
+      serverSupportsCapability(options.server(), PROVIDERS_V8_CAPABILITY)
+        ? PROVIDERS_V8_ROUTES
+        : serverSupportsCapability(options.server(), PROVIDERS_V4_CAPABILITY)
+          ? PROVIDERS_V4_ROUTES
+          : serverSupportsCapability(options.server(), PROVIDERS_SIGN_IN_V3_CAPABILITY)
+            ? PROVIDERS_SIGN_IN_V3_ROUTES
+            : PROVIDERS_ADMIN_ROUTES,
     () =>
-      serverSupportsCapability(options.server(), PROVIDERS_V5_CAPABILITY)
-        ? PROVIDERS_V5_ROUTES
-        : PROVIDERS_ADMIN_ROUTES,
+      serverSupportsCapability(options.server(), PROVIDERS_V8_CAPABILITY)
+        ? PROVIDERS_V8_ROUTES
+        : serverSupportsCapability(options.server(), PROVIDERS_V5_CAPABILITY)
+          ? PROVIDERS_V5_ROUTES
+          : PROVIDERS_ADMIN_ROUTES,
   );
   const serverId = createMemo(() => remoteAdminServer(options.server(), "providers-v1")?.id);
   const runtimes = createProviderRuntimeStore(
@@ -259,9 +279,16 @@ export function createWebProviderSettings(options: WebProviderSettingsOptions) {
     void store.refreshCustomProviders().catch(() => undefined);
     return store;
   });
+  // A boolean, so that a server-list update that keeps the capability does not rebuild the keys.
+  const readsClaudeKey = createMemo(() => serverSupportsCapability(options.server(), CLAUDE_API_KEY_CAPABILITY));
   const providerKeys = createMemo(() => {
     const id = serverId();
-    return id ? hostProviderKeyApi(() => admin, id, openWebDestination) : undefined;
+    return id
+      ? {
+          ...hostProviderKeyApi(() => admin, id, openWebDestination),
+          readsClaudeKey: readsClaudeKey(),
+        }
+      : undefined;
   });
   // The released status and agent routes carry no account, so `provider-accounts-v1` adds them.
   const accountsServerId = createMemo(() => remoteAdminServer(options.server(), PROVIDER_ACCOUNTS_CAPABILITY)?.id);
@@ -291,6 +318,9 @@ export function createWebProviderSettings(options: WebProviderSettingsOptions) {
           cancel: (provider: AgentProviderId) => admin.cancelHostSignIn(provider, id ?? ""),
         },
         ...(accountsServerId() ? { accountSignIn: accountSignIn(accountsServerId() ?? "") } : {}),
+        ...(accountsServerId() && serverSupportsCapability(options.server(), PROVIDER_ACCOUNT_RELAY_CAPABILITY)
+          ? { accountRelay: accountRelay(accountsServerId() ?? "") }
+          : {}),
         relay: {
           hostName: options.server()?.name ?? "",
           start: (provider: AgentProviderId) => admin.startRelaySignIn(provider, id ?? ""),
@@ -327,6 +357,27 @@ export function createWebProviderSettings(options: WebProviderSettingsOptions) {
       },
     };
   }
+  /** As on desktop: the other relay requests run an account's relayed sign-in by its provider. */
+  function accountRelay(id: string) {
+    return {
+      providers: PROVIDER_ACCOUNT_RELAY_PROVIDERS,
+      hostName: options.server()?.name ?? "",
+      start: (provider: AgentProviderId, accountId: string | null) =>
+        admin.startAccountRelaySignIn({ provider, accountId }, id),
+      status: async (provider: AgentProviderId) => {
+        const result = await admin.relaySignInStatus(provider, id);
+        if (result.result) await hostAccounts.refresh().catch(() => undefined);
+        return result;
+      },
+      open: (provider: AgentProviderId) => admin.openRelaySignIn(provider, id),
+      paste: (provider: AgentProviderId, address: string) => admin.pasteRelaySignIn({ provider, address }, id),
+      cancel: async (provider: AgentProviderId) => {
+        const result = await admin.cancelRelaySignIn(provider, id);
+        await hostAccounts.refresh().catch(() => undefined);
+        return result;
+      },
+    };
+  }
   const accountActions = createMemo<ProviderAccountActions | undefined>(() => {
     const id = accountsServerId();
     if (!id) return undefined;
@@ -342,6 +393,17 @@ export function createWebProviderSettings(options: WebProviderSettingsOptions) {
       },
       rename: (provider, accountId, label) => changed(admin.renameAccount({ provider, accountId, label }, id)),
       remove: (provider, accountId) => changed(admin.removeAccount({ provider, accountId }, id)),
+      ...(remoteAdminServer(options.server(), PROVIDER_USAGE_RESET_CAPABILITY)?.id === id
+        ? {
+            usageResets: (provider: AgentProviderId) => admin.usageResets(provider, id),
+            resetUsage: async (provider: AgentProviderId, accountId: string) => {
+              const outcome = await admin.resetUsage({ provider, accountId }, id);
+              // The host sends the reading of its own sign-in; the accounts after the first are read here.
+              await hostAccounts.refreshUsage().catch(() => undefined);
+              return outcome;
+            },
+          }
+        : {}),
     };
   });
   // The host sends status events, but a browser that reconnects in the middle can miss the one that

@@ -8,7 +8,7 @@ import { type AgentRuntimeSnapshot, isAgentRuntimeSnapshot } from "./ipc-agent-r
 import type { AccountUsage, AgentStatus } from "./ipc-agent-status";
 import { type AgentTasksSnapshot, isAgentTasksSnapshot } from "./ipc-agent-tasks";
 import { type AgentWaitsSnapshot, isAgentWaitsSnapshot } from "./ipc-agent-waits";
-import { type AgentSummary, isAgentSummary } from "./ipc-agents";
+import { type ClientAgentSummary, isClientAgentSummary } from "./ipc-agents";
 import {
   type AgentApproval,
   type BrowserTakeoverRequest,
@@ -40,18 +40,24 @@ export type AgentEvent =
   | { type: "channels-changed"; channelId: string; revision: number }
   | { type: "status"; status: AgentStatus }
   | { type: "usage-changed"; usage: AccountUsage }
-  | { type: "agents-changed"; agents: AgentSummary[] }
+  | { type: "agents-changed"; agents: ClientAgentSummary[] }
   | { type: "memories-changed"; agentId: string }
   | { type: "routines-changed"; agentId: string }
   | { type: "skills-changed"; agentId: string }
   /** The routine canvas of this agent changed, so the views showing it read it again. */
   | { type: "routine-flows-changed"; agentId: string }
+  /** A workflow of this server changed: its graph, its title, a run or a step. Views showing it read it again. */
+  | { type: "workflows-changed"; workflowId: string }
+  /** The Vault of this server changed. Server settings of a joined server read it again. */
+  | { type: "vault-changed" }
   | { type: "agent-session-settings-changed"; agentId: string }
   | { type: "channel-memories-changed"; channelId: string }
   | { type: "channel-routines-changed"; channelId: string }
   | { type: "sidebar-layout-changed"; layout: SidebarLayoutSnapshot }
   /** The whole hidden list, in the `agent-hidden-v1` wire shape, so the Team API sends it as it is. */
   | { type: "hidden-agents-changed"; agents: HiddenAgent[] }
+  /** The roles changed. A client reads `/v1/agent-access` again for its own levels. */
+  | { type: "agent-access-changed"; revision: number }
   | { type: "conversation"; snapshot: ConversationSnapshot }
   | { type: "conversation-invalidated"; agentId: string; revision: number }
   | { type: "conversation-page"; page: ConversationPage }
@@ -127,7 +133,11 @@ export type AgentEvent =
       type: "browser-page-state-changed";
       tabs: { tabId: string; canGoBack: boolean; canGoForward: boolean }[];
     }
-  | { type: "error"; agentId?: string; code: string; message: string }
+  /**
+   * `provider` and `model` name the run that failed, for the banner. Local only: the Team API event
+   * projection drops them.
+   */
+  | { type: "error"; agentId?: string; code: string; message: string; provider?: AgentProviderId; model?: string }
   /**
    * A provider plan refused a turn, once per limit. The queues of its agents wait for the reset.
    * Local only: the released Team API event adapters do not carry it. `resetsAt` is in epoch seconds.
@@ -168,7 +178,9 @@ export function isAgentEvent(value: unknown): value is AgentEvent {
       return isDynamicRecord(value.usage);
     case "agents-changed":
       return (
-        Array.isArray(value.agents) && value.agents.length <= INPUT_LIMITS.agents && value.agents.every(isAgentSummary)
+        Array.isArray(value.agents) &&
+        value.agents.length <= INPUT_LIMITS.agents &&
+        value.agents.every(isClientAgentSummary)
       );
     case "memories-changed":
       return isString(value.agentId) && value.agentId.length > 0 && value.agentId.length <= INPUT_LIMITS.identifier;
@@ -178,6 +190,10 @@ export function isAgentEvent(value: unknown): value is AgentEvent {
     case "skills-changed":
     case "routine-flows-changed":
       return isIdentifier(value.agentId);
+    case "workflows-changed":
+      return isIdentifier(value.workflowId);
+    case "vault-changed":
+      return true;
     case "channel-memories-changed":
     case "channel-routines-changed":
       return isIdentifier(value.channelId);
@@ -185,6 +201,8 @@ export function isAgentEvent(value: unknown): value is AgentEvent {
       return isSidebarLayoutSnapshot(value.layout);
     case "hidden-agents-changed":
       return isHiddenAgentsSnapshot({ agents: value.agents });
+    case "agent-access-changed":
+      return isNumber(value.revision) && Number.isSafeInteger(value.revision) && value.revision >= 0;
     case "conversation":
       return isConversationSnapshot(value.snapshot);
     case "conversation-invalidated":
@@ -299,7 +317,12 @@ export function isAgentEvent(value: unknown): value is AgentEvent {
         )
       );
     case "error":
-      return isString(value.code) && isString(value.message);
+      return (
+        isString(value.code) &&
+        isString(value.message) &&
+        (value.provider === undefined || isAgentProvider(value.provider)) &&
+        (value.model === undefined || isString(value.model))
+      );
     case "usage-limit-reached":
       return (
         isIdentifier(value.agentId) &&

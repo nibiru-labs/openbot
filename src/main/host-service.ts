@@ -1,10 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { dirname, join } from "node:path";
+import type { HostKeyHandover } from "@openbot/contracts/host-key-handover";
 import { createInviteUrl, selfHostedApiOrigin } from "@openbot/contracts/invite-links";
 import type {
+  AgentEvent,
   AvatarImageInput,
   CentralAuthUser,
+  ChannelSummary,
   ConfigureHostInput,
   ConversationMessageSender,
   ConversationPageAnchor,
@@ -32,15 +35,16 @@ import type {
   UpdateHostIdentityInput,
   UpdateTeamMemberInput,
 } from "@openbot/contracts/ipc";
-import { conversationMessageSender, SIGNED_OUT_CHANNEL_MEMBER_ID } from "@openbot/contracts/ipc";
+import { type AgentAccessLevel, conversationMessageSender, SIGNED_OUT_CHANNEL_MEMBER_ID } from "@openbot/contracts/ipc";
 import type { LiveActivityRelayPush } from "@openbot/contracts/live-activity-relay";
 import type { HostRestartState } from "@openbot/contracts/team-protocol/host-update-v1";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
-import { Cause, Context, Deferred, Effect, Fiber, Layer, ManagedRuntime, Result } from "effect";
+import { Cause, Context, Deferred, Effect, Fiber, Layer, ManagedRuntime, Result, Semaphore } from "effect";
 import type { AgentService } from "../backend/agent-service";
 import type { ChannelService } from "../backend/channel-service";
 import type { TeamChatStore } from "../backend/team-chat-store";
+import type { AgentAccessStore } from "./agent-access-store";
 import { BrowserViewGateway } from "./browser-view-gateway";
 import type { VerifiedRemoteSessionTicket } from "./central-auth-manager";
 import { LiveActivityPushService, LiveActivitySendFailure } from "./live-activity-push";
@@ -85,8 +89,11 @@ interface HostServiceOptions {
   signInRelay?: ForwardedApiOptions["signInRelay"];
   connectors?: ForwardedApiOptions["connectors"];
   onePasswordConnector?: ForwardedApiOptions["onePasswordConnector"];
+  bitwardenConnector?: ForwardedApiOptions["bitwardenConnector"];
+  vault?: ForwardedApiOptions["vault"];
   providerHostSignIns?: ForwardedApiOptions["providerHostSignIns"];
   providerAccounts?: ForwardedApiOptions["providerAccounts"];
+  providerUsageResets?: ForwardedApiOptions["providerUsageResets"];
   mcpToolRuntimePreparation?: ForwardedApiOptions["mcpToolRuntimePreparation"];
   storage?: ForwardedApiOptions["storage"];
   hostedSites?: ForwardedApiOptions["hostedSites"];
@@ -94,8 +101,11 @@ interface HostServiceOptions {
   agentImport?: ForwardedApiOptions["agentImport"];
   instanceTransfer?: ForwardedApiOptions["instanceTransfer"];
   routineFlows?: ForwardedApiOptions["routineFlows"];
+  workflows?: ForwardedApiOptions["workflows"];
   hiddenAgents?: ForwardedApiOptions["hiddenAgents"];
+  agentAccess?: AgentAccessStore;
   agentTasks?: ForwardedApiOptions["agentTasks"];
+  browserProfiles?: ForwardedApiOptions["browserProfiles"];
   admin?: ForwardedApiOptions["admin"];
   focusUse?: ForwardedApiOptions["focusUse"];
   appVersion: string;
@@ -138,12 +148,22 @@ interface HostServiceOptions {
   platform?: "darwin" | "win32" | "linux";
   unattended?: boolean;
   teamWebRtcBridge?: TeamWebRtcBridge;
+  /** Whether devices may connect to this computer only over a private network, such as Tailscale. */
+  privateNetwork?: () => boolean;
   registerRemoteHost?: (input: {
     hostId: string;
     name: string;
     ownerMembershipId: string;
     devicePublicKey?: string | null;
   }) => Effect.Effect<unknown, RemoteWorkflowError>;
+  /**
+   * Sends a signed key handover to the account service. `refused` means the account service has
+   * another key for this host, so the handover can never apply.
+   */
+  handOverRemoteHostKey?: (
+    hostId: string,
+    handover: HostKeyHandover,
+  ) => Effect.Effect<"accepted" | "refused", RemoteWorkflowError>;
   issueRemoteHostTicket?: (
     hostId: string,
   ) => Effect.Effect<{ ticket: string; signalUrl: string; expiresAt: number }, RemoteWorkflowError>;
@@ -159,8 +179,8 @@ interface HostServiceOptions {
   ) => Effect.Effect<"sent" | "gone", RemoteWorkflowError>;
   /** The phones that get notifications, kept for the next start. */
   pushNotificationStore?: PushNotificationStore;
-  /** Whether the owner uses the desktop app on this computer now, so the owner's phone stays quiet. */
-  hostComputerInUse?: () => boolean;
+  /** Whether the owner uses the desktop app on this computer now and sees the event there, so the owner's phone stays quiet. */
+  hostComputerInUse?: (event: AgentEvent) => boolean;
   verifyRemoteSessionTicket?: (ticket: string) => Effect.Effect<VerifiedRemoteSessionTicket, RemoteWorkflowError>;
   endRemoteSession?: (sessionId: string) => Effect.Effect<void, RemoteWorkflowError>;
   remoteControlPlaneUrl?: string;
@@ -223,6 +243,8 @@ export class HostService extends EventEmitter<HostEvents> {
   #status: HostStatus;
   #runtimeGeneration = 0;
   #startOperation: Fiber.Fiber<HostStatus, RemoteWorkflowError> | null = null;
+  /** A registration and a key rotation each read the host key, so only one of them runs at a time. */
+  readonly #hostKeyLock = Semaphore.makeUnsafe(1);
   #webRtcOnline = false;
   /** `undefined` until the account service first reports, so the first report always binds. */
   #boundAccountId: string | null | undefined = undefined;
@@ -334,7 +356,8 @@ export class HostService extends EventEmitter<HostEvents> {
               );
             },
             // The Team API server is made below. A notification reads it when it is sent.
-            hiddenAgentIds: (protocol, capabilities) => this.#api.hiddenAgentIds(protocol, capabilities),
+            hiddenAgentIds: (protocol, capabilities, memberId) =>
+              this.#api.hiddenAgentIds(protocol, capabilities, memberId),
             randomBytes: (size) => new Uint8Array(randomBytes(size)),
             memberActive: (memberId) => {
               const member = options.store.getMember(memberId);
@@ -342,10 +365,11 @@ export class HostService extends EventEmitter<HostEvents> {
             },
             lastUseElsewhere: (memberId, sessionId) => this.#api.lastMemberUseElsewhere(memberId, sessionId),
             // The desktop app of this computer runs as the owner.
-            atHostComputer: (memberId) =>
-              memberId === options.store.getOwnerMemberId() && (options.hostComputerInUse?.() ?? false),
+            atHostComputer: (memberId, event) =>
+              memberId === options.store.getOwnerMemberId() && (options.hostComputerInUse?.(event) ?? false),
             liveActivityShows: (sessionId, alert, startedAt) =>
               this.#liveActivityPush?.showsEvent(sessionId, alert, startedAt) ?? false,
+            channelForThread: (threadId) => this.channelForThread(threadId),
             logger,
           })
         : undefined;
@@ -360,8 +384,11 @@ export class HostService extends EventEmitter<HostEvents> {
       ...(options.signInRelay === undefined ? {} : { signInRelay: options.signInRelay }),
       ...(options.connectors === undefined ? {} : { connectors: options.connectors }),
       ...(options.onePasswordConnector === undefined ? {} : { onePasswordConnector: options.onePasswordConnector }),
+      ...(options.bitwardenConnector === undefined ? {} : { bitwardenConnector: options.bitwardenConnector }),
+      ...(options.vault === undefined ? {} : { vault: options.vault }),
       ...(options.providerHostSignIns === undefined ? {} : { providerHostSignIns: options.providerHostSignIns }),
       ...(options.providerAccounts === undefined ? {} : { providerAccounts: options.providerAccounts }),
+      ...(options.providerUsageResets === undefined ? {} : { providerUsageResets: options.providerUsageResets }),
       ...(options.mcpToolRuntimePreparation === undefined
         ? {}
         : { mcpToolRuntimePreparation: options.mcpToolRuntimePreparation }),
@@ -371,8 +398,11 @@ export class HostService extends EventEmitter<HostEvents> {
       ...(options.agentImport === undefined ? {} : { agentImport: options.agentImport }),
       ...(options.instanceTransfer === undefined ? {} : { instanceTransfer: options.instanceTransfer }),
       ...(options.routineFlows === undefined ? {} : { routineFlows: options.routineFlows }),
+      ...(options.workflows === undefined ? {} : { workflows: options.workflows }),
       ...(options.hiddenAgents === undefined ? {} : { hiddenAgents: options.hiddenAgents }),
+      ...(options.agentAccess === undefined ? {} : { agentAccess: options.agentAccess }),
       ...(options.agentTasks === undefined ? {} : { agentTasks: options.agentTasks }),
+      ...(options.browserProfiles === undefined ? {} : { browserProfiles: options.browserProfiles }),
       // The identity route changes this host's name and logo through `updateIdentity`, so a change
       // from a joined admin runs every step a local one does.
       admin: {
@@ -439,9 +469,15 @@ export class HostService extends EventEmitter<HostEvents> {
               this.#options.browser.releaseUserControlHeldBy({ kind: "session", sessionId });
             }),
           ...(options.verifyRemoteSessionTicket ? { verifyClientTicket: options.verifyRemoteSessionTicket } : {}),
+          ...(options.privateNetwork ? { privateNetwork: options.privateNetwork } : {}),
         })
       : null;
   }
+
+  /** Applies a changed network route to the devices that are connected now. */
+  readonly applyNetworkRoute = Effect.fn("HostService.applyNetworkRoute")(function* (this: HostService) {
+    if (this.#webrtcGateway) yield* this.#webrtcGateway.applyNetworkRoute();
+  }).bind(this);
 
   getStatus(): HostStatus {
     const capabilities = this.#remoteScreen.capabilities();
@@ -660,12 +696,7 @@ export class HostService extends EventEmitter<HostEvents> {
       const ownerMembershipId = yield* remoteDecode(() => this.#requiredOwnerMemberId());
       const attempt0 = yield* Effect.gen({ self: this }, function* () {
         if (!this.#isActiveHost(identity.serverId)) return this.getStatus();
-        yield* optionalRegisterRemoteHost?.({
-          hostId: identity.serverId,
-          name: identity.serverName,
-          ownerMembershipId,
-          devicePublicKey: identity.publicKey,
-        }) ?? Effect.succeed(undefined);
+        if (optionalRegisterRemoteHost) yield* this.#registerRemoteHost(optionalRegisterRemoteHost, ownerMembershipId);
         if (input.logo !== undefined && this.#isActiveHost(identity.serverId)) {
           yield* optionalUpdateRemoteHostLogo?.(identity.serverId, input.logo ?? null, identity.logoVersion) ??
             Effect.succeed(undefined);
@@ -708,12 +739,7 @@ export class HostService extends EventEmitter<HostEvents> {
       });
       this.#api.refreshIdentity();
       const ownerMembershipId = yield* remoteDecode(() => this.#requiredOwnerMemberId());
-      yield* optionalRegisterRemoteHost?.({
-        hostId: identity.serverId,
-        name: identity.serverName,
-        ownerMembershipId,
-        devicePublicKey: identity.publicKey,
-      }) ?? Effect.succeed(undefined);
+      if (optionalRegisterRemoteHost) yield* this.#registerRemoteHost(optionalRegisterRemoteHost, ownerMembershipId);
       if (input.logo !== undefined && this.#isActiveHost(identity.serverId)) {
         yield* optionalUpdateRemoteHostLogo?.(identity.serverId, input.logo ?? null, identity.logoVersion) ??
           Effect.succeed(undefined);
@@ -722,6 +748,70 @@ export class HostService extends EventEmitter<HostEvents> {
     },
     (operation) => this.#provide(operation),
   ).bind(this);
+
+  /**
+   * Changes the host's key without a new pairing. The current and the new key both sign a
+   * handover, and every client that trusts the current key follows it to the new key. The host
+   * uses the new key only after the account service accepts the handover.
+   */
+  readonly rotateIdentityKey = Effect.fn("HostService.rotateIdentityKey")(
+    function* (this: HostService): Effect.fn.Return<HostStatus, RemoteWorkflowError> {
+      if (!this.#options.handOverRemoteHostKey || !this.#options.registerRemoteHost)
+        return yield* new RemoteWorkflowError({ cause: new Error(sourceText("error.host.keyRotationUnavailable")) });
+      yield* remoteDecode(() => this.#options.store.assertOwnerAccount(this.#options.getSignedInUser()));
+      const { handover, result } = yield* this.#hostKeyLock.withPermit(
+        Effect.gen({ self: this }, function* () {
+          const handover = yield* this.#options.store.beginKeyRotation();
+          return { handover, result: yield* this.#resolvePendingKeyRotation() };
+        }),
+      );
+      if (result !== "accepted" || this.#options.store.getIdentity()?.publicKey !== handover.publicKey)
+        return yield* new RemoteWorkflowError({ cause: new Error(sourceText("error.host.keyRotationRefused")) });
+      if (this.#isActiveHost(handover.hostId)) {
+        this.#setStatus({ message: sourceText("status.host.keyRotated") });
+        this.#api.refreshIdentity();
+      }
+      return this.getStatus();
+    },
+    (operation) => this.#provide(operation),
+  ).bind(this);
+
+  /**
+   * Sends a handover that is still pending, for example after a restart or a lost answer. This
+   * runs before each registration: a registration with the previous key would change the account
+   * service back to it after it accepted the handover.
+   */
+  readonly #resolvePendingKeyRotation = Effect.fn("HostService.resolvePendingKeyRotation")(function* (
+    this: HostService,
+  ): Effect.fn.Return<"accepted" | "refused" | "none", RemoteWorkflowError> {
+    const handover = this.#options.store.getPendingKeyHandover();
+    const handOver = this.#options.handOverRemoteHostKey;
+    if (!handover || !handOver) return "none";
+    const result = yield* handOver(handover.hostId, handover);
+    if (result === "accepted") yield* this.#options.store.completeKeyRotation(handover);
+    else yield* this.#options.store.discardKeyRotation(handover);
+    return result;
+  });
+
+  /** Registers the active host with the key that it uses after any pending handover. */
+  readonly #registerRemoteHost = Effect.fn("HostService.registerRemoteHost")(
+    function* (
+      this: HostService,
+      register: NonNullable<HostServiceOptions["registerRemoteHost"]>,
+      ownerMembershipId: string,
+    ): Effect.fn.Return<void, RemoteWorkflowError> {
+      yield* this.#resolvePendingKeyRotation();
+      const identity = this.#options.store.getIdentity();
+      if (!identity) return;
+      yield* register({
+        hostId: identity.serverId,
+        name: identity.serverName,
+        ownerMembershipId,
+        devicePublicKey: identity.publicKey,
+      });
+    },
+    (operation) => this.#hostKeyLock.withPermit(operation),
+  );
 
   /**
    * Every remote step runs under the signed-in account's authentication, so one that started
@@ -787,12 +877,10 @@ export class HostService extends EventEmitter<HostEvents> {
       if (!gateway || !optionalRegisterRemoteHost || !optionalIssueRemoteHostTicket) {
         return yield* new RemoteWorkflowError({ cause: new Error(sourceText("error.host.webRtcNotConfigured")) });
       }
-      yield* optionalRegisterRemoteHost({
-        hostId: identity.serverId,
-        name: identity.serverName,
-        ownerMembershipId: yield* remoteDecode(() => this.#requiredOwnerMemberId()),
-        devicePublicKey: identity.publicKey,
-      });
+      yield* this.#registerRemoteHost(
+        optionalRegisterRemoteHost,
+        yield* remoteDecode(() => this.#requiredOwnerMemberId()),
+      );
       if (yield* this.#cancelSupersededStartEffect(generation)) return this.getStatus();
       if (this.#usesAccountDirectory() && optionalListRemoteMembers) {
         const members = yield* optionalListRemoteMembers(identity.serverId);
@@ -1008,8 +1096,14 @@ export class HostService extends EventEmitter<HostEvents> {
     );
   }
 
-  searchAgentConversationMessages(query: string, agentId?: string, cursor?: string, limit = 100) {
-    return this.#options.agents.searchConversationMessages(query, agentId, cursor, limit);
+  searchAgentConversationMessages(
+    query: string,
+    agentId?: string,
+    cursor?: string,
+    limit = 100,
+    includeSideThreads = false,
+  ) {
+    return this.#options.agents.searchConversationMessages(query, agentId, cursor, limit, includeSideThreads);
   }
 
   searchAgentConversationFiles(query: string, cursor?: string, limit = 50) {
@@ -1148,6 +1242,8 @@ export class HostService extends EventEmitter<HostEvents> {
         yield* this.#remoteScreen.revokeMember(member.id);
         this.#options.browser.releaseUserControlHeldBy({ kind: "member", memberId: member.id });
       }
+      // Roles apply to members only, so a new team role changes which agents the member can use.
+      if (input.role) this.#api.agentAccessChanged();
       this.#api.refreshPresence();
       return member;
     },
@@ -1166,15 +1262,35 @@ export class HostService extends EventEmitter<HostEvents> {
           yield* this.#syncRemoteDirectory(hostId, members);
         }
         yield* this.#revokeMemberSessions(memberId);
+        yield* this.#forgetMemberRoles(hostId, memberId);
         return;
       }
       yield* this.#options.store.removeMember(memberId);
+      if (hostId) yield* this.#forgetMemberRoles(hostId, memberId);
       yield* this.#remoteScreen.revokeMember(memberId);
       this.#options.browser.releaseUserControlHeldBy({ kind: "member", memberId });
       this.#api.refreshPresence();
     },
     (operation) => this.#provide(operation),
   ).bind(this);
+
+  /** Gives a duplicated agent the levels of its source agent. */
+  copyAgentAccess(sourceAgentId: string, agentId: string): Effect.Effect<void> {
+    return this.#api.copyAgentAccess(sourceAgentId, agentId);
+  }
+
+  /** A removed member keeps no roles. The member is gone either way, so a failed write only logs. */
+  #forgetMemberRoles(hostId: string, memberId: string): Effect.Effect<void> {
+    const agentAccess = this.#options.agentAccess;
+    if (!agentAccess) return Effect.void;
+    return agentAccess
+      .removeMember(hostId, memberId)
+      .pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => logger.warn("The removed member's roles did not save.", toLogValue(error))),
+        ),
+      );
+  }
 
   readonly revokeSession = Effect.fn("HostService.revokeSession")(
     function* (this: HostService, sessionId: string): Effect.fn.Return<void, RemoteWorkflowError> {
@@ -1481,6 +1597,44 @@ export class HostService extends EventEmitter<HostEvents> {
       return { id: SIGNED_OUT_CHANNEL_MEMBER_ID, name: "You" };
     }
     return { id: this.#currentAgentReaderId(), name: user.name ?? "You" };
+  }
+
+  /**
+   * The level of `personId`, who asked a channel member to add or remove `agentId`, for that agent:
+   * the level their own save through the Team API has. This computer's user manages every agent. A
+   * person who is no longer an active member of the team has none.
+   */
+  channelPersonAgentLevel(personId: string, agentId: string): AgentAccessLevel {
+    if (!this.channelPersonIsRemote(personId)) return "manage";
+    const member = this.#options.store.getMember(personId);
+    if (!member || member.disabled) return "none";
+    return this.#api.agentLevel(member, agentId);
+  }
+
+  /**
+   * Whether `personId`, who wrote a channel request, is someone other than this computer's user: a
+   * team member, whose app has only what the Team API gives it.
+   */
+  channelPersonIsRemote(personId: string): boolean {
+    if (personId === SIGNED_OUT_CHANNEL_MEMBER_ID || personId === this.#findCurrentMemberId()) return false;
+    try {
+      return personId !== `local-user:${this.#options.getSignedInUser().id}`;
+    } catch {
+      // Signed out: the person is a team member or nobody this computer knows.
+      return true;
+    }
+  }
+
+  /** The channel list as the host user reads it, as the IPC list does. Empty without channels. */
+  listChannels(): ChannelSummary[] {
+    return this.#options.channels?.store.list(this.channelActor().id, true) ?? [];
+  }
+
+  /** The channel whose execution thread `threadId` is, or null for an agent's own thread. */
+  channelForThread(threadId: string): { id: string; name: string } | null {
+    const store = this.#options.channels?.store;
+    const channelId = store?.channelForThread(threadId);
+    return store && channelId ? { id: channelId, name: store.get(channelId).name } : null;
   }
 
   /**

@@ -11,6 +11,10 @@ export const messages = defineMessages("error.attachment", {
     "This server does not support MP3 or MOV attachments. Update OpenBot on the host and retry.",
   "error.attachment.emlUnsupported":
     "This server does not support EML attachments. Update OpenBot on the host and retry.",
+  "error.attachment.zipUnsupported":
+    "This server does not support ZIP attachments. Update OpenBot on the host and retry.",
+  "error.attachment.mp4Unsupported":
+    "This server does not support MP4 attachments. Update OpenBot on the host and retry.",
   "error.attachment.previewTooLarge": "The file exceeds the 100 MB limit.",
   "error.attachment.notPrepared": "The attachment was not prepared.",
   "error.attachment.namedFileTooLarge": '"{name}" exceeds the 100 MB limit.',

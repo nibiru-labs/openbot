@@ -33,6 +33,8 @@ export interface ChatVirtualizer<TItemElement extends Element> {
   itemStart: (index: number) => number | undefined;
   /** Opens a row at the top of the list, rendered or not. A smooth scroll animates there. */
   scrollToIndex: (index: number, options?: { smooth?: boolean }) => void;
+  /** Scrolls to a position in the scroll content. It replaces the target of an earlier `scrollToIndex`. */
+  scrollToOffset: (offset: number) => void;
 }
 
 const STATIC_CHAT_LIMIT = 100;
@@ -68,14 +70,10 @@ export function createChatVirtualizer<TScrollElement extends Element, TItemEleme
     },
     scrollToFn: (offset, scroll, instance) => {
       const element = instance.scrollElement;
-      if (
-        element &&
-        scroll.adjustments !== undefined &&
-        options.count() <= STATIC_CHAT_LIMIT &&
-        options.stickToLatest?.()
-      ) {
-        // Static rows already occupy their measured space. An estimate correction can move
-        // the chat off the bottom after routine cards load. Follow the actual bottom instead.
+      if (element && scroll.adjustments !== undefined && options.stickToLatest?.()) {
+        // Rows end above the activity line. An estimate correction that follows the last row
+        // leaves that line below the view, then the chat's own follow pulls back to the real
+        // bottom, and the two move the chat up and down while a turn runs.
         elementScroll(element.scrollHeight - element.clientHeight, { ...scroll, adjustments: 0 }, instance);
         return;
       }
@@ -185,6 +183,7 @@ export function createChatVirtualizer<TScrollElement extends Element, TItemEleme
     itemStart: (index) => virtualizer.measurementsCache[index]?.start,
     scrollToIndex: (index, scroll) =>
       virtualizer.scrollToIndex(index, { align: "start", behavior: scroll?.smooth ? "smooth" : "auto" }),
+    scrollToOffset: (offset) => virtualizer.scrollToOffset(offset, { align: "start", behavior: "auto" }),
   };
 }
 

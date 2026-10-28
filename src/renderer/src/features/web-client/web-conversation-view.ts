@@ -37,7 +37,8 @@ export function createWebConversationView(options: {
   );
   /**
    * "Always allow" moves an agent at Ask first to Full access, for an owner or admin whose host
-   * answered. The change is written on the host.
+   * answered. The change is written on the host. This card is answered first: the grant answers every
+   * card that still waits, so an answer sent after it would find this one gone.
    */
   const alwaysAllowApproval = createMemo(() => {
     const agent = workspace.selected();
@@ -45,9 +46,8 @@ export function createWebConversationView(options: {
     const settings = remoteAgentAdmin.settings();
     if (!agent || !item || !settings || agentPermissionLevel(settings) !== "ask") return undefined;
     return async () => {
-      await remoteAgentAdmin.update(agentPermissionUpdate(agent.id, "full"));
-      if (approval()?.requestId !== item.requestId) return false;
       await workspace.approve({ requestId: item.requestId, decision: "accept" });
+      await remoteAgentAdmin.update(agentPermissionUpdate(agent.id, "full"));
       return true;
     };
   });

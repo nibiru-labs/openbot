@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
@@ -21,6 +22,7 @@ async function main(): Promise<void> {
   if (!cloudflareEnvironment) {
     requiredSecret("OPENPANEL_CLIENT_ID");
     requiredSecret("OPENPANEL_CLIENT_SECRET");
+    assertLandingBeam();
   }
   assertFcmServiceAccount();
   await putRequiredSecret("EMAIL_SMTP_PASSWORD");
@@ -72,6 +74,15 @@ async function main(): Promise<void> {
   await run(wranglerExecutable, ["deploy", "--keep-vars", ...environmentArgs], {
     label: "Auth API deployment",
   });
+}
+
+// The build drops the home page beam when the private port is missing. Production always has it.
+function assertLandingBeam(): void {
+  const port = join(apiRoot, "src", "vendor", "laser-flow", "LandingLaserFlow.tsx");
+  if (existsSync(port)) return;
+  throw new Error(
+    "The home page beam is missing. Clone nightly-labs/openbot-laser-flow into apps/auth-api/src/vendor/laser-flow.",
+  );
 }
 
 function requiredSecret(name: string): string {

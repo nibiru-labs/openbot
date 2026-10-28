@@ -3,6 +3,12 @@ import { isIdentifier } from "./ipc-bounded-values";
 import { type ConversationMessage, isConversationMessage, type MessageReaction } from "./ipc-conversation-messages";
 import { isDynamicRecord, isNumber } from "./runtime-values";
 
+/**
+ * The most recent completed messages that main keeps and sends for one conversation, plus the
+ * active turn. A snapshot with fewer messages is the whole conversation.
+ */
+export const CONVERSATION_SNAPSHOT_MESSAGE_LIMIT = 100;
+
 export interface ConversationSnapshot {
   agentId: string;
   threadId: string | null;
@@ -110,11 +116,18 @@ export interface SearchConversationMessagesInput {
   agentId?: string;
   cursor?: string;
   limit?: number;
+  /**
+   * Also search the open side threads. Only this computer's server reads it: the Team API search
+   * returns the agents' own chats.
+   */
+  includeSideThreads?: boolean;
 }
 
 export interface ConversationSearchResult {
   agentId: string;
   message: ConversationMessage;
+  /** The side thread that has the message. A message of the agent's own chat has none. */
+  taskId?: string;
 }
 
 export interface ConversationSearchPage {
@@ -165,6 +178,11 @@ export interface SendMessageInput {
    * it, a message to a busy agent follows the agent's busy message mode. Local hosts only.
    */
   interrupt?: boolean;
+  /**
+   * An audio draft of what the user said, when the text came from a voice turn. The host keeps it with
+   * the message for replay and never gives it to the agent.
+   */
+  voiceRecordingDraftId?: string;
 }
 
 export interface SetMessageReactionInput {

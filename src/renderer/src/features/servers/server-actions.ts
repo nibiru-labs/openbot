@@ -59,7 +59,7 @@ export function useServerActions() {
    */
   function add(): void {
     if (platform.landingPreview) return;
-    if (hostedServersAvailable()) setAddServerOpen(true);
+    if (hostedServersAvailable()) setAddServerOpen(true, "server_rail");
     else setJoinServerOpen(true);
     void refreshHostedServersAvailable();
   }

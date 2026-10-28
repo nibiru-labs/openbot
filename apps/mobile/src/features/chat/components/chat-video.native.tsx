@@ -1,7 +1,4 @@
-import { attachmentFileExtension } from "@openbot/contracts/attachment-files";
 import type { AttachmentSummary } from "@openbot/contracts/ipc";
-import { useQuery } from "@tanstack/react-query";
-import { Directory, File, Paths } from "expo-file-system";
 import { Image } from "expo-image";
 import * as Sharing from "expo-sharing";
 import { createVideoPlayer, type VideoThumbnail } from "expo-video";
@@ -12,12 +9,11 @@ import VideoOff from "lucide-react-native/icons/video-off";
 import { useEffect, useState } from "react";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import { showFailureAlert } from "@/features/analytics/failure-reports";
-import { useMobileWorkspaceActions } from "@/features/workspace/context/mobile-workspace-context";
-import { queryKeys } from "@/features/workspace/model/query-keys";
 import { haptics } from "@/shared/lib/haptics";
 import { type MobileText, useText } from "@/shared/lib/text";
 import { attachmentFrame, FILL, FRAME_RADIUS, MAX_FRAME_WIDTH } from "../model/attachment-frame";
 import { useListSettled } from "./use-list-settled";
+import { useMediaFile } from "./use-media-file";
 import { VideoViewer } from "./video-viewer";
 
 // The width reserved while the shape is still unknown: a screen recording from a desktop.
@@ -41,61 +37,6 @@ function rememberPoster(key: string, poster: VideoPoster) {
     if (posters.size <= MAX_POSTERS) break;
     posters.delete(oldest);
   }
-}
-
-let folderCleared = false;
-
-/**
- * The folder of downloaded videos. A video stays on this phone only for the launch that showed it:
- * the first video of a launch removes the files of the launch before.
- */
-function videoFolder() {
-  const folder = new Directory(Paths.cache, "chat-videos");
-  if (!folderCleared) {
-    folderCleared = true;
-    try {
-      if (folder.exists) folder.delete();
-    } catch {
-      // The system clears the cache folder itself when it needs the space.
-    }
-  }
-  return folder;
-}
-
-/**
- * Where a host video is kept on this phone. The player reads a file, not the Base64 that the host
- * sends, and the file keeps the attachment's name so the share sheet shows it.
- */
-function videoFile(serverId: string, attachment: AttachmentSummary) {
-  const segment = (value: string) => value.replace(/[^\w.-]/gu, "_").replace(/^\.+/u, "_");
-  let name = attachment.name.replace(/[/\\\p{Cc}]/gu, "_").replace(/^\.+/u, "_") || "video";
-  // The player and the photo library read the type from the extension.
-  if (!attachmentFileExtension(name))
-    name = `${name}.${attachment.mimeType === "video/quicktime" ? "mov" : (attachment.mimeType.split("/")[1] ?? "mp4")}`;
-  return new File(videoFolder(), segment(serverId), segment(attachment.id), name);
-}
-
-/**
- * The video as a local file. A file from an earlier download is used again when it is whole.
- * `enabled` is false while the card passes in a fast fling: the download waits until the list slows.
- */
-function useVideoFile(serverId: string, attachment: AttachmentSummary, enabled: boolean) {
-  const { downloadAttachment } = useMobileWorkspaceActions();
-  return useQuery({
-    enabled,
-    queryKey: queryKeys.chatVideoFile(serverId, attachment.id),
-    queryFn: async () => {
-      const file = videoFile(serverId, attachment);
-      if (file.exists && file.size === attachment.size) return file.uri;
-      const data = await downloadAttachment(serverId, attachment.id);
-      file.parentDirectory.create({ intermediates: true, idempotent: true });
-      file.write(data.base64, { encoding: "base64" });
-      return file.uri;
-    },
-    retry: false,
-    staleTime: Infinity,
-    gcTime: 5 * 60 * 1000,
-  });
 }
 
 /**
@@ -153,7 +94,7 @@ function useVideoPoster(key: string, uri: string | null) {
 }
 
 /** A length such as 0:42 or 1:02:05, as a player shows it. */
-function playbackTime(seconds: number, format: MobileText["format"]) {
+export function playbackTime(seconds: number, format: MobileText["format"]) {
   const total = Math.max(0, Math.round(seconds));
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
@@ -163,7 +104,7 @@ function playbackTime(seconds: number, format: MobileText["format"]) {
     : `${format.number(minutes)}:${rest}`;
 }
 
-async function runFileAction(action: () => Promise<void>, title: string, text: MobileText): Promise<boolean> {
+export async function runFileAction(action: () => Promise<void>, title: string, text: MobileText): Promise<boolean> {
   try {
     await action();
     return true;
@@ -197,7 +138,7 @@ export function ChatVideoAttachment({
   const muted = useThemeColor("muted");
   const { width } = useWindowDimensions();
   const settled = useListSettled();
-  const query = useVideoFile(serverId, attachment, settled);
+  const query = useMediaFile(serverId, attachment, settled);
   const uri = query.data ?? null;
   const { poster, missing } = useVideoPoster(`${serverId}:${attachment.id}`, settled ? uri : null);
   const [posterLoaded, setPosterLoaded] = useState(false);

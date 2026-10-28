@@ -1,3 +1,4 @@
+import type { HostedServerEntryPoint } from "@openbot/contracts/hosted-servers";
 import type { HostStatus, ServerNotificationLevel, ServerSummary } from "@openbot/contracts/ipc";
 import type { TeamCurrentCapability } from "@openbot/contracts/team-protocol/current";
 import { WAKE_RECONNECT_STATES } from "@openbot/team-client/hosted-server-wake";
@@ -55,7 +56,11 @@ const Servers = createSimpleContext({
     const [servers, setServers] = createSignal<ServerSummary[]>([]);
     const [hostStatus, setHostStatus] = createSignal<HostStatus>(FALLBACK_HOST_STATUS);
     const [joinServerOpen, setJoinServerOpen] = createSignal(false);
-    const [addServerOpen, setAddServerOpen] = createSignal(false);
+    /** Where the user opened the hosted server plans, or null while they are closed. */
+    const [addServerEntryPoint, setAddServerEntryPoint] = createSignal<HostedServerEntryPoint | null>(null);
+    const addServerOpen = () => addServerEntryPoint() !== null;
+    const setAddServerOpen = (...args: [open: false] | [open: true, entryPoint: HostedServerEntryPoint]) =>
+      setAddServerEntryPoint(args[0] ? args[1] : null);
     // True when the account can create hosted servers. The plus button then opens the plans.
     const [hostedServersAvailable, setHostedServersAvailable] = createSignal(false);
     /** The hosted servers of this account. The server menu can delete these. */
@@ -419,6 +424,7 @@ const Servers = createSimpleContext({
       joinServerOpen,
       setJoinServerOpen,
       addServerOpen,
+      addServerEntryPoint,
       setAddServerOpen,
       hostedServersAvailable,
       hostedServerIds,

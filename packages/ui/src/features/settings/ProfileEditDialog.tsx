@@ -124,7 +124,7 @@ function ProfileEditForm(props: { store: SettingsProfileStore; account: CentralA
           class="sr-only"
           type="file"
           aria-label={t("settings.profile.photo.upload")}
-          accept="image/png,image/jpeg,image/webp"
+          accept="image/png,image/jpeg,image/gif,image/webp"
           onChange={(event) => void pickPhoto(event.currentTarget.files?.[0])}
         />
       </div>

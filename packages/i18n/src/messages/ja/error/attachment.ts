@@ -12,6 +12,10 @@ export const messages = {
     "このサーバーは MP3 または MOV の添付ファイルに対応していません。ホストの OpenBot をアップデートしてから、もう一度お試しください。",
   "error.attachment.emlUnsupported":
     "このサーバーは EML の添付ファイルに対応していません。ホストの OpenBot をアップデートしてから、もう一度お試しください。",
+  "error.attachment.zipUnsupported":
+    "このサーバーは ZIP の添付ファイルに対応していません。ホストの OpenBot をアップデートしてから、もう一度お試しください。",
+  "error.attachment.mp4Unsupported":
+    "このサーバーは MP4 の添付ファイルに対応していません。ホストの OpenBot をアップデートしてから、もう一度お試しください。",
   "error.attachment.previewTooLarge": "ファイルが 100 MB の上限を超えています。",
   "error.attachment.notPrepared": "添付ファイルを準備できませんでした。",
   "error.attachment.namedFileTooLarge": '"{name}" は 100 MB の上限を超えています。',

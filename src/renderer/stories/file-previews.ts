@@ -65,10 +65,10 @@ const TEXT = `2026-09-13T09:12:04.118Z  info   provider.claude-code   session st
 2026-09-13T09:12:08.049Z  info   db.migrations          schema v14 is current; no migration ran
 `;
 
-const SOURCE = `import type { AgentSummary } from "./agents";
+const SOURCE = `import type { ClientAgentSummary } from "./agents";
 
 /** Team API v1-v3 call an agent a "bot". Translate on the wire only. */
-export function toWireAgent(agent: AgentSummary) {
+export function toWireAgent(agent: ClientAgentSummary) {
   return { botId: agent.id, name: agent.name, workspace: agent.workspacePath };
 }
 `;
