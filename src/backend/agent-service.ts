@@ -2976,6 +2976,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const agent = this.#store.list().find((candidate) => candidate.id === agentId);
     if (!agent || (!agent.usageLimitReturn && !agent.backupModels?.automatic)) return null;
     if (this.#runsTurn(agentId) || this.#mailbox.hasStartedDelivery(agentId)) return null;
+    // Unknown scope never moves the agent automatically, including to another provider or account.
     if (this.#usageLimits.hasUnknownLimit(agentId)) return null;
     // The agent keeps its reasoning effort where the other model has it. It goes back with the effort it left.
     const move = (choice: AgentModelChoice, reasoningEffort = agent.reasoningEffort) => {
@@ -2993,7 +2994,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
             : reasoningEffort,
       };
     };
-    if (agent.usageLimitReturn && this.#usageLimitReady(agent.usageLimitReturn))
+    if (
+      !this.#usageLimits.hasUnknownLimit(agentId) &&
+      agent.usageLimitReturn &&
+      this.#usageLimitReady(agent.usageLimitReturn)
+    )
       return { input: move(agent.usageLimitReturn, agent.usageLimitReturn.reasoningEffort), move: "return" };
     const limited = !this.#usageLimits.mayDrain(agentId);
     const failed = !limited && this.#usageLimits.isFailed(usageLimitOf(agentModelChoice(agent)));

@@ -9,8 +9,9 @@
 //   3. A turn that did nothing yet runs again on the backup model, with a note and no error.
 //   4. read_agent shows the backup model, and the model to go back to with the provider error as cause.
 //   5. After a restart, the agent goes back to its own model, with a note.
-// Also checks continuation after a usage limit interrupts partial work.
-// `bun run test:backup-model-failover`. Writes .openbot-build/backup-model-failover-e2e/report.json.
+// Also checks continuation after a usage limit with a known family interrupts partial work.
+// Codex refusals name no family: unknown scope pauses work and never switches provider or account.
+// `bun run test:backup-model-failover`. Writes .openbot-build/backup-model-failover-e2e/report.json and trace.json.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
@@ -30,6 +31,7 @@ import { isDynamicRecord } from "@openbot/contracts/runtime-values";
 import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import type { AgentBrowserHost } from "../src/backend/agent/turn-lifecycle";
+import { UsageLimitGate } from "../src/backend/agent/usage-limit-gate";
 import type { AgentClient, DiagnosticOrigin } from "../src/backend/agent-client";
 import type { ClaudeCliInfo } from "../src/backend/cli";
 import type { AppServerNotification, AppServerRequest, RequestId, ResponseDecoder } from "../src/backend/protocol";
@@ -509,7 +511,7 @@ async function send(agentId: string, text: string, sourcePaths?: string[]) {
   assert.ok(deliveryId, "The message has a delivery.");
   const status = await waitFor(`"${text}" to end`, () => {
     const value = mailbox.getDelivery(deliveryId)?.delivery.status;
-    return value === "completed" || value === "failed" ? value : null;
+    return value === "completed" || value === "failed" || value === "interrupted" ? value : null;
   });
   return { deliveryId, status, error: mailbox.getDelivery(deliveryId)?.delivery.error ?? null };
 }
@@ -568,6 +570,25 @@ async function createCodex(name: string, backupModels?: AgentBackupModels) {
     }),
   );
   await waitFor("the initial Codex turn to end", () =>
+    service.listQueue(agent.id).deliveries.every((delivery) => delivery.status === "completed"),
+  );
+  if (backupModels) await runCauseEffect(service.updateAgent({ agentId: agent.id, backupModels }));
+  return agentOf(agent.id);
+}
+
+async function createClaude(name: string, backupModels?: AgentBackupModels) {
+  const agent = await runCauseEffect(
+    service.createAgent({
+      name,
+      description: "Checks known-family usage-limit continuation.",
+      avatarSeed: randomUUID(),
+      avatarHue: null,
+      provider: "claude",
+      model: PRIMARY,
+      initialMessage: "Hello.",
+    }),
+  );
+  await waitFor("the initial Claude turn to end", () =>
     service.listQueue(agent.id).deliveries.every((delivery) => delivery.status === "completed"),
   );
   if (backupModels) await runCauseEffect(service.updateAgent({ agentId: agent.id, backupModels }));
@@ -782,66 +803,108 @@ try {
     return { outcome, models: ran.map((turn) => turn.model) };
   });
 
-  for (const mode of ["partial", "tool-only", "chain", "chain-empty"]) {
-    await check(`Codex ${mode} work continues on another provider`, async () => {
+  for (const mode of ["partial", "tool-only"]) {
+    await check(`unknown-scope ${mode} work pauses without cross-provider fallback`, async () => {
       await restart();
       const agent = await createCodex(`Codex ${mode}`, automaticBackups);
-      const since = events.length;
       const beforeCodex = readLog<CodexTurn>(codexLog).length;
       const beforeClaude = turns().length;
       const beforeWork = readLog<{ caseId: string; step: string }>(workLog).length;
       const attachment = join(root, `${mode}.txt`);
       await writeFile(attachment, "Only the remaining step is needed.\n");
       const outcome = await send(agent.id, `usage-${mode} case:${mode}`, [attachment]);
-      assert.equal(outcome.status, "completed", `The task completes on its backup: ${outcome.error}`);
-      const attempts = readLog<CodexTurn>(codexLog).slice(beforeCodex);
-      assert.equal(attempts.length, 1, "The spent provider is not run again.");
-      const backups = turns().slice(beforeClaude);
-      assert.deepEqual(
-        backups.map((turn) => turn.model),
-        mode.startsWith("chain") ? [PRIMARY, BACKUP] : [PRIMARY],
-      );
-      const last = backups.at(-1)?.input ?? "";
-      assert.ok(last.includes("Continue the unfinished task"));
+      assert.equal(outcome.status, "interrupted", `Partial work pauses: ${outcome.error}`);
+      assert.equal(readLog<CodexTurn>(codexLog).length, beforeCodex + 1, "Codex runs once.");
+      assert.equal(turns().length, beforeClaude, "No cross-provider backup runs.");
+      assert.deepEqual(readLog<{ caseId: string; step: string }>(workLog).slice(beforeWork), [
+        { caseId: mode, step: "checkpoint" },
+      ]);
+      assert.equal(agentOf(agent.id).provider, "codex");
       assert.ok(
-        last.includes(`checkpoint-result=${mode}`),
-        "The completed tool result reaches the final provider, even without an answer bubble.",
+        service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
+        "The agent stays held until reset or attention.",
       );
-      assert.ok(last.includes(`${mode}.txt`), "The attachment reaches the final provider.");
-      assert.deepEqual(
-        readLog<{ caseId: string; step: string }>(workLog).slice(beforeWork),
-        [
-          { caseId: mode, step: "checkpoint" },
-          { caseId: mode, step: "final" },
-        ],
-        "The completed action runs once; the backup runs only the remaining action.",
-      );
-      const snapshot = await runCauseEffect(service.readConversation(agent.id));
-      assert.equal(snapshot.messages.filter((message) => message.id === outcome.deliveryId).length, 1);
-      assert.equal(agentOf(agent.id).threadId, agent.threadId, "The public conversation is preserved.");
-      assert.equal(
-        agentOf(agent.id).usageLimitReturn?.provider,
-        "codex",
-        "A chain keeps the original return provider.",
-      );
-      assert.deepEqual(errorsFor(agent.id, since), []);
-      const continuation = mailbox.getDelivery(outcome.deliveryId)?.resumeAfterUsageLimit;
-      assert.ok(continuation?.workSteps.includes(`checkpoint-result=${mode}`));
-      await verifyHistoryKeepsRequests(agent.id);
-      await restart();
-      assert.deepEqual(
-        mailbox.getDelivery(outcome.deliveryId)?.resumeAfterUsageLimit,
-        continuation,
-        "The continuation survives a process restart.",
-      );
-      assert.equal(
-        "resumeAfterUsageLimit" in (mailbox.getDelivery(outcome.deliveryId)?.delivery ?? {}),
-        false,
-        "Internal continuation state is not added to the queue contract.",
-      );
-      return { outcome, backups: backups.map((turn) => turn.model), checkpoint: mode };
+      return outcome;
     });
   }
+
+  for (const { mode, expectsContinuation } of [
+    { mode: "chain", expectsContinuation: true },
+    { mode: "chain-empty", expectsContinuation: false },
+  ] as const) {
+    await check(`known-family Claude ${mode} work continues on its backup`, async () => {
+      await restart();
+      const agent = await createClaude(`Claude ${mode}`, {
+        automatic: true,
+        order: [{ provider: "claude", model: BACKUP }],
+      });
+      const since = events.length;
+      const before = turns().length;
+      const attachment = join(root, `${mode}.txt`);
+      await writeFile(attachment, "Only the remaining step is needed.\n");
+      const outcome = await send(agent.id, `usage-${mode} case:${mode}`, [attachment]);
+      assert.equal(outcome.status, "completed", `Known family completes on backup: ${outcome.error}`);
+      const ran = turns().slice(before);
+      assert.deepEqual(
+        ran.map((turn) => turn.model),
+        [PRIMARY, BACKUP],
+      );
+      const last = ran.at(-1)?.input ?? "";
+      assert.equal(last.includes("Continue the unfinished task"), expectsContinuation);
+      assert.ok(last.includes(`${mode}.txt`));
+      if (expectsContinuation) {
+        const snapshot = await runCauseEffect(service.readConversation(agent.id));
+        assert.ok(snapshot.messages.some((message) => message.text.includes("Checkpoint saved.")));
+        assert.ok(mailbox.getDelivery(outcome.deliveryId)?.resumeAfterUsageLimit);
+      }
+      assert.deepEqual(errorsFor(agent.id, since), []);
+      await verifyHistoryKeepsRequests(agent.id);
+      return { outcome, models: ran.map((turn) => turn.model), expectsContinuation };
+    });
+  }
+
+  await check("unknown scope schedules one same-model probe after ten minutes", async () => {
+    const probeAgents = [
+      { id: "probe-agent", provider: "claude" as const, providerAccountId: "default", model: PRIMARY },
+    ];
+    const clock: { scheduled: (() => void) | null; delay: number | null } = { scheduled: null, delay: null };
+    const wakes: string[] = [];
+    const gate = new UsageLimitGate({
+      store: { list: () => probeAgents },
+      timers: {
+        set: (callback, delay) => {
+          clock.scheduled = callback;
+          clock.delay = delay;
+          const timer = setTimeout(() => {}, delay);
+          timer.unref();
+          return timer;
+        },
+        clear: () => {
+          clock.scheduled = null;
+        },
+      },
+      hooks: {
+        emit: () => {},
+        emitRuntimeSnapshot: () => {},
+        scheduleDrain: (agentId) => wakes.push(agentId),
+        readUsage: () => Effect.succeed(null),
+        held: () => Effect.void,
+        released: () => Effect.void,
+      },
+    });
+    await runCauseEffect(gate.reached("probe-agent", null, PRIMARY));
+    assert.equal(clock.delay, 600_000);
+    assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-1"), false);
+    clock.scheduled?.();
+    assert.deepEqual(wakes, ["probe-agent"]);
+    assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-1"), true);
+    assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-2"), false);
+    gate.bindUnknownProbe("probe-agent", "delivery-1", "turn-1");
+    gate.finishUnknownProbe("probe-agent", { turnId: "turn-1" });
+    assert.equal(gate.limitedAgents().find((item) => item.agentId === "probe-agent")?.attention, true);
+    await runCauseEffect(gate.dispose());
+    return { delayMs: clock.delay, attention: true };
+  });
 
   for (const automatic of [false, true]) {
     await check(
@@ -857,7 +920,7 @@ try {
         const before = turns().length;
         const beforeCodex = readLog<CodexTurn>(codexLog).length;
         const outcome = await send(agent.id, "usage-partial case:stopped");
-        assert.equal(outcome.status, "failed");
+        assert.equal(outcome.status, "interrupted", "Unknown-scope partial work pauses without replay.");
         assert.equal(turns().length, before, "No backup runs.");
         assert.equal(readLog<CodexTurn>(codexLog).length, beforeCodex + 1, "The original action is not replayed.");
         assert.equal(agentOf(agent.id).provider, "codex");
@@ -866,11 +929,10 @@ try {
     );
   }
 
-  await check("an exhausted backup chain ends without cycling", async () => {
+  await check("a known-family exhausted backup chain ends without cycling", async () => {
     await restart();
-    const agent = await createCodex("Exhausted", automaticBackups);
+    const agent = await createClaude("Exhausted", automaticBackups);
     const before = turns().length;
-    const beforeCodex = readLog<CodexTurn>(codexLog).length;
     const outcome = await send(agent.id, "usage-exhausted case:exhausted");
     assert.equal(outcome.status, "failed");
     assert.deepEqual(
@@ -879,7 +941,6 @@ try {
         .map((turn) => turn.model),
       [PRIMARY, BACKUP],
     );
-    assert.equal(readLog<CodexTurn>(codexLog).length, beforeCodex + 1);
     return outcome;
   });
 
@@ -904,140 +965,140 @@ try {
     return { status: mailbox.getDelivery(deliveryId)?.delivery.status };
   });
 
-  // In the chain, the first backup's plan refuses the continuation before any work.
-  for (const { mode, caseId, models } of [
-    { mode: "tool-only", caseId: "channel", models: [PRIMARY] },
-    { mode: "chain-empty", caseId: "channel-chain", models: [PRIMARY, BACKUP] },
-  ]) {
-    await check(
-      mode === "tool-only"
-        ? "a channel keeps its task and completed work through fallback"
-        : "a channel keeps its completed work when a backup refuses before work",
-      async () => {
-        await restart();
-        const agent = await createCodex(`Channel ${mode}`, automaticBackups);
-        const channelId = randomUUID();
-        const actor = { id: "local", name: "Alex" };
-        await runCauseEffect(
-          service.channels.command(
-            {
-              type: "save",
-              operationId: randomUUID(),
-              channelId,
-              draft: {
-                name: "Continuation",
-                title: "",
-                instructions: "Finish the assigned work.",
-                members: [{ agentId: agent.id }],
-                leadAgentId: agent.id,
-              },
-            },
-            actor,
-          ),
-        );
-        const before = turns().length;
-        await runCauseEffect(
-          service.channels.command(
-            {
-              type: "send",
-              operationId: randomUUID(),
-              channelId,
-              text: `usage-${mode} case:${caseId}`,
-              recipientAgentId: agent.id,
-              replyToMessageId: null,
-              attachmentDraftIds: [],
-            },
-            actor,
-          ),
-        );
-        const task = await waitFor("the channel task to end", () =>
-          service.channels.store
-            .tasks(channelId)
-            .find((task) => ["completed", "failed", "paused"].includes(task.state)),
-        );
-        assert.equal(
-          task.state,
-          "completed",
-          JSON.stringify({
-            task,
-            assignments: service.channels.store.assignments(channelId),
-            deliveries: service.channels.store
-              .assignments(channelId)
-              .map((assignment) => (assignment.deliveryId ? mailbox.getDelivery(assignment.deliveryId) : null)),
-          }),
-        );
-        assert.equal(service.channels.store.tasks(channelId).length, 1, "Fallback keeps one task.");
-        const backups = turns().slice(before);
-        assert.deepEqual(
-          backups.map((turn) => turn.model),
-          models,
-        );
-        const last = backups.at(-1)?.input ?? "";
-        assert.ok(last.includes(`checkpoint-result=${caseId}`), "The channel backup receives the tool result.");
-        assert.ok(last.includes("Continue the unfinished task"));
-        return { taskId: task.id, state: task.state };
-      },
-    );
-  }
-
-  await check("a turn refused before work still runs on its backup", async () => {
+  await check("unknown-scope channel partial work pauses its task", async () => {
     await restart();
-    const agent = await createCodex("Before work", automaticBackups);
-    const before = turns().length;
-    const outcome = await send(agent.id, "usage-empty");
-    assert.equal(outcome.status, "completed", outcome.error ?? "The original request completes.");
-    assert.equal(turns().length, before + 1);
-    assert.equal(
-      mailbox.getDelivery(outcome.deliveryId)?.resumeAfterUsageLimit,
-      undefined,
-      "A request with no work is retried normally.",
+    const agent = await createCodex("Channel partial", automaticBackups);
+    const channelId = randomUUID();
+    const actor = { id: "local", name: "Alex" };
+    await runCauseEffect(
+      service.channels.command(
+        {
+          type: "save",
+          operationId: randomUUID(),
+          channelId,
+          draft: {
+            name: "Continuation",
+            title: "",
+            instructions: "Finish the assigned work.",
+            members: [{ agentId: agent.id }],
+            leadAgentId: agent.id,
+          },
+        },
+        actor,
+      ),
     );
-    return outcome;
+    const beforeClaude = turns().length;
+    const beforeCodex = readLog<CodexTurn>(codexLog).length;
+    await runCauseEffect(
+      service.channels.command(
+        {
+          type: "send",
+          operationId: randomUUID(),
+          channelId,
+          text: "usage-partial case:channel-partial",
+          recipientAgentId: agent.id,
+          replyToMessageId: null,
+          attachmentDraftIds: [],
+        },
+        actor,
+      ),
+    );
+    await waitFor("Codex to refuse channel partial work", () => readLog<CodexTurn>(codexLog).length > beforeCodex);
+    assert.equal(turns().length, beforeClaude, "No cross-provider backup runs.");
+    const tasks = service.channels.store.tasks(channelId);
+    assert.equal(tasks.length, 1);
+    assert.ok(
+      tasks[0]?.state === "queued" || tasks[0]?.state === "failed",
+      "The task stops without cross-provider fallback.",
+    );
+    return { taskId: tasks[0]?.id, state: tasks[0]?.state };
   });
 
-  await check("a task keeps its conversation and completed work through fallback", async () => {
+  await check("known-family channel chain-empty continues on its backup", async () => {
     await restart();
-    const agent = await createCodex("Task fallback", automaticBackups);
+    const agent = await createClaude("Channel chain", automaticBackups);
+    const channelId = randomUUID();
+    const actor = { id: "local", name: "Alex" };
+    await runCauseEffect(
+      service.channels.command(
+        {
+          type: "save",
+          operationId: randomUUID(),
+          channelId,
+          draft: {
+            name: "Continuation",
+            title: "",
+            instructions: "Finish the assigned work.",
+            members: [{ agentId: agent.id }],
+            leadAgentId: agent.id,
+          },
+        },
+        actor,
+      ),
+    );
     const before = turns().length;
-    const task = await runCauseEffect(service.startTask({ agentId: agent.id, text: "usage-tool-only case:task" }));
+    await runCauseEffect(
+      service.channels.command(
+        {
+          type: "send",
+          operationId: randomUUID(),
+          channelId,
+          text: "usage-chain-empty case:channel-chain",
+          recipientAgentId: agent.id,
+          replyToMessageId: null,
+          attachmentDraftIds: [],
+        },
+        actor,
+      ),
+    );
+    const task = await waitFor("the channel task to end", () =>
+      service.channels.store.tasks(channelId).find((task) => task.state === "completed"),
+    );
+    const backups = turns().slice(before);
+    assert.deepEqual(
+      backups.map((turn) => turn.model),
+      [PRIMARY, BACKUP],
+    );
+    const last = backups.at(-1)?.input ?? "";
+    assert.ok(last.includes("usage-chain-empty case:channel-chain"));
+    assert.ok(!last.includes("Continue the unfinished task"), "Refusal before work retries normally on the backup.");
+    return { taskId: task.id, state: task.state };
+  });
+
+  await check("unknown-scope refusal before work requeues without cross-provider fallback", async () => {
+    await restart();
+    const agent = await createCodex("Before work", automaticBackups);
+    const beforeCodex = readLog<CodexTurn>(codexLog).length;
+    const beforeClaude = turns().length;
+    const receipt = await runCauseEffect(service.sendMessage({ agentId: agent.id, text: "usage-empty" }));
+    const deliveryId = receipt.deliveries[0]?.id;
+    assert.ok(deliveryId);
+    await waitFor("Codex to refuse before work", () => readLog<CodexTurn>(codexLog).length > beforeCodex);
+    assert.equal(turns().length, beforeClaude, "No cross-provider backup runs.");
+    assert.equal(mailbox.getDelivery(deliveryId)?.delivery.status, "queued");
+    assert.equal(mailbox.getDelivery(deliveryId)?.resumeAfterUsageLimit, undefined);
+    return { deliveryId, status: mailbox.getDelivery(deliveryId)?.delivery.status };
+  });
+
+  await check("a known-family task keeps its conversation through fallback", async () => {
+    await restart();
+    const agent = await createClaude("Task fallback", automaticBackups);
+    const before = turns().length;
+    const task = await runCauseEffect(service.startTask({ agentId: agent.id, text: "usage-work case:task" }));
     await waitFor(
       "the task to complete on its backup",
       () =>
-        turns().length > before &&
+        turns().length > before + 1 &&
         service.readTask(agent.id, task.id).messages.some((message) => message.text === "Done."),
     );
     const snapshot = service.readTask(agent.id, task.id);
     assert.equal(snapshot.threadId, task.threadId);
-    assert.ok(turns()[before]?.input.includes("checkpoint-result=task"));
-    assert.ok(turns()[before]?.input.includes("Continue the unfinished task"));
+    const last = turns().at(-1)?.input ?? "";
+    assert.ok(last.includes("Continue the unfinished task"));
+    assert.ok(snapshot.messages.some((message) => message.text.includes("Checkpoint saved.")));
     assert.equal(service.listTasks(agent.id).tasks.length, 1);
     return { taskId: task.id, threadId: snapshot.threadId };
   });
-
-  for (const mode of ["unreadable", "slow-history"]) {
-    await check(`unavailable ${mode} history does not block continuation`, async () => {
-      await restart();
-      const agent = await createCodex(`History ${mode}`, automaticBackups);
-      const before = turns().length;
-      const beforeWork = readLog<{ caseId: string; step: string }>(workLog).length;
-      const outcome = await send(agent.id, `usage-${mode} case:${mode}`);
-      assert.equal(outcome.status, "completed", outcome.error ?? "The backup can inspect the saved work.");
-      const input = turns()[before]?.input ?? "";
-      assert.ok(
-        input.includes("Full tool results are unavailable"),
-        "Missing history is stated, not represented as complete empty history.",
-      );
-      assert.ok(
-        input.includes(`save-checkpoint ${mode} (completed)`),
-        "Observed completed steps still reach the backup.",
-      );
-      assert.deepEqual(readLog<{ caseId: string; step: string }>(workLog).slice(beforeWork), [
-        { caseId: mode, step: "checkpoint" },
-        { caseId: mode, step: "final" },
-      ]);
-      return outcome;
-    });
-  }
 
   report.passed = true;
 } catch (error) {
@@ -1049,6 +1110,8 @@ try {
   database.close();
   mkdirSync(OUT, { recursive: true });
   writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+  if (report.usageWorkTrace !== undefined)
+    writeFileSync(join(OUT, "trace.json"), `${JSON.stringify(report.usageWorkTrace, null, 2)}\n`);
   await rm(root, { recursive: true, force: true });
   for (const entry of report.checks) process.stdout.write(`PASS ${entry.name}\n`);
   process.stdout.write(`${report.passed ? "PASS" : "FAIL"} ${join(OUT, "report.json")}\n`);

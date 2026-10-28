@@ -271,7 +271,8 @@ export class UsageLimitGate {
    * The plan refused a turn of this agent. `resetsAt` is in epoch seconds. `model` is the one the
    * turn ran on; the agent's current model when null. `family` is the model family the provider
    * reported for the refused window; null when it reported a window for the whole account. An
-   * unspecified window holds the refused model without enabling an automatic switch.
+   * unspecified window holds the refused model without enabling an automatic switch. A family window
+   * that does not cover the refused model holds that model only.
    */
   readonly reached = Effect.fn("UsageLimitGate.reached")(function* (
     this: UsageLimitGate,
@@ -285,7 +286,7 @@ export class UsageLimitGate {
     const provider = providerForAgent(agent);
     const turnModel = model ?? agent.model;
     const accountId = accountOf(agent);
-    const scope = family === undefined ? `unknown:${turnModel}` : family;
+    const scope = limitScope(turnModel, family);
     const key = limitKey(provider, accountId, scope);
     const limit = this.#limits.get(key) ?? {
       provider,
@@ -497,6 +498,14 @@ export class UsageLimitGate {
 
 function limitKey(provider: AgentProvider, accountId: string | null, family: string | null): string {
   return `${provider}\u0000${accountId ?? ""}\u0000${family ?? ""}`;
+}
+
+/** The gate scope from the provider's reported family and the model the turn ran on. */
+function limitScope(turnModel: string, family: string | null | undefined): string | null {
+  if (family === undefined) return `unknown:${turnModel}`;
+  if (family === null) return null;
+  const turnFamily = modelFamily(turnModel);
+  return turnFamily === family ? family : `model:${turnModel}`;
 }
 
 /**
