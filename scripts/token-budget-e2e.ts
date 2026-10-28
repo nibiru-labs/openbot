@@ -117,7 +117,7 @@ const answer = (message) => {
       else if (input.includes("PLAN-")) {
         setTimeout(() => {
           step(params.threadId, turnId);
-          write({ method: "openbot/usageLimit", params: { threadId: params.threadId, turnId, resetsAt: Math.floor(Date.now() / 1000) + 2 } });
+          write({ method: "openbot/usageLimit", params: { threadId: params.threadId, turnId, resetsAt: Math.floor(Date.now() / 1000) + 2, family: null } });
           write({ method: "error", params: { threadId: params.threadId, turnId, willRetry: false, error: { message: "You've hit your usage limit.", codexErrorInfo: "usageLimitExceeded" } } });
           finish(params.threadId, turnId, "failed");
         }, 60);
