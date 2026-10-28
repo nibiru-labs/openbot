@@ -1182,6 +1182,30 @@ try {
     return { taskId: task.id, threadId: snapshot.threadId };
   });
 
+  await check("unknown scope remains held across a service restart", async () => {
+    await restart();
+    const agent = await createCodex("Restart hold", automaticBackups);
+    const before = readLog<CodexTurn>(codexLog).length;
+    const receipt = await runCauseEffect(service.sendMessage({ agentId: agent.id, text: "usage-empty" }));
+    const deliveryId = receipt.deliveries[0]?.id;
+    assert.ok(deliveryId);
+    await waitFor(
+      "the refusal to hold the queued delivery",
+      () =>
+        mailbox.getDelivery(deliveryId)?.delivery.status === "queued" &&
+        service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
+    );
+    assert.equal(readLog<CodexTurn>(codexLog).length, before + 1);
+    await restart();
+    assert.ok(
+      service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
+      "The unknown-scope hold survives restart before queued work drains.",
+    );
+    assert.equal(mailbox.getDelivery(deliveryId)?.delivery.status, "queued");
+    assert.equal(readLog<CodexTurn>(codexLog).length, before + 1, "Restart does not start another turn.");
+    return { deliveryId };
+  });
+
   await check("unknown scope probes one same-model delivery and attention blocks a second probe", async () => {
     await restart();
     const first = await createCodex("Probe one", automaticBackups);
