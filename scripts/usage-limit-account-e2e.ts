@@ -139,9 +139,10 @@ check("unknown scope holds the refused model and blocks automatic backup", () =>
   assert.equal(gate.hasUnknownLimit("c-sonnet"), false);
 });
 await Effect.runPromise(gate.completed("c-opus"));
-check("a successful same-model turn clears the unknown hold", () => {
-  assert.equal(gate.hasUnknownLimit("c-opus"), false);
+check("an unrelated successful turn keeps the unknown hold", () => {
+  assert.equal(gate.hasUnknownLimit("c-opus"), true);
 });
+await Effect.runPromise(gate.accountReset("claude", "acc-1"));
 
 // The clock controls the ten-minute wait without making a provider request.
 const clock: { scheduled: (() => void) | null } = { scheduled: null };
@@ -174,31 +175,45 @@ const timedGate = new UsageLimitGate({
 });
 await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
 await Effect.runPromise(timedGate.reached("c-opus-peer", null, "claude-opus-4-5"));
-check("unknown hold waits before reservation", () => assert.equal(timedGate.reserveUnknownProbe("c-opus"), false));
+check("unknown hold waits before reservation", () =>
+  assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), false),
+);
 const fire = clock.scheduled;
 if (fire) fire();
 check("timer wakes same-model agents once", () => assert.deepEqual(wakes, ["c-opus", "c-opus-peer"]));
 check("only one agent reserves the probe", () => {
-  assert.equal(timedGate.reserveUnknownProbe("c-opus"), true);
-  assert.equal(timedGate.reserveUnknownProbe("c-opus-peer"), false);
+  assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), true);
+  assert.equal(timedGate.reserveUnknownProbe("c-opus-peer", "delivery-2"), false);
 });
-await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
+timedGate.bindUnknownProbe("c-opus", "delivery-2", "wrong-turn");
+timedGate.finishUnknownProbe("c-opus", { deliveryId: "delivery-2" });
+timedGate.bindUnknownProbe("c-opus", "delivery-1", "turn-1");
+timedGate.finishUnknownProbe("c-opus", { turnId: "wrong-turn" });
+await Effect.runPromise(timedGate.completed("c-opus", null, "wrong-turn"));
+check("a wrong turn cannot settle the probe", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), true));
+timedGate.finishUnknownProbe("c-opus", { turnId: "turn-1" });
+check("attention is visible", () =>
+  assert.equal(timedGate.limitedAgents().find((item) => item.agentId === "c-opus")?.attention, true),
+);
 check("a second refusal does not reserve again", () =>
-  assert.equal(timedGate.reserveUnknownProbe("c-opus-peer"), false),
+  assert.equal(timedGate.reserveUnknownProbe("c-opus-peer", "delivery-2"), false),
 );
 await Effect.runPromise(timedGate.completed("c-opus"));
 check("a stale success does not clear a refused probe", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), true));
 await Effect.runPromise(timedGate.accountReset("claude", "acc-1"));
 await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
 clock.scheduled?.();
-check("a ready probe can be reserved", () => assert.equal(timedGate.reserveUnknownProbe("c-opus"), true));
-await Effect.runPromise(timedGate.completed("c-opus"));
+check("a ready probe can be reserved", () => assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), true));
+timedGate.bindUnknownProbe("c-opus", "delivery-1", "turn-1");
+await Effect.runPromise(timedGate.completed("c-opus", null, "turn-1"));
 check("a successful reserved probe releases the hold", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), false));
 await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
 clock.scheduled?.();
-timedGate.reserveUnknownProbe("c-opus");
-timedGate.finishUnknownProbe("c-opus");
-check("a cancelled probe stays held", () => assert.equal(timedGate.reserveUnknownProbe("c-opus-peer"), false));
+timedGate.reserveUnknownProbe("c-opus", "delivery-1");
+timedGate.finishUnknownProbe("c-opus", { deliveryId: "delivery-1" });
+check("a cancelled probe stays held", () =>
+  assert.equal(timedGate.reserveUnknownProbe("c-opus-peer", "delivery-2"), false),
+);
 await Effect.runPromise(timedGate.accountReset("claude", "acc-1"));
 await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
 await Effect.runPromise(timedGate.dispose());

@@ -902,7 +902,7 @@ export class TurnLifecycle {
           ? refusedSessionFailure(running.client.provider, reportedError)
           : null;
       const refused = running !== undefined && refusedFailure !== null;
-      if (status !== "completed") this.#usageLimits.finishUnknownProbe(agentId);
+      if (status !== "completed") this.#usageLimits.finishUnknownProbe(agentId, { turnId });
       const limited = status === "failed" && this.#limitedTurns.has(turnId);
       const limitEntry = this.#limitedTurns.get(turnId);
       const resetsAt = limitEntry?.resetsAt ?? null;
@@ -1052,7 +1052,7 @@ export class TurnLifecycle {
       if (failover) this.#showFailoverError(agentId, threadId, failover);
       if (limited && (!partialStop || family === null || family === undefined))
         yield* this.#usageLimits.reached(agentId, resetsAt, model, family);
-      else if (status === "completed") yield* this.#usageLimits.completed(agentId, model);
+      else if (status === "completed") yield* this.#usageLimits.completed(agentId, model, turnId);
       if (planStopped) this.#pauses.planStopped(agentId, resetsAt);
       // After the limit is recorded, so the channel does not assign the task to this agent again
       // before the reset. A channel that took the task back ends this turn as interrupted.

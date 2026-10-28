@@ -569,7 +569,7 @@ export class DrainScheduler {
     const { delivery } = context;
     const agentId = delivery.recipientAgentId;
     const probe = this.#usageLimits.hasUnknownLimit(agentId);
-    if (probe && !this.#usageLimits.reserveUnknownProbe(agentId)) return;
+    if (probe && !this.#usageLimits.reserveUnknownProbe(agentId, delivery.id)) return;
     const channelDelivery = this.#channels ? this.#channels.store.assignmentForDelivery(delivery.id) !== null : false;
     const messagingDelivery = this.#messaging?.ownsDelivery(delivery.id) ?? false;
     const taskId = this.#mailbox.taskIdForDelivery(delivery.id);
@@ -844,6 +844,11 @@ export class DrainScheduler {
       // event would end it, and it would hold every message of this agent.
       if (!this.#hooks.turnEnded(response.turn.id)) snapshot.activeTurnId = response.turn.id;
       confirmedTurnId = response.turn.id;
+      if (probe) {
+        this.#usageLimits.bindUnknownProbe(agentId, delivery.id, response.turn.id);
+        if (this.#hooks.turnEnded(response.turn.id))
+          this.#usageLimits.finishUnknownProbe(agentId, { deliveryId: delivery.id });
+      }
       this.#turnModels.set(laneKey({ agentId: agent.id, taskId }), { turnId: response.turn.id, model: agent.model });
       for (const item of batch)
         yield* this.#mailbox.markRunning(item.delivery.id, response.turn.id).pipe(toDeliveryStartFailed);
@@ -986,7 +991,8 @@ export class DrainScheduler {
           if (routineThreadId && !confirmedTurnId && !turnMayRun)
             yield* this.#threads.closeRoutineThread(routineThreadId);
           releaseRuntimeRefresh();
-          if (probe && (!confirmedTurnId || turnMayRun)) this.#usageLimits.finishUnknownProbe(agentId);
+          if (probe && (!confirmedTurnId || turnMayRun))
+            this.#usageLimits.finishUnknownProbe(agentId, { deliveryId: delivery.id });
           if (!confirmedTurnId && !turnMayRun) releaseReservation();
           for (const provider of claimed) this.#startingDeliveries.set(provider, this.#starting(provider) - 1);
         }),

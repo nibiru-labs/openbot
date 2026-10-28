@@ -77,6 +77,8 @@ interface UsageLimit extends UsageLimitKey {
   timer: ReturnType<typeof setTimeout> | null;
   unknownPhase?: "waiting" | "ready" | "reserved" | "attention";
   probeAgentId?: string;
+  probeDeliveryId?: string;
+  probeTurnId?: string;
 }
 
 /**
@@ -159,25 +161,47 @@ export class UsageLimitGate {
   }
 
   /** Reserve the one probe after the timer. This operation is synchronous across all lanes. */
-  reserveUnknownProbe(agentId: string): boolean {
+  reserveUnknownProbe(agentId: string, deliveryId: string): boolean {
     const agent = this.#agent(agentId);
     if (!agent) return false;
     const limit = this.#limits.get(limitKey(providerForAgent(agent), accountOf(agent), `unknown:${agent.model}`));
     if (limit?.unknownPhase !== "ready") return false;
     limit.unknownPhase = "reserved";
     limit.probeAgentId = agentId;
+    limit.probeDeliveryId = deliveryId;
     this.#hooks.emitRuntimeSnapshot();
     return true;
   }
 
+  /** Bind the accepted provider turn to the delivery that reserved the probe. */
+  bindUnknownProbe(agentId: string, deliveryId: string, turnId: string): void {
+    const limit = this.#probe(agentId, { deliveryId });
+    if (!limit) return;
+    if (!turnId) {
+      limit.unknownPhase = "attention";
+      this.#hooks.emitRuntimeSnapshot();
+      return;
+    }
+    limit.probeTurnId = turnId;
+  }
+
   /** An unconfirmed or failed probe needs human attention and must not be retried automatically. */
-  finishUnknownProbe(agentId: string): void {
-    const agent = this.#agent(agentId);
-    if (!agent) return;
-    const limit = this.#limits.get(limitKey(providerForAgent(agent), accountOf(agent), `unknown:${agent.model}`));
-    if (limit?.unknownPhase !== "reserved" || limit.probeAgentId !== agentId) return;
+  finishUnknownProbe(agentId: string, identity: { deliveryId: string } | { turnId: string }): void {
+    const limit = this.#probe(agentId, identity);
+    if (!limit) return;
     limit.unknownPhase = "attention";
     this.#hooks.emitRuntimeSnapshot();
+  }
+
+  #probe(agentId: string, identity: { deliveryId: string } | { turnId: string }): UsageLimit | undefined {
+    return [...this.#limits.values()].find(
+      (limit) =>
+        limit.probeAgentId === agentId &&
+        limit.unknownPhase === "reserved" &&
+        ("deliveryId" in identity
+          ? limit.probeDeliveryId === identity.deliveryId
+          : limit.probeTurnId === identity.turnId),
+    );
   }
 
   /** Whether a provider error passes over this provider account and model. */
@@ -222,7 +246,15 @@ export class UsageLimitGate {
         (family ? this.#limits.get(limitKey(provider, accountId, family)) : undefined) ??
         this.#limits.get(limitKey(provider, accountId, `model:${agent.model}`)) ??
         this.#limits.get(limitKey(provider, accountId, `unknown:${agent.model}`));
-      return limit ? [{ agentId: agent.id, resetsAt: limit.resetsAt }] : [];
+      return limit
+        ? [
+            {
+              agentId: agent.id,
+              resetsAt: limit.resetsAt,
+              ...(limit.unknownPhase === "attention" ? { attention: true } : {}),
+            },
+          ]
+        : [];
     });
   }
 
@@ -277,8 +309,6 @@ export class UsageLimitGate {
         this.#hooks.emitRuntimeSnapshot();
         for (const held of this.#heldAgents(limit)) this.#hooks.scheduleDrain(held.id);
       }, UNKNOWN_PROBE_DELAY_MS);
-    } else if (limit.unknownPhase === "reserved") {
-      limit.unknownPhase = "attention";
     }
     yield* this.#hooks.held(this.#heldAgents(limit).map((held) => held.id));
     this.#hooks.emitRuntimeSnapshot();
@@ -306,6 +336,7 @@ export class UsageLimitGate {
     this: UsageLimitGate,
     agentId: string,
     model: string | null = null,
+    turnId: string | null = null,
   ) {
     const agent = this.#agent(agentId);
     if (!agent) return;
@@ -324,7 +355,10 @@ export class UsageLimitGate {
     const unknown = this.#limits.get(unknownKey);
     if (
       unknown &&
-      (unknown.unknownPhase === "waiting" || (unknown.unknownPhase === "reserved" && unknown.probeAgentId === agentId))
+      unknown.unknownPhase === "reserved" &&
+      unknown.probeAgentId === agentId &&
+      turnId !== null &&
+      unknown.probeTurnId === turnId
     )
       yield* this.#release(unknownKey);
     const failedKey = limitKey(provider, accountId, model ?? agent.model);

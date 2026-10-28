@@ -239,7 +239,7 @@ export interface AgentRuntimeSnapshot {
    * The agents whose queue waits for a provider plan limit to reset, in epoch seconds. Absent from
    * a released Team API snapshot: its adapters project a fixed key list.
    */
-  usageLimits?: Array<{ agentId: string; resetsAt: number | null }>;
+  usageLimits?: Array<{ agentId: string; resetsAt: number | null; attention?: boolean }>;
   /**
    * Each provider account and model that a usage limit holds, also when no agent is on it now. Absent
    * from a released Team API snapshot, as `usageLimits` is.
@@ -300,7 +300,8 @@ export function isAgentRuntimeSnapshot(value: unknown): value is AgentRuntimeSna
           (limit) =>
             isDynamicRecord(limit) &&
             isIdentifier(limit.agentId) &&
-            (limit.resetsAt === null || (isNumber(limit.resetsAt) && Number.isFinite(limit.resetsAt))),
+            (limit.resetsAt === null || (isNumber(limit.resetsAt) && Number.isFinite(limit.resetsAt))) &&
+            (limit.attention === undefined || typeof limit.attention === "boolean"),
         ))) &&
     (value.usageLimitedModels === undefined ||
       (Array.isArray(value.usageLimitedModels) &&
