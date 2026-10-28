@@ -976,8 +976,9 @@ export class TurnLifecycle {
       // A foreground subagent ends with its turn. A background one works on and reports later.
       const subagents = snapshot.messages.find((message) => message.id === `${turnId}:subagents`);
       stopRunningSubagents(subagents?.subagents, new Date().toISOString(), { background: false });
-      const planStopped =
+      const partialStop =
         limited && !continuing && running?.acted && !taskTurn && !channelTurn && deliveries.length > 0;
+      const planStopped = partialStop && family === null;
       for (const message of snapshot.messages) {
         if (this.#itemTurns.get(message.id) !== turnId || message.status !== "streaming") continue;
         message.status = normalizeCompletionStatus(repeatable || failedOver || planStopped ? "interrupted" : status);
@@ -1045,7 +1046,8 @@ export class TurnLifecycle {
       }
       // The turn did work, or nothing waits to run again: the error shows as it does with no backup.
       if (failover) this.#showFailoverError(agentId, threadId, failover);
-      if (limited) yield* this.#usageLimits.reached(agentId, resetsAt, model, family);
+      if (limited && (!partialStop || family === null))
+        yield* this.#usageLimits.reached(agentId, resetsAt, model, family);
       else if (status === "completed") yield* this.#usageLimits.completed(agentId, model);
       if (planStopped) this.#pauses.planStopped(agentId, resetsAt);
       // After the limit is recorded, so the channel does not assign the task to this agent again
