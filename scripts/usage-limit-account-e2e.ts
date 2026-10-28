@@ -187,7 +187,19 @@ check("a second refusal does not reserve again", () =>
   assert.equal(timedGate.reserveUnknownProbe("c-opus-peer"), false),
 );
 await Effect.runPromise(timedGate.completed("c-opus"));
-check("success releases the hold", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), false));
+check("a stale success does not clear a refused probe", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), true));
+await Effect.runPromise(timedGate.accountReset("claude", "acc-1"));
+await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
+clock.scheduled?.();
+check("a ready probe can be reserved", () => assert.equal(timedGate.reserveUnknownProbe("c-opus"), true));
+await Effect.runPromise(timedGate.completed("c-opus"));
+check("a successful reserved probe releases the hold", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), false));
+await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
+clock.scheduled?.();
+timedGate.reserveUnknownProbe("c-opus");
+timedGate.finishUnknownProbe("c-opus");
+check("a cancelled probe stays held", () => assert.equal(timedGate.reserveUnknownProbe("c-opus-peer"), false));
+await Effect.runPromise(timedGate.accountReset("claude", "acc-1"));
 await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
 await Effect.runPromise(timedGate.dispose());
 check("disposal cancels the pending timer", () => assert.equal(cleared, 1));

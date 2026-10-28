@@ -76,6 +76,7 @@ interface UsageLimit extends UsageLimitKey {
   resetsAt: number | null;
   timer: ReturnType<typeof setTimeout> | null;
   unknownPhase?: "waiting" | "ready" | "reserved" | "attention";
+  probeAgentId?: string;
 }
 
 /**
@@ -112,7 +113,7 @@ export class UsageLimitGate {
     this.#timers = options.timers ?? { set: setTimeout, clear: clearTimeout };
   }
 
-  mayDrain(agentId: string): boolean {
+  mayDrain(agentId: string, allowUnknownProbe = false): boolean {
     const agent = this.#agent(agentId);
     if (!agent) return true;
     const provider = providerForAgent(agent);
@@ -122,7 +123,9 @@ export class UsageLimitGate {
     return (
       !(family && this.#limits.has(limitKey(provider, accountId, family))) &&
       !this.#limits.has(limitKey(provider, accountId, `model:${agent.model}`)) &&
-      !this.#limits.has(limitKey(provider, accountId, `unknown:${agent.model}`))
+      (!this.#limits.has(limitKey(provider, accountId, `unknown:${agent.model}`)) ||
+        (allowUnknownProbe &&
+          this.#limits.get(limitKey(provider, accountId, `unknown:${agent.model}`))?.unknownPhase === "ready"))
     );
   }
 
@@ -162,6 +165,7 @@ export class UsageLimitGate {
     const limit = this.#limits.get(limitKey(providerForAgent(agent), accountOf(agent), `unknown:${agent.model}`));
     if (limit?.unknownPhase !== "ready") return false;
     limit.unknownPhase = "reserved";
+    limit.probeAgentId = agentId;
     this.#hooks.emitRuntimeSnapshot();
     return true;
   }
@@ -171,7 +175,7 @@ export class UsageLimitGate {
     const agent = this.#agent(agentId);
     if (!agent) return;
     const limit = this.#limits.get(limitKey(providerForAgent(agent), accountOf(agent), `unknown:${agent.model}`));
-    if (limit?.unknownPhase !== "reserved") return;
+    if (limit?.unknownPhase !== "reserved" || limit.probeAgentId !== agentId) return;
     limit.unknownPhase = "attention";
     this.#hooks.emitRuntimeSnapshot();
   }
@@ -317,7 +321,12 @@ export class UsageLimitGate {
     const modelKey = limitKey(provider, accountId, `model:${model ?? agent.model}`);
     if (this.#limits.has(modelKey)) yield* this.#release(modelKey);
     const unknownKey = limitKey(provider, accountId, `unknown:${model ?? agent.model}`);
-    if (this.#limits.has(unknownKey)) yield* this.#release(unknownKey);
+    const unknown = this.#limits.get(unknownKey);
+    if (
+      unknown &&
+      (unknown.unknownPhase === "waiting" || (unknown.unknownPhase === "reserved" && unknown.probeAgentId === agentId))
+    )
+      yield* this.#release(unknownKey);
     const failedKey = limitKey(provider, accountId, model ?? agent.model);
     if (this.#failures.has(failedKey)) yield* this.#releaseFailure(failedKey);
     if (![...this.#limits.values()].some((limit) => limit.provider === provider)) this.#announced.delete(provider);

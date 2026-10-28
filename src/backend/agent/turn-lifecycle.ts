@@ -902,6 +902,7 @@ export class TurnLifecycle {
           ? refusedSessionFailure(running.client.provider, reportedError)
           : null;
       const refused = running !== undefined && refusedFailure !== null;
+      if (status !== "completed") this.#usageLimits.finishUnknownProbe(agentId);
       const limited = status === "failed" && this.#limitedTurns.has(turnId);
       const limitEntry = this.#limitedTurns.get(turnId);
       const resetsAt = limitEntry?.resetsAt ?? null;
@@ -931,6 +932,7 @@ export class TurnLifecycle {
       const taskTurn = this.#conversation.isTaskThread(snapshot.threadId);
       // A channel task is not run again: an unfinished turn pauses it, and its Resume opens the new session.
       const retry =
+        !this.#usageLimits.hasUnknownLimit(agentId) &&
         refused &&
         !running.produced &&
         deliveries.length > 0 &&
@@ -968,6 +970,7 @@ export class TurnLifecycle {
       const failedKey = this.#usageLimits.failureKey(agentId, model);
       const failedOver =
         mayRunAgain &&
+        !this.#usageLimits.hasUnknownLimit(agentId) &&
         failedKey !== null &&
         deliveries.length > 0 &&
         !taskTurn &&

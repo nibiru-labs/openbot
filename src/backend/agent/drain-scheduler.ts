@@ -325,7 +325,7 @@ export class DrainScheduler {
     if (!this.#duplication.mayDrain(agentId)) return "duplication";
     if (this.#compactionHolds(lane)) return "compaction";
     if (!this.#routines.mayDrain(agentId)) return "routine";
-    if (!this.#usageLimits.mayDrain(agentId)) return "usage-limit";
+    if (!this.#usageLimits.mayDrain(agentId, true)) return "usage-limit";
     if (!this.#tokenBudget.mayDrain(agentId)) return "token-budget";
     return null;
   }
@@ -402,7 +402,12 @@ export class DrainScheduler {
       this.#heldBy(lane) ||
       (this.#heldByMachine(lane) && "machine");
     if (hold) this.#reportHold(lane, hold);
-    if (followUsageLimit && (!hold || hold === "usage-limit") && this.#hooks.followUsageLimit(lane.agentId))
+    if (
+      followUsageLimit &&
+      !this.#usageLimits.hasUnknownLimit(lane.agentId) &&
+      (!hold || hold === "usage-limit") &&
+      this.#hooks.followUsageLimit(lane.agentId)
+    )
       return true;
     if (hold) return false;
     this.#scheduledDrains.add(key);
@@ -562,6 +567,9 @@ export class DrainScheduler {
     context: DeliveryContext,
   ) {
     const { delivery } = context;
+    const agentId = delivery.recipientAgentId;
+    const probe = this.#usageLimits.hasUnknownLimit(agentId);
+    if (probe && !this.#usageLimits.reserveUnknownProbe(agentId)) return;
     const channelDelivery = this.#channels ? this.#channels.store.assignmentForDelivery(delivery.id) !== null : false;
     const messagingDelivery = this.#messaging?.ownsDelivery(delivery.id) ?? false;
     const taskId = this.#mailbox.taskIdForDelivery(delivery.id);
@@ -978,6 +986,7 @@ export class DrainScheduler {
           if (routineThreadId && !confirmedTurnId && !turnMayRun)
             yield* this.#threads.closeRoutineThread(routineThreadId);
           releaseRuntimeRefresh();
+          if (probe && (!confirmedTurnId || turnMayRun)) this.#usageLimits.finishUnknownProbe(agentId);
           if (!confirmedTurnId && !turnMayRun) releaseReservation();
           for (const provider of claimed) this.#startingDeliveries.set(provider, this.#starting(provider) - 1);
         }),
