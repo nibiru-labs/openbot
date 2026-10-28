@@ -89,15 +89,17 @@ Upload the resulting `/private/tmp/openbot-testflight.ipa` to App Store Connect,
 
 The mobile app connects to self-hosted OpenBot servers with a Mobile Connect QR code.
 
-1. On your self-hosted server, make sure you are signed in:
+1. On a systemd server, run these commands with `sudo`. The control socket is accessible only to
+   the service user and root:
    ```bash
-   openbot login
+   sudo openbot login
    ```
+   In Docker, run `docker exec -it <container> openbot login` instead.
 2. Generate the pairing QR code in the terminal:
    ```bash
-   openbot mobile-connect
+   sudo openbot mobile-connect
    ```
-   (In Docker: `docker exec -it <container> openbot mobile-connect`)
+   In Docker, run `docker exec -it <container> openbot mobile-connect` instead.
 3. Open the OpenBot app on your iPhone.
 4. Tap **Scan QR code** and scan the QR code displayed in the server terminal.
 
