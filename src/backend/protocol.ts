@@ -1,5 +1,18 @@
+import {
+  type AgentProviderId,
+  isAgentProvider,
+  PROVIDER_USAGE_RESET_OUTCOMES,
+  type ProviderUsageResetOutcome,
+} from "@openbot/contracts/ipc";
 import { decodeRecord, requiredString } from "@openbot/contracts/ipc-decoding";
-import { type DynamicRecord, isBoolean, isDynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-values";
+import {
+  type DynamicRecord,
+  isBoolean,
+  isDynamicRecord,
+  isNumber,
+  isOneOf,
+  isString,
+} from "@openbot/contracts/runtime-values";
 
 export type RequestId = string | number;
 
@@ -59,6 +72,9 @@ export interface AppServerRequest {
   signal?: AbortSignal;
 }
 
+/** The account type of Claude's own sign-in when it runs on the saved key, with no claude.ai account. */
+export const CLAUDE_API_KEY_ACCOUNT_TYPE = "claude-api-key";
+
 export interface AccountReadResult {
   account: null | {
     type: string;
@@ -108,9 +124,23 @@ export interface AccountRateLimitResult {
   secondary?: AccountRateLimitWindowResult | null | undefined;
 }
 
+/** One named quota of the plan and the model names it covers. Antigravity only. */
+export interface AccountRateLimitGroupResult {
+  name: string;
+  models: string[];
+  primary: AccountRateLimitWindowResult | null;
+  secondary: AccountRateLimitWindowResult | null;
+}
+
 export interface AccountRateLimitsReadResult {
   rateLimits?: AccountRateLimitResult | null | undefined;
+  /** Antigravity only: every quota group of the plan. `rateLimits` is one of them. */
+  groups?: AccountRateLimitGroupResult[] | undefined;
+  /** Cursor only: the provider whose plan quota this reading also counts, such as Grok on a merged plan. */
+  sharedQuotaWith?: AgentProviderId | undefined;
   rateLimitsByLimitId?: Record<string, AccountRateLimitResult | undefined> | null | undefined;
+  /** Codex only: the usage reset credits of the account. Null when Codex could not count them. */
+  rateLimitResetCredits?: { availableCount: number } | null | undefined;
 }
 
 export interface ThreadItem {
@@ -157,6 +187,10 @@ export interface ModelListResponse {
     supportedReasoningEfforts?: Array<{ reasoningEffort?: string }>;
     reasoningEffortConfigurable?: boolean;
     hidden?: boolean;
+    /** Codex: the service tiers of the model, such as `{ id: "priority", name: "Fast" }`. */
+    serviceTiers?: Array<{ id: string; name?: string }>;
+    /** Codex: the older, deprecated form of `serviceTiers`, such as `["fast"]`. */
+    additionalSpeedTiers?: string[];
   }>;
 }
 
@@ -172,6 +206,18 @@ export function decodeModelListResponse(value: unknown): ModelListResponse {
       ...(isBoolean(item.hidden) ? { hidden: item.hidden } : {}),
       ...(isBoolean(item.reasoningEffortConfigurable)
         ? { reasoningEffortConfigurable: item.reasoningEffortConfigurable }
+        : {}),
+      ...(Array.isArray(item.serviceTiers)
+        ? {
+            serviceTiers: item.serviceTiers
+              .filter(isRecord)
+              .flatMap((tier) =>
+                isString(tier.id) ? [{ id: tier.id, ...(isString(tier.name) ? { name: tier.name } : {}) }] : [],
+              ),
+          }
+        : {}),
+      ...(Array.isArray(item.additionalSpeedTiers)
+        ? { additionalSpeedTiers: item.additionalSpeedTiers.filter(isString) }
         : {}),
       ...(Array.isArray(item.supportedReasoningEfforts)
         ? {
@@ -252,10 +298,24 @@ export function decodeAccountRateLimitsReadResult(value: unknown): AccountRateLi
   const record = decodeRecord(value, "rate limits response");
   const rateLimits = decodeRateLimit(record.rateLimits);
   const rateLimitsByLimitId = decodeRateLimitsById(record.rateLimitsByLimitId);
+  const rateLimitResetCredits = decodeRateLimitResetCredits(record.rateLimitResetCredits);
+  const groups = decodeRateLimitGroups(record.groups);
+  const { sharedQuotaWith } = record;
+  if (sharedQuotaWith !== undefined && !isAgentProvider(sharedQuotaWith))
+    throw new Error("Invalid rate limit shared quota provider.");
   return {
     ...(rateLimits === undefined ? {} : { rateLimits }),
     ...(rateLimitsByLimitId === undefined ? {} : { rateLimitsByLimitId }),
+    ...(groups === undefined ? {} : { groups }),
+    ...(sharedQuotaWith === undefined ? {} : { sharedQuotaWith }),
+    ...(rateLimitResetCredits === undefined ? {} : { rateLimitResetCredits }),
   };
+}
+
+export function decodeRateLimitResetCreditConsumeResult(value: unknown): ProviderUsageResetOutcome {
+  const outcome = decodeRecord(value, "rate limit reset response").outcome;
+  if (!isOneOf(PROVIDER_USAGE_RESET_OUTCOMES, outcome)) throw new Error("Invalid rate limit reset outcome.");
+  return outcome;
 }
 
 /** A sparse `account/rateLimits/updated` push: only the windows it holds changed. */
@@ -370,6 +430,23 @@ function decodeRateLimit(value: unknown): AccountRateLimitResult | null | undefi
   };
 }
 
+function decodeRateLimitGroups(value: unknown): AccountRateLimitGroupResult[] | undefined {
+  if (value === undefined) return value;
+  if (!Array.isArray(value)) throw new Error("Invalid rate limit groups.");
+  return value.map((item) => {
+    const record = decodeRecord(item, "rate limit group");
+    const models = record.models;
+    if (!Array.isArray(models) || !models.every((model) => typeof model === "string"))
+      throw new Error("Invalid rate limit group models.");
+    return {
+      name: requiredString(record, "name"),
+      models,
+      primary: decodeRateLimitWindow(record.primary) ?? null,
+      secondary: decodeRateLimitWindow(record.secondary) ?? null,
+    };
+  });
+}
+
 function decodeRateLimitWindow(value: unknown): AccountRateLimitWindowResult | null | undefined {
   if (value === undefined || value === null) return value;
   const record = decodeRecord(value, "rate limit window");
@@ -381,6 +458,18 @@ function decodeRateLimitWindow(value: unknown): AccountRateLimitWindowResult | n
     ...(windowDurationMins === undefined ? {} : { windowDurationMins }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
   };
+}
+
+/**
+ * Only the count: the credit rows are display text that OpenBot does not show. A count it cannot
+ * read is unknown, so the usage reading that carries it still decodes.
+ */
+function decodeRateLimitResetCredits(value: unknown): AccountRateLimitsReadResult["rateLimitResetCredits"] {
+  if (value === undefined) return value;
+  const availableCount = isDynamicRecord(value) ? value.availableCount : undefined;
+  return typeof availableCount === "number" && Number.isSafeInteger(availableCount) && availableCount >= 0
+    ? { availableCount }
+    : null;
 }
 
 function decodeRateLimitsById(value: unknown): AccountRateLimitsReadResult["rateLimitsByLimitId"] {

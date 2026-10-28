@@ -12,10 +12,15 @@ import { currentText } from "@openbot/ui/text";
 import { createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { desktopAnalytics } from "./analytics";
 import { useAnsweredPrompts } from "./answered-prompts";
-import { seededAttentionPrompts } from "./features/agents/agent-runtime-snapshot";
+import {
+  attentionKey,
+  type PendingAttentionPrompts,
+  seededAttentionPrompts,
+} from "./features/agents/agent-runtime-snapshot";
 import { useAgents } from "./features/agents/agents-context";
 import { agentConversationKey, promptRequestKey } from "./features/conversation/conversation-keys";
 import type { PromptAnswerOptions } from "./features/conversation/conversation-types";
+import type { TurnStepLines } from "./features/conversation/turn-step-lines";
 import { useDynamicIsland } from "./features/dynamic-island/dynamic-island-context";
 import { useServers } from "./features/servers/servers-context";
 import { createScopeGuard } from "./scope-lifetime";
@@ -25,7 +30,6 @@ import { turnsPort } from "./turns-port";
 type PromptEvent = Extract<AgentEvent, { type: "prompt" }>;
 /** `current` is false while a new list loads. */
 type RoutineSnapshot = { routines: RoutineFields[]; current: boolean };
-type BrowserTakeoverEvent = Extract<AgentEvent, { type: "browser-takeover-requested" }>;
 
 /**
  * What each agent is *doing*: the turn it is running, the queue behind it, and
@@ -81,6 +85,8 @@ const Turns = createSimpleContext({
     const [turnProgress, setTurnProgress] = createSignal<
       Record<string, { turnId: string; detail: string } | undefined>
     >(seed?.turnProgress ?? {});
+    // Every progress line of the newest turns, by turn, for the steps under the activity line.
+    const [turnStepLines, setTurnStepLines] = createSignal<TurnStepLines>({});
     const [failedTurns, setFailedTurns] = createSignal<Record<string, string | undefined>>(seed?.failedTurns ?? {});
     // The agents whose queue waits for a provider plan to reset, in epoch seconds. Only a runtime snapshot of the local host carries it.
     const [contextStates, setContextStates] = createSignal<Record<string, AgentContextState>>({});
@@ -101,16 +107,33 @@ const Turns = createSimpleContext({
       submittedPromptRequests,
       setSubmittedPromptRequests,
     } = useAnsweredPrompts().promptMarkersFor(scopeServerId);
-    const [pendingPrompts, setPendingPrompts] = createSignal<
-      Record<string, PromptEvent | BrowserTakeoverEvent | undefined>
-    >(
+    const [pendingPrompts, setPendingPrompts] = createSignal<PendingAttentionPrompts>(
       untrack(() =>
         seededAttentionPrompts(seed?.pendingPrompts, presentedPromptResolutions(), submittedPromptRequests()),
       ),
     );
-    const [pendingApprovals, setPendingApprovals] = createSignal<Record<string, AgentApproval | undefined>>(
-      seed?.pendingApprovals ?? {},
+    // Every waiting approval: the agent's chat and each of its tasks has its own thread.
+    const [approvals, setApprovals] = createSignal<AgentApproval[]>(
+      Object.values(seed?.pendingApprovals ?? {}).filter((approval) => approval !== undefined),
     );
+    /** The newest waiting approval of each agent, in any thread. */
+    const pendingApprovals = createMemo(() =>
+      Object.fromEntries(approvals().map((approval) => [approval.agentId, approval] as const)),
+    );
+
+    function approvalOfThread(agentId: string, threadId: string | null | undefined): AgentApproval | undefined {
+      return approvals().find((approval) => approval.agentId === agentId && approval.threadId === threadId);
+    }
+
+    function forgetApproval(agentId: string, requestId: string | number): void {
+      setApprovals((current) =>
+        current.some((approval) => approval.agentId === agentId && String(approval.requestId) === String(requestId))
+          ? current.filter(
+              (approval) => approval.agentId !== agentId || String(approval.requestId) !== String(requestId),
+            )
+          : current,
+      );
+    }
     const completedTurnByAgent = new Map<string, string>();
     const queueSnapshotRequests = new Map<string, number>();
     const waitSnapshotRequests = new Map<string, number>();
@@ -140,7 +163,7 @@ const Turns = createSimpleContext({
       },
     );
 
-    function loadQueue(agentId: string, serverId: string): void {
+    function loadQueue(agentId: string): void {
       const queueRequest = (queueSnapshotRequests.get(agentId) ?? 0) + 1;
       queueSnapshotRequests.set(agentId, queueRequest);
       void turnsPort()
@@ -149,19 +172,15 @@ const Turns = createSimpleContext({
           if (!scopeIsCurrent() || queueSnapshotRequests.get(agentId) !== queueRequest) return;
           setQueues((current) => ({ ...current, [agentId]: queue }));
         })
-        .catch((error) => {
-          // A newer load replaces this one, and an agent that is not open loads again when it opens.
-          // Without this, each failed load of a stalled server added one more error.
-          if (!scopeIsCurrent() || queueSnapshotRequests.get(agentId) !== queueRequest || agentId !== activeAgentId())
-            return;
-          appendUiError(agentId, error, currentText().t("app.errorStatus.queueLoad"), serverId);
-        });
+        // This background read can time out while chat replies still arrive. Keep the last queue;
+        // the next load or queue-changed event updates it. Queue action failures still report errors.
+        .catch(() => undefined);
     }
 
     createEffect(
       () => ({ agentId: activeAgentId(), agentPhase: agentStatus().phase, serverId: activeServerId() }),
-      ({ agentId, serverId }) => {
-        if (agentId) loadQueue(agentId, serverId);
+      ({ agentId }) => {
+        if (agentId) loadQueue(agentId);
       },
     );
 
@@ -207,13 +226,13 @@ const Turns = createSimpleContext({
           return;
         }
         if (!next.agentIds) return;
-        for (const agentId of next.agentIds.split("\0")) loadQueue(agentId, next.serverId);
+        for (const agentId of next.agentIds.split("\0")) loadQueue(agentId);
       },
     );
 
     async function answerPrompt(answers: Record<string, string[]>, options?: PromptAnswerOptions): Promise<boolean> {
       const agent = activeAgent();
-      const prompt = agent ? pendingPrompts()[agent.id] : undefined;
+      const prompt = agent ? pendingPrompts()[attentionKey(agent.id, agent.threadId)] : undefined;
       if (!agent || prompt?.type !== "prompt") return false;
       return submitPromptAnswers(agent.id, prompt, answers, options);
     }
@@ -259,17 +278,20 @@ const Turns = createSimpleContext({
       agentId: string,
       requestId: string | number,
       decision: "accept" | "decline",
+      options?: { onError?: (error: unknown) => void },
     ): Promise<boolean> {
       const serverId = activeServerId();
-      const approval = pendingApprovals()[agentId];
-      if (!approval || String(approval.requestId) !== String(requestId)) return false;
+      const approval = approvals().find(
+        (item) => item.agentId === agentId && String(item.requestId) === String(requestId),
+      );
+      if (!approval) return false;
       const analytics = desktopAnalytics.scope();
       try {
         await turnsPort().agent.respondToApproval({
           requestId: approval.requestId,
           decision,
         });
-        setPendingApprovals((current) => ({ ...current, [agentId]: undefined }));
+        forgetApproval(agentId, approval.requestId);
         analytics.track("agent_input_action", { kind: "approval", decision, result: "succeeded" });
         return true;
       } catch (error) {
@@ -279,26 +301,28 @@ const Turns = createSimpleContext({
           result: "failed",
           failure_code: "response_failed",
         });
-        appendUiError(agentId, error, currentText().t("app.errorStatus.approval"), serverId);
+        if (options?.onError) options.onError(error);
+        else appendUiError(agentId, error, currentText().t("app.errorStatus.approval"), serverId);
         return false;
       }
     }
 
     async function respondToApproval(decision: "accept" | "decline"): Promise<boolean> {
       const agent = activeAgent();
-      const approval = agent ? pendingApprovals()[agent.id] : undefined;
+      const approval = agent ? approvalOfThread(agent.id, agent.threadId) : undefined;
       if (!agent || !approval) return false;
       return respondToApprovalRequest(agent.id, approval.requestId, decision);
     }
 
     async function respondToBrowserTakeover(decision: "complete" | "cancel"): Promise<boolean> {
       const agent = activeAgent();
-      const event = agent ? pendingPrompts()[agent.id] : undefined;
-      if (!agent || event?.type !== "browser-takeover-requested") return false;
+      const key = agent ? attentionKey(agent.id, agent.threadId) : undefined;
+      const event = key ? pendingPrompts()[key] : undefined;
+      if (!agent || !key || event?.type !== "browser-takeover-requested") return false;
       const serverId = activeServerId();
       try {
         await turnsPort().agent.respondToBrowserTakeover({ requestId: event.request.requestId, decision });
-        setPendingPrompts((current) => ({ ...current, [agent.id]: undefined }));
+        setPendingPrompts((current) => ({ ...current, [key]: undefined }));
         return true;
       } catch (error) {
         appendUiError(agent.id, error, currentText().t("app.errorStatus.browserTakeover"), serverId);
@@ -340,6 +364,8 @@ const Turns = createSimpleContext({
         .then(() => analytics.track("queue_action", { action: "steer", result: "succeeded" }))
         .catch((error) => {
           analytics.track("queue_action", { action: "steer", result: "failed", failure_code: "steer_failed" });
+          // After the turn ended, the message runs as the next turn. The refusal is old news (#3206).
+          if (activeTurns()[agent.id] !== turnId) return;
           appendUiError(agent.id, error, currentText().t("app.errorStatus.steer"), serverId);
         });
     }
@@ -474,6 +500,8 @@ const Turns = createSimpleContext({
       setActiveTurns,
       turnProgress,
       setTurnProgress,
+      turnStepLines,
+      setTurnStepLines,
       failedTurns,
       setFailedTurns,
       contextStates,
@@ -495,8 +523,11 @@ const Turns = createSimpleContext({
       setPresentedPromptResolutions,
       submittedPromptRequests,
       setSubmittedPromptRequests,
+      approvals,
+      setApprovals,
       pendingApprovals,
-      setPendingApprovals,
+      approvalOfThread,
+      forgetApproval,
       completedTurnByAgent,
       queueSnapshotRequests,
       activeQueue,

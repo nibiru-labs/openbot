@@ -7,9 +7,16 @@ import {
   type BillingPlanId,
   isBillingAmount,
 } from "@openbot/contracts/billing";
+import { HOSTED_SERVER_ENTRY_POINTS, type HostedServerEntryPoint } from "@openbot/contracts/hosted-servers";
+import { LICENSE_METADATA, LICENSE_METADATA_KIND } from "@openbot/contracts/license";
 import { isOneOf } from "@openbot/contracts/runtime-values";
 import { Effect, Schema } from "effect";
-import { firstTouchProperties, NO_ACCOUNT_ANALYTICS } from "./account-analytics";
+import {
+  type BillingProduct,
+  firstTouchProperties,
+  isAnalyticsLicenseUsers,
+  NO_ACCOUNT_ANALYTICS,
+} from "./account-analytics";
 import { AccountAttribution } from "./account-attribution";
 import { BillingUsd, BillingUsdError } from "./billing-usd";
 import { SalesAnalyticsDelivery, SalesAnalyticsDeliveryError } from "./sales-analytics-delivery";
@@ -48,14 +55,37 @@ export interface BillingSalesCheckout {
   /** The route only. It must be `/app...` or `/billing/return...`. */
   returnUrl: string;
   createdAt: number;
+  /** Where the journey started in the app. A value that is not on the list is left out. */
+  entryPoint?: HostedServerEntryPoint;
 }
 
-export interface BillingSalesSyncedSubscription {
+/** A license Checkout. It has no server and no return token, so only its fact is stored. */
+export interface BillingSalesLicenseCheckout {
+  sessionId: string;
+  userId: string;
+  users: number;
+  currency: BillingCurrency;
+  amount: number;
+  createdAt: number;
+}
+
+interface BillingSalesSyncedSubscription {
+  product?: "server";
   userId: string;
   plan: BillingPlanId;
   interval: BillingInterval;
   currency: BillingCurrency;
 }
+
+/** A license that the webhook stored. */
+interface BillingSalesSyncedLicense {
+  product: "license";
+  userId: string;
+  users: number;
+  currency: BillingCurrency;
+}
+
+export type BillingSalesSynced = BillingSalesSyncedSubscription | BillingSalesSyncedLicense;
 
 /** The invoice and the subscription that a refunded or disputed payment paid. */
 export interface BillingSalesPayment {
@@ -105,7 +135,13 @@ interface FactRow {
 }
 
 interface FactAttributes {
+  /** Absent in facts from before generation 11, which are all server plans. */
+  product?: BillingProduct;
   plan?: BillingPlanId;
+  /** For a license: the number of users. */
+  users?: number;
+  /** On `checkout_started` of a server plan. */
+  entryPoint?: HostedServerEntryPoint;
   interval?: BillingInterval;
   currency?: BillingCurrency;
   amount?: number;
@@ -160,10 +196,12 @@ export class BillingSales {
     const tokenHash = yield* hashToken(input.returnToken);
     const createdAt = input.createdAt;
     const attributes = JSON.stringify({
+      product: "server",
       plan: input.plan,
       interval: input.interval,
       currency: input.currency,
       amount: input.amount,
+      ...(isOneOf(HOSTED_SERVER_ENTRY_POINTS, input.entryPoint) ? { entryPoint: input.entryPoint } : {}),
     } satisfies FactAttributes);
     const sourceKey = `checkout:${input.sessionId}:started`;
     const expiresAt = createdAt + CHECKOUT_LIFETIME_MS;
@@ -211,10 +249,56 @@ export class BillingSales {
     );
   }).bind(this);
 
+  /**
+   * Records a started license Checkout. The fact has the same source key as a server Checkout, so a
+   * repeated call for one page records it once.
+   */
+  readonly licenseCheckout = Effect.fn("BillingSales.licenseCheckout")(function* (
+    this: BillingSales,
+    input: BillingSalesLicenseCheckout,
+  ): Effect.fn.Return<void, BillingSalesError> {
+    if (
+      !SESSION_ID_PATTERN.test(input.sessionId) ||
+      !validProfileId(input.userId) ||
+      !isAnalyticsLicenseUsers(input.users) ||
+      !isOneOf(BILLING_CURRENCIES, input.currency) ||
+      !isBillingAmount(input.amount) ||
+      !Number.isSafeInteger(input.createdAt) ||
+      input.createdAt <= 0
+    )
+      return yield* new BillingSalesError({ code: "invalid_input" });
+    const attributes = JSON.stringify({
+      product: "license",
+      users: input.users,
+      interval: "month",
+      currency: input.currency,
+      amount: input.amount,
+    } satisfies FactAttributes);
+    yield* d1(this.#database, () =>
+      this.#database
+        .prepare(
+          `INSERT OR IGNORE INTO billing_sales_facts(
+               source_key, fact_type, source_id, invoice_id, session_id, user_id, server_id,
+               event_timestamp, attributes_json, delivery_enqueued_at, created_at
+             ) VALUES (?, 'checkout_started', ?, NULL, ?, (SELECT id FROM users WHERE id = ?), NULL, ?, ?, NULL, ?)`,
+        )
+        .bind(
+          `checkout:${input.sessionId}:started`,
+          input.sessionId,
+          input.sessionId,
+          input.userId,
+          input.createdAt,
+          attributes,
+          input.createdAt,
+        )
+        .run(),
+    );
+  }).bind(this);
+
   readonly webhook = Effect.fn("BillingSales.webhook")(function* (
     this: BillingSales,
     event: StripeEvent,
-    synced: BillingSalesSyncedSubscription | null,
+    synced: BillingSalesSynced | null,
     payment: BillingSalesPayment | null = null,
     options: BillingSalesWebhookOptions = {},
   ): Effect.fn.Return<void, BillingSalesError> {
@@ -258,6 +342,7 @@ export class BillingSales {
     if (row.completed_at !== null || row.returned_at !== null) return row.return_url;
     const now = this.#now();
     const attributes = JSON.stringify({
+      product: "server",
       plan: row.plan,
       interval: row.interval,
       currency: row.currency,
@@ -364,9 +449,9 @@ export class BillingSales {
           .run(),
       );
     }
-    const attributes: FactAttributes = row
-      ? { plan: row.plan, interval: row.interval, currency: row.currency, amount: row.amount }
-      : {};
+    const attributes = row ? checkoutAttributes(row) : yield* this.#startedAttributes(sessionId);
+    // A license page that was never reported as started is not reported as ended.
+    if (!row && isLicenseSession(metadata) && !attributes) return;
     yield* d1(this.#database, () =>
       this.#database
         .prepare(
@@ -382,7 +467,7 @@ export class BillingSales {
           userId,
           serverId,
           eventTimestamp,
-          JSON.stringify(attributes),
+          JSON.stringify(attributes ?? {}),
           this.#now(),
         )
         .run(),
@@ -422,9 +507,9 @@ export class BillingSales {
           .run(),
       );
     }
-    const attributes: FactAttributes = row
-      ? { plan: row.plan, interval: row.interval, currency: row.currency, amount: row.amount }
-      : {};
+    const attributes = row ? checkoutAttributes(row) : yield* this.#startedAttributes(sessionId);
+    // A license page that was never reported as started is not reported as expired.
+    if (!row && isLicenseSession(metadata) && !attributes) return;
     yield* d1(this.#database, () =>
       this.#database
         .prepare(
@@ -440,7 +525,7 @@ export class BillingSales {
           userId,
           serverId,
           eventTimestamp,
-          JSON.stringify(attributes),
+          JSON.stringify(attributes ?? {}),
           this.#now(),
         )
         .run(),
@@ -450,7 +535,7 @@ export class BillingSales {
   readonly #invoice = Effect.fn("BillingSales.invoice")(function* (
     this: BillingSales,
     event: StripeEvent,
-    synced: BillingSalesSyncedSubscription | null,
+    synced: BillingSalesSynced | null,
     eventTimestamp: number,
     options: BillingSalesWebhookOptions,
   ): Effect.fn.Return<void, BillingSalesError> {
@@ -475,18 +560,29 @@ export class BillingSales {
             }>(),
         )
       : null;
+    const syncedPlan = synced?.product === "license" ? null : synced;
+    const license =
+      synced?.product === "license"
+        ? synced
+        : !stored && subscriptionId
+          ? yield* this.#storedLicense(subscriptionId)
+          : null;
+    const product: BillingProduct = license ? "license" : "server";
     const metadata = recordValue(object.metadata);
-    const userId = synced?.userId ?? stored?.user_id ?? safeId(metadata?.openbot_user_id);
-    const serverId = stored?.server_id ?? safeId(metadata?.openbot_server_id);
-    const plan = synced?.plan ?? stored?.plan;
-    const interval = synced?.interval ?? stored?.interval;
-    const currency = billingCurrency(stringValue(object.currency)) ?? synced?.currency ?? stored?.currency;
+    const userId = synced?.userId ?? stored?.user_id ?? license?.userId ?? safeId(metadata?.openbot_user_id);
+    const serverId = license ? null : (stored?.server_id ?? safeId(metadata?.openbot_server_id));
+    const plan = license ? undefined : (syncedPlan?.plan ?? stored?.plan);
+    const interval = license ? "month" : (syncedPlan?.interval ?? stored?.interval);
+    const currency =
+      billingCurrency(stringValue(object.currency)) ?? synced?.currency ?? stored?.currency ?? license?.currency;
     const amountValue = event.type === "invoice.paid" ? object.amount_paid : object.amount_due;
     const amount = isBillingAmount(amountValue) ? amountValue : null;
-    const paymentKind = yield* this.#paymentKind(object.billing_reason, userId, eventTimestamp);
+    const paymentKind = yield* this.#paymentKind(object.billing_reason, userId, eventTimestamp, product);
     const failureReason = event.type === "invoice.payment_failed" ? failureCode(object) : undefined;
     const attributes: FactAttributes = {
+      product,
       ...(plan ? { plan } : {}),
+      ...(license && isAnalyticsLicenseUsers(license.users) ? { users: license.users } : {}),
       ...(interval ? { interval } : {}),
       ...(currency ? { currency } : {}),
       ...(amount !== null ? { amount } : {}),
@@ -529,7 +625,7 @@ export class BillingSales {
     this: BillingSales,
     reversal: PaymentReversal,
     payment: BillingSalesPayment,
-    synced: BillingSalesSyncedSubscription | null,
+    synced: BillingSalesSynced | null,
     eventId: string,
     eventTimestamp: number,
   ): Effect.fn.Return<void, BillingSalesError> {
@@ -542,16 +638,30 @@ export class BillingSales {
         .bind(payment.subscriptionId)
         .first<{ user_id: string; server_id: string | null; plan: BillingPlanId; interval: BillingInterval }>(),
     );
-    // A payment of a subscription that is not an OpenBot plan is not an OpenBot sale.
-    if (!stored) return;
-    const plan = synced?.plan ?? stored.plan;
-    const interval = synced?.interval ?? stored.interval;
-    const attributes: FactAttributes = {
-      plan,
-      interval,
-      ...(reversal.currency ? { currency: reversal.currency } : {}),
-      amount: reversal.amount,
-    };
+    const license = stored
+      ? null
+      : synced?.product === "license"
+        ? synced
+        : yield* this.#storedLicense(payment.subscriptionId);
+    // A payment of a subscription that is not an OpenBot plan or license is not an OpenBot sale.
+    if (!stored && !license) return;
+    const syncedPlan = synced?.product === "license" ? null : synced;
+    const attributes: FactAttributes = stored
+      ? {
+          product: "server",
+          plan: syncedPlan?.plan ?? stored.plan,
+          interval: syncedPlan?.interval ?? stored.interval,
+          ...(reversal.currency ? { currency: reversal.currency } : {}),
+          amount: reversal.amount,
+        }
+      : {
+          product: "license",
+          ...(license && isAnalyticsLicenseUsers(license.users) ? { users: license.users } : {}),
+          interval: "month",
+          ...(reversal.currency ? { currency: reversal.currency } : {}),
+          amount: reversal.amount,
+        };
+    const ownerId = synced?.userId ?? stored?.user_id ?? license?.userId ?? null;
     const prefix = reversal.type === "payment_refunded" || reversal.type === "refund_failed" ? "refund" : "dispute";
     const suffix = {
       payment_refunded: "succeeded",
@@ -578,8 +688,8 @@ export class BillingSales {
           reversal.type,
           eventId,
           payment.invoiceId,
-          synced?.userId ?? stored.user_id,
-          stored.server_id,
+          ownerId,
+          stored?.server_id ?? null,
           eventTimestamp,
           JSON.stringify(attributes),
           this.#now(),
@@ -595,6 +705,7 @@ export class BillingSales {
     billingReason: unknown,
     userId: string | null,
     eventTimestamp: number,
+    product: BillingProduct,
   ): Effect.fn.Return<FactAttributes["paymentKind"], BillingSalesError> {
     if (billingReason === "subscription_create") return "first_purchase";
     if (billingReason === "subscription_cycle" || billingReason === "subscription_threshold") return "renewal";
@@ -604,9 +715,10 @@ export class BillingSales {
       this.#database
         .prepare(
           `SELECT 1 AS seen FROM billing_sales_facts
-              WHERE fact_type = 'payment_succeeded' AND user_id = ? AND event_timestamp < ? LIMIT 1`,
+              WHERE fact_type = 'payment_succeeded' AND user_id = ? AND event_timestamp < ?
+                AND ${PRODUCT_SQL} = ? LIMIT 1`,
         )
-        .bind(userId, eventTimestamp)
+        .bind(userId, eventTimestamp, product)
         .first<{ seen: number }>(),
     );
     return previous ? "renewal" : "first_purchase";
@@ -639,14 +751,20 @@ export class BillingSales {
       );
       return;
     }
+    const product: BillingProduct = attributes.product ?? "server";
+    const productProperties = {
+      product,
+      ...(product === "server" && attributes.plan ? { plan: attributes.plan } : {}),
+      ...(product === "license" && attributes.users !== undefined ? { users: attributes.users } : {}),
+    };
     const actionProperties = {
-      ...(attributes.plan ? { plan: attributes.plan } : {}),
+      ...productProperties,
       ...(attributes.interval ? { interval: attributes.interval } : {}),
       ...(attributes.currency ? { currency: attributes.currency } : {}),
       ...(attributes.amount !== undefined ? { amount: attributes.amount } : {}),
     };
     if (row.fact_type === "payment_succeeded") {
-      const recovery = yield* this.#recovery(row.invoice_id, profileId, eventTimestamp);
+      const recovery = yield* this.#recovery(row.invoice_id, profileId, eventTimestamp, product);
       // The source of the account, when it is known at this time. `account_attributed` names it later.
       const firstTouch = profileId
         ? firstTouchProperties(
@@ -677,7 +795,7 @@ export class BillingSales {
             original_currency: attributes.currency,
             fx_rate: converted.fxRate,
             fx_date: converted.fxDate,
-            ...(attributes.plan ? { plan: attributes.plan } : {}),
+            ...productProperties,
             ...(attributes.interval ? { interval: attributes.interval } : {}),
             payment_kind: attributes.paymentKind ?? "adjustment",
             ...(recovery ? { recovery } : {}),
@@ -711,7 +829,12 @@ export class BillingSales {
       const eventName = "billing_action" as const;
       const eventProperties =
         row.fact_type === "checkout_started"
-          ? { ...actionProperties, action: "checkout_started", checkout_status: "started" }
+          ? {
+              ...actionProperties,
+              action: "checkout_started",
+              checkout_status: "started",
+              ...(attributes.entryPoint ? { entry_point: attributes.entryPoint } : {}),
+            }
           : row.fact_type === "checkout_expired"
             ? { ...actionProperties, action: "checkout_expired", checkout_status: "expired" }
             : row.fact_type === "checkout_returned"
@@ -784,6 +907,7 @@ export class BillingSales {
     invoiceId: string | null,
     profileId: string | null,
     eventTimestamp: number,
+    product: BillingProduct,
   ): Effect.fn.Return<"invoice" | "checkout" | null, BillingSalesError> {
     const invoice = invoiceId
       ? yield* d1(this.#database, () =>
@@ -802,9 +926,9 @@ export class BillingSales {
             .prepare(
               `SELECT 1 AS seen FROM billing_sales_facts
                   WHERE user_id = ? AND fact_type IN ('checkout_expired', 'checkout_returned')
-                    AND event_timestamp <= ? AND event_timestamp > ? LIMIT 1`,
+                    AND event_timestamp <= ? AND event_timestamp > ? AND ${PRODUCT_SQL} = ? LIMIT 1`,
             )
-            .bind(profileId, eventTimestamp, eventTimestamp - RECOVERY_WINDOW_MS)
+            .bind(profileId, eventTimestamp, eventTimestamp - RECOVERY_WINDOW_MS, product)
             .first<{ seen: number }>(),
         )
       : null;
@@ -812,6 +936,34 @@ export class BillingSales {
     if (invoice) return "invoice";
     if (checkout) return "checkout";
     return null;
+  }).bind(this);
+
+  /** The attributes of the started fact of a Checkout that has no checkout row, or null without one. */
+  readonly #startedAttributes = Effect.fn("BillingSales.startedAttributes")(function* (
+    this: BillingSales,
+    sessionId: string,
+  ): Effect.fn.Return<FactAttributes | null, BillingSalesError> {
+    const started = yield* d1(this.#database, () =>
+      this.#database
+        .prepare("SELECT attributes_json FROM billing_sales_facts WHERE source_key = ?")
+        .bind(`checkout:${sessionId}:started`)
+        .first<{ attributes_json: string }>(),
+    );
+    return started ? parseAttributes(started.attributes_json) : null;
+  }).bind(this);
+
+  /** The stored license of a subscription, or null when it is not a license. */
+  readonly #storedLicense = Effect.fn("BillingSales.storedLicense")(function* (
+    this: BillingSales,
+    subscriptionId: string,
+  ): Effect.fn.Return<{ userId: string; users: number; currency: BillingCurrency | null } | null, BillingSalesError> {
+    const row = yield* d1(this.#database, () =>
+      this.#database
+        .prepare("SELECT user_id, users, currency FROM licenses WHERE stripe_subscription_id = ?")
+        .bind(subscriptionId)
+        .first<{ user_id: string; users: number; currency: string }>(),
+    );
+    return row ? { userId: row.user_id, users: row.users, currency: billingCurrency(row.currency) } : null;
   }).bind(this);
 
   readonly #enqueue = Effect.fn("BillingSales.enqueue")(function* (
@@ -871,6 +1023,18 @@ function isReversalFact(type: FactType): type is PaymentReversalType {
   return (
     type === "payment_refunded" || type === "refund_failed" || type === "payment_disputed" || type === "dispute_lost"
   );
+}
+
+/** The product of a stored fact. Facts from before generation 11 have none and are all server plans. */
+const PRODUCT_SQL = "COALESCE(json_extract(attributes_json, '$.product'), 'server')";
+
+function checkoutAttributes(row: CheckoutRow): FactAttributes {
+  return { product: "server", plan: row.plan, interval: row.interval, currency: row.currency, amount: row.amount };
+}
+
+/** True for the metadata of a license Checkout page. */
+function isLicenseSession(metadata: StripeEvent["data"]["object"] | null): boolean {
+  return metadata?.[LICENSE_METADATA.kind] === LICENSE_METADATA_KIND;
 }
 
 function d1<A>(_database: D1Database, operation: () => Promise<A>): Effect.Effect<A, BillingSalesError> {
@@ -974,7 +1138,10 @@ function parseAttributes(value: string): FactAttributes | null {
     const record = recordValue(JSON.parse(value));
     if (!record) return null;
     const output: FactAttributes = {};
+    if (record.product === "server" || record.product === "license") output.product = record.product;
     if (isOneOf(BILLING_PLAN_IDS, record.plan)) output.plan = record.plan;
+    if (isAnalyticsLicenseUsers(record.users)) output.users = record.users;
+    if (isOneOf(HOSTED_SERVER_ENTRY_POINTS, record.entryPoint)) output.entryPoint = record.entryPoint;
     if (isOneOf(BILLING_INTERVALS, record.interval)) output.interval = record.interval;
     if (isOneOf(BILLING_CURRENCIES, record.currency)) output.currency = record.currency;
     if (record.amount === undefined || isBillingAmount(record.amount)) {

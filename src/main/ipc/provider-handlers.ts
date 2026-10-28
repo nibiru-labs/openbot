@@ -6,14 +6,15 @@ import { isManagedRuntimeProvider, type ManagedProviderId } from "@openbot/contr
 import {
   type AgentProviderId,
   type ConnectProviderAccountInput,
+  isProviderAccountId,
   PROVIDER_ACCOUNT_LABEL_MAX_LENGTH,
   type RemoveProviderAccountInput,
   type RenameProviderAccountInput,
+  type ResetProviderUsageInput,
   type SetProviderApiKeyInput,
 } from "@openbot/contracts/ipc";
 import { isDynamicRecord, isString } from "@openbot/contracts/runtime-values";
 import { sourceText } from "@openbot/i18n/source";
-import { shell } from "electron";
 import { AgentLifecycleFailed, type AgentService } from "../../backend/agent-service";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import type { ProviderCredentialStore } from "../provider-credential-store";
@@ -29,27 +30,31 @@ export interface ProviderIpcDependencies {
   service: AgentService;
   providerRuntimes: ProviderRuntimeManager;
   credentials: ProviderCredentialStore;
+  /** Opens a web page in the program that the user chose in Settings. */
+  openLink: (url: string) => Promise<void>;
 }
 
 export function providerIpcHandlers({
   service,
   providerRuntimes,
   credentials,
+  openLink,
 }: ProviderIpcDependencies): Pick<IpcGroupHandlers, "providers" | "providerRuntimes"> {
   return {
     providers: {
       setProviderOn: payloadHandler(parseProviderUseInput, ({ provider, on }) =>
         runCauseEffect(service.setProviderOn(provider, on)),
       ),
-      connectProvider: payloadHandler(parseProviderId, (provider) =>
-        runCauseEffect(
+      connectProvider: payloadHandler(parseProviderId, async (provider) => {
+        await runCauseEffect(providerRuntimes.ensureKeyProviderCli(provider));
+        return runCauseEffect(
           service.connectProvider(provider, async (value) => {
             const url = new URL(value);
             if (url.protocol !== "https:") throw new Error(sourceText("error.provider.httpsSignInLinkOnly"));
-            await shell.openExternal(url.toString());
+            await openLink(url.toString());
           }),
-        ),
-      ),
+        );
+      }),
       cancelProviderSignIn: payloadHandler(parseProviderId, (provider) =>
         runCauseEffect(service.cancelProviderSignIn(provider)),
       ),
@@ -74,8 +79,9 @@ export function providerIpcHandlers({
       // The key and the process that uses it change as one step, because the catalog the CLI
       // advertises is decided at spawn time: the service writes the key only when it can restart
       // the provider on it, and reports success only once the new process is up.
-      setProviderApiKey: payloadHandler(parseProviderApiKeyInput, ({ provider, key }) =>
-        runCauseEffect(
+      setProviderApiKey: payloadHandler(parseProviderApiKeyInput, async ({ provider, key }) => {
+        await runCauseEffect(providerRuntimes.ensureKeyProviderCli(provider));
+        return runCauseEffect(
           service.changeProviderCredential(provider, () =>
             credentials
               .set(provider, key)
@@ -85,11 +91,11 @@ export function providerIpcHandlers({
                 ),
               ),
           ),
-        ),
-      ),
+        );
+      }),
       clearProviderApiKey: payloadHandler(parseProviderId, (provider) =>
         runCauseEffect(
-          service.changeProviderCredential(provider, () =>
+          service.clearProviderCredential(provider, () =>
             credentials
               .clear(provider)
               .pipe(
@@ -106,7 +112,7 @@ export function providerIpcHandlers({
           service.connectProviderAccount(provider, accountId, async (value) => {
             const url = new URL(value);
             if (url.protocol !== "https:") throw new Error(sourceText("error.provider.httpsSignInLinkOnly"));
-            await shell.openExternal(url.toString());
+            await openLink(url.toString());
           }),
         ),
       ),
@@ -119,6 +125,12 @@ export function providerIpcHandlers({
       removeProviderAccount: payloadHandler(parseRemoveProviderAccountInput, ({ provider, accountId }) =>
         runCauseEffect(service.removeProviderAccount(provider, accountId)),
       ),
+      providerUsageResets: payloadHandler(parseProviderId, (provider) =>
+        runCauseEffect(service.providerUsageResets(provider)),
+      ),
+      resetProviderUsage: payloadHandler(parseResetProviderUsageInput, ({ provider, accountId }) =>
+        runCauseEffect(service.resetProviderUsage(provider, accountId)),
+      ),
       // A status, never the key: see `setProviderApiKey` in the desktop API contract.
       getProviderApiKeyState: payloadHandler(parseProviderId, async (provider) => ({
         provider,
@@ -129,6 +141,12 @@ export function providerIpcHandlers({
       getStatus: handler(() => providerRuntimes.getStatus()),
       download: payloadHandler(parseManagedProviderId, (parsed) => runCauseEffect(providerRuntimes.download(parsed))),
       cancel: payloadHandler(parseManagedProviderId, (parsed) => runCauseEffect(providerRuntimes.cancel(parsed))),
+      measureDownload: payloadHandler(parseManagedProviderId, (parsed) =>
+        runCauseEffect(providerRuntimes.measureDownload(parsed)),
+      ),
+      removeDownload: payloadHandler(parseManagedProviderId, (parsed) =>
+        runCauseEffect(providerRuntimes.removeDownload(parsed)),
+      ),
       checkForUpdates: handler(() => runCauseEffect(providerRuntimes.checkForUpdates())),
     },
   };
@@ -177,6 +195,12 @@ export function parseConnectProviderAccountInput(value: unknown): ConnectProvide
 export function parseRemoveProviderAccountInput(value: unknown): RemoveProviderAccountInput {
   if (!isDynamicRecord(value)) throw new Error("Invalid provider account.");
   return { provider: parseProviderId(value.provider), accountId: requireString(value.accountId, "accountId") };
+}
+
+/** The provider's own sign-in (`default`) or an account after the first. */
+export function parseResetProviderUsageInput(value: unknown): ResetProviderUsageInput {
+  if (!isDynamicRecord(value) || !isProviderAccountId(value.accountId)) throw new Error("Invalid provider account.");
+  return { provider: parseProviderId(value.provider), accountId: value.accountId };
 }
 
 export function parseRenameProviderAccountInput(value: unknown): RenameProviderAccountInput {

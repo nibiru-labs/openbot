@@ -1,6 +1,11 @@
 import {
+  isSpeechLanguage,
+  isSpeechVoice,
   isVoiceLanguage,
   isVoiceModelId,
+  SPEECH_LIMITS,
+  type SpeechInput,
+  type SpeechSettings,
   VOICE_API_KEY_MAX_LENGTH,
   VOICE_AUDIO_LIMITS,
   VOICE_STREAM_LIMITS,
@@ -36,6 +41,24 @@ export function parseVoiceTranscription(input: unknown): VoiceTranscriptionInput
     view.getUint32(40, true) !== audio.byteLength - 44
   ) {
     throw new Error("Voice audio must be a 16 kHz mono PCM WAV file.");
+  }
+  return { audio };
+}
+
+/** The first bytes of an EBML file, such as WebM. */
+const EBML_MAGIC = [0x1a, 0x45, 0xdf, 0xa3];
+
+/** A recording to keep is the Opus/WebM that the recorder wrote. Main stores it and does not decode it. */
+export function parseVoiceRecording(input: unknown): VoiceTranscriptionInput {
+  if (!isObject(input) || !(input.audio instanceof Uint8Array)) {
+    throw new Error("Voice audio is required.");
+  }
+  const audio = input.audio;
+  if (audio.byteLength <= EBML_MAGIC.length || audio.byteLength > VOICE_AUDIO_LIMITS.maximumRecordingBytes) {
+    throw new Error("Voice audio has an invalid length.");
+  }
+  if (EBML_MAGIC.some((byte, index) => audio[index] !== byte)) {
+    throw new Error("Voice audio must be a WebM file.");
   }
   return { audio };
 }
@@ -81,4 +104,18 @@ export function parseVoiceStreamAudio(input: unknown): VoiceStreamAudio {
   if (input.pcm.byteLength % 2 !== 0 || input.pcm.byteLength > VOICE_STREAM_LIMITS.maximumChunkBytes)
     throw new Error("Voice audio has an invalid length.");
   return { streamId, pcm: input.pcm };
+}
+
+export function parseSpeechSettings(input: unknown): SpeechSettings {
+  if (!isObject(input) || typeof input.readReplies !== "boolean" || !isSpeechVoice(input.voice)) {
+    throw new Error("Speech settings need a known voice.");
+  }
+  return { readReplies: input.readReplies, voice: input.voice };
+}
+
+export function parseSpeechInput(input: unknown): SpeechInput {
+  if (!isObject(input) || typeof input.text !== "string" || !input.text.trim() || !isSpeechLanguage(input.language))
+    throw new Error("Speech needs text and a known language.");
+  if (input.text.length > SPEECH_LIMITS.maximumTextLength) throw new Error("The speech text is too long.");
+  return { text: input.text, language: input.language };
 }

@@ -1,4 +1,4 @@
-import type { AgentProviderId } from "@openbot/contracts/agent-providers";
+import { type AgentProviderId, isKeyOnlyProvider, isKnownAgentProvider } from "@openbot/contracts/agent-providers";
 import {
   type AgentModelChoice,
   agentPermissionLevel,
@@ -9,6 +9,7 @@ import {
   type UpdateAgentAdminSettingsInput,
   type UpdateAgentInput,
 } from "@openbot/contracts/ipc";
+import { BROWSER_PROFILES_CAPABILITY } from "@openbot/contracts/team-protocol/browser-profiles-v1";
 import { hasVisibleToasts } from "@openbot/ui";
 import {
   type BackupModelSource,
@@ -17,7 +18,10 @@ import {
   usageLimitAskOptions,
 } from "@openbot/ui/features/conversation/BackupModels";
 import { unloadedHistory } from "@openbot/ui/features/conversation/ChatScrollRail";
-import { createMemo } from "solid-js";
+import { sidebarAgentWaits } from "@openbot/ui/features/sidebar/sidebar-agent-states";
+import { useText } from "@openbot/ui/text";
+import { createEffect, createMemo } from "solid-js";
+import { desktopAnalytics } from "../../analytics";
 import { ProviderSignInDialogs } from "../../components/ProviderSignInDialogs";
 import { useNavigation } from "../../navigation";
 import { usePlatform } from "../../platform";
@@ -27,6 +31,10 @@ import { useTurns } from "../../turns";
 import { turnsPort } from "../../turns-port";
 import { useAuth } from "../account/account-context";
 import { useAgentTasks } from "../agent-tasks/agent-tasks-context";
+import { useAgentThreads } from "../agent-threads/agent-threads-context";
+import { conversationThreads } from "../agent-threads/conversation-threads";
+import { attentionKey } from "../agents/agent-runtime-snapshot";
+import { agentThreadAttention } from "../agents/agent-thread-attention";
 import { useAgents } from "../agents/agents-context";
 import { agentsPort } from "../agents/agents-port";
 import { withHostAccountUsage } from "../agents/host-provider-accounts";
@@ -36,7 +44,7 @@ import { useConnectors } from "../connectors/connectors-context";
 import { useCustomAgents } from "../custom-agents/custom-agents-context";
 import { useCustomProviders } from "../custom-providers/custom-providers-context";
 import { useRemoteDesktop } from "../remote-desktop/remote-desktop-context";
-import { serverSupportsCapability } from "../servers/server-capabilities";
+import { remoteMcpSignIn, serverCanAdminister, serverSupportsCapability } from "../servers/server-capabilities";
 import { useServerScope } from "../servers/server-scope";
 import { useServerSettings } from "../servers/server-settings";
 import { useServers } from "../servers/servers-context";
@@ -48,7 +56,7 @@ import { useWindowPage } from "../window/window-page-context";
 import { Conversation } from "./Conversation";
 import { useConversation } from "./conversation-context";
 import { messagePromptRequestKey, promptRequestKey } from "./conversation-keys";
-import type { ConversationTasks } from "./conversation-types";
+import type { ConversationThreads } from "./conversation-types";
 
 /**
  * The transcript of the active Agent, with everything the composer needs to send
@@ -69,7 +77,8 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
   const platform = usePlatform();
   const connectors = useConnectors();
   const { activeServer, activeServerSupportsCapability, joinServerOpen } = useServers();
-  const { serverSettingsOpen, openServerSettings } = useServerSettings();
+  const { serverSettingsOpen, openServerSettings, openMcpSignIn, serverSettingsTargetId, serverSettingsMcpSignIns } =
+    useServerSettings();
   const {
     appSettingsOpen,
     skillsMarketplaceOpen,
@@ -91,7 +100,13 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
    * The composer's sign-ins: Connect, and the code from the ⋯ menu. The dialog shows here only while
    * this surface started it: Settings shows its own for the sign-ins it starts.
    */
-  const connectFromComposer = (provider: AgentProviderId) => connection.connect(provider, "composer");
+  const connectFromComposer = async (provider: AgentProviderId) => {
+    // A key-only provider, such as Inception, signs in only with a key, which the server's Providers
+    // settings take.
+    const server = activeServer();
+    if (isKeyOnlyProvider(provider) && server) openServerSettings(server.id, null, "providers");
+    else await connection.connect(provider, "composer");
+  };
   const signInWithCode = (provider: AgentProviderId) => connection.alternative(provider, "composer");
   // Not gated on the server: the picker needs these IDs to label a model it is already showing, and
   // a remote server's OpenCode has its own catalogue. Only the write paths are local-only.
@@ -116,9 +131,11 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     activeRoutineIds,
     activeRoutines,
     pendingPrompts,
-    pendingApprovals,
+    approvals,
+    approvalOfThread,
     activeTurns,
     turnProgress,
+    turnStepLines,
     answerPrompt,
     respondToApproval,
     respondToApprovalRequest,
@@ -170,7 +187,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
 
   const activePrompt = createMemo(() => {
     const agent = activeAgent();
-    const event = agent ? pendingPrompts()[agent.id] : undefined;
+    const event = agent ? pendingPrompts()[attentionKey(agent.id, agent.threadId)] : undefined;
     return event?.type === "prompt" && event.threadId === agent?.threadId ? event : undefined;
   });
 
@@ -185,15 +202,23 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     )?.uiBlock;
   });
 
+  // The waits of the agents that this agent asked, by the same rules as the sidebar's "Needs you".
+  const agentWaits = createMemo(() =>
+    sidebarAgentWaits({
+      agentIds: agentList().map((agent) => agent.id),
+      ...agentThreadAttention({ agents: agentList(), pendingPrompts: pendingPrompts(), approvals: approvals() }),
+      usageLimits: usageLimits(),
+    }),
+  );
+
   const activeApproval = createMemo(() => {
     const agent = activeAgent();
-    const approval = agent ? pendingApprovals()[agent.id] : undefined;
-    return approval?.threadId === agent?.threadId ? approval : undefined;
+    return agent ? approvalOfThread(agent.id, agent.threadId) : undefined;
   });
 
   const activeBrowserTakeover = createMemo(() => {
     const agent = activeAgent();
-    const event = agent ? pendingPrompts()[agent.id] : undefined;
+    const event = agent ? pendingPrompts()[attentionKey(agent.id, agent.threadId)] : undefined;
     return event?.type === "browser-takeover-requested" && event.request.threadId === agent?.threadId
       ? event.request
       : undefined;
@@ -218,16 +243,30 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     return () => turnsPort().agent.clearContext(agent.id, server.id);
   });
 
+  /** Local only: the Team API has no route to compact a joined server's agent. */
+  const compactActiveAgentContext = createMemo(() => {
+    const agent = activeAgent();
+    const server = activeServer();
+    if (!agent || server?.kind !== "local") return undefined;
+    return () => turnsPort().agent.compactContext(agent.id, server.id);
+  });
+
   /** The Team API agent summary has no access, so a joined server's agent shows the host's answer. */
   const conversationAgent = createMemo(() => {
     const agent = activeAgent();
     const settings = remoteAgentSettings();
     const automation = remoteAgentAdmin.automation();
+    const backupModels = remoteAgentAdmin.backupModels();
+    const usageLimitReturn = remoteAgentAdmin.usageLimitReturn();
+    const taskLimit = remoteAgentAdmin.taskLimit();
     return agent
       ? {
           ...agent,
           ...(settings ? { access: settings.access } : {}),
           ...(activeServer()?.kind === "remote" && automation !== undefined ? { allowAutomation: automation } : {}),
+          ...(activeServer()?.kind === "remote" && backupModels ? { backupModels } : {}),
+          ...(activeServer()?.kind === "remote" && usageLimitReturn ? { usageLimitReturn } : {}),
+          ...(activeServer()?.kind === "remote" && typeof taskLimit === "number" ? { taskLimit } : {}),
         }
       : agent;
   });
@@ -256,22 +295,30 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     if (!agent || !approval || !permissionsEditable() || autoApprove === undefined) return undefined;
     const access = agent.access ?? DEFAULT_AGENT_ACCESS;
     if (agentPermissionLevel({ access, autoApprove }) !== "ask") return undefined;
+    // This card is answered first: the grant answers every card that still waits, so an answer sent
+    // after it would find this one gone.
     return async () => {
+      if (!(await respondToApprovalRequest(agent.id, approval.requestId, "accept"))) return false;
+      if (!scopeIsCurrent()) return true;
       await writeAgentPermissions(agentPermissionUpdate(agent.id, "full"));
-      if (!scopeIsCurrent()) return false;
-      return respondToApprovalRequest(agent.id, approval.requestId, "accept");
+      return true;
     };
   });
 
   /** Whether this window runs the sign-in of the agent's provider: on this computer, or on a server it administers. */
   const composerSignIn = () => {
     const provider = conversationAgent()?.provider;
-    return provider !== undefined && connection.connectKind(provider) !== null;
+    return provider !== undefined && isKnownAgentProvider(provider) && connection.connectKind(provider) !== null;
   };
   /** Whether the composer offers the code sign-in for the agent's provider, when its Connect is slow or fails. */
   const composerCodeSignIn = () => {
     const provider = conversationAgent()?.provider;
-    return composerSignIn() && provider !== undefined && connection.alternativeKind(provider) === "code";
+    return (
+      composerSignIn() &&
+      provider !== undefined &&
+      isKnownAgentProvider(provider) &&
+      connection.alternativeKind(provider) === "code"
+    );
   };
 
   /** Access of a joined server's agent goes to its host; every other field keeps the Team API route. */
@@ -297,6 +344,12 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     const server = activeServer();
     if (server) openServerSettings(server.id, trigger, "providers");
   };
+  /** The named browser profiles live on the computer that runs the agents: this one, or a host an admin manages. */
+  const manageBrowserProfiles = createMemo(() => serverCanAdminister(activeServer(), BROWSER_PROFILES_CAPABILITY));
+  const openBrowserProfileSettings = (trigger: HTMLElement) => {
+    const server = activeServer();
+    if (server) openServerSettings(server.id, trigger, "browser-profiles");
+  };
   /** The browser sign-in opens on this computer, so it stays local. */
   const localProviderDownloads = createMemo(
     () => activeServer()?.kind === "local" && providerRuntimeDownloadsAvailable(),
@@ -306,22 +359,22 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
   const usageLimited = (choice: AgentModelChoice) =>
     usageLimitedModels().some((limited) => sameAgentModelChoice(limited, choice));
 
+  const { t } = useText();
   const agentTasks = useAgentTasks();
-  /** The active agent's tasks. Only this computer keeps tasks. */
-  const conversationTasks = createMemo((): ConversationTasks | undefined => {
-    const agentId = activeAgent()?.id;
-    if (!agentId || activeServer()?.kind !== "local" || !agentTasks.available()) return undefined;
-    return {
-      snapshot: agentTasks.snapshot(agentId),
-      conversation: agentTasks.conversation,
-      onOpen: (taskId) => agentTasks.openTask(agentId, taskId),
-      onStart: (text) => agentTasks.startTask(agentId, text),
-      onRunQueuedMessage: (deliveryId) => void agentTasks.runQueuedMessageAsTask(agentId, deliveryId),
-      onSend: (taskId, text) => agentTasks.sendToTask(agentId, taskId, text),
-      onStop: (taskId) => agentTasks.stopTask(agentId, taskId),
-      onClose: (taskId) => agentTasks.closeTask(agentId, taskId),
-      onReopen: (taskId) => agentTasks.reopenTask(agentId, taskId),
-    };
+  const agentThreads = useAgentThreads();
+  /** The active agent's threads. A host without side threads shows only the agent's own chat. */
+  const threads = createMemo((): ConversationThreads | undefined => {
+    const agent = activeAgent();
+    if (!agent || !agentTasks.available()) return undefined;
+    return conversationThreads({
+      agent: { id: agent.id, updatedAt: agent.updatedAt ?? agent.time },
+      tasks: agentTasks,
+      tabs: agentThreads,
+      approvals: approvals(),
+      newThreadTitle: t("conversation.threads.new"),
+      onRespondApproval: (approval, decision) =>
+        respondToApprovalRequest(approval.agentId, approval.requestId, decision),
+    });
   });
   /**
    * A usage limit holds the active agent's queued message on this computer. The chat asks where to
@@ -329,7 +382,9 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
    */
   const usageLimitAsk = createMemo((): UsageLimitAskCardProps | undefined => {
     const agent = activeAgent();
-    if (!agent || activeServer()?.kind !== "local") return undefined;
+    // Only this computer holds a message at a usage limit, and its agents use the providers it knows.
+    if (!agent || activeServer()?.kind !== "local" || !isKnownAgentProvider(agent.provider)) return undefined;
+    const provider = agent.provider;
     const limits = usageLimits();
     if (!(agent.id in limits)) return undefined;
     const resetsAt = limits[agent.id] ?? null;
@@ -340,7 +395,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
       providers: agentStatus().providers,
       limited: usageLimited,
     };
-    const options = usageLimitAskOptions(agent, agent.backupModels, source);
+    const options = usageLimitAskOptions({ ...agent, provider }, agent.backupModels, source);
     if (options.length === 0) return undefined;
     const backupModels = agent.backupModels;
     if (
@@ -350,16 +405,17 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
       return undefined;
     const agentId = agent.id;
     const reasoningEffort = agent.reasoningEffort;
+    const fromProvider = agent.provider;
     return {
-      provider: agent.provider,
+      provider,
       resetsAt,
       options,
-      onSend: (option, remember) => {
+      onSend: async (option, remember) => {
         // The agent keeps its reasoning effort where the other model has it.
         const model = modelOptions().find(
           (candidate) => candidate.provider === option.choice.provider && candidate.id === option.choice.model,
         );
-        return updateAgent(agentId, {
+        await updateAgent(agentId, {
           provider: option.choice.provider,
           model: option.choice.model,
           providerAccountId: option.choice.providerAccountId ?? null,
@@ -370,10 +426,34 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
           leaveUsageLimit: true,
           ...(remember ? { backupModels: rememberedBackupModels(option.choice, backupModels) } : {}),
         });
+        desktopAnalytics.track("usage_limit_action", {
+          action: "model_switched",
+          from_provider: fromProvider,
+          to_provider: option.choice.provider,
+          to_model: option.choice.model,
+        });
       },
-      onWait: () => setWaitedUsageLimits((current) => ({ ...current, [agentId]: resetsAt })),
+      onWait: () => {
+        desktopAnalytics.track("usage_limit_action", { action: "waited", from_provider: fromProvider });
+        setWaitedUsageLimits((current) => ({ ...current, [agentId]: resetsAt }));
+      },
     };
   });
+  // One "shown" for each limit that asks, also when the user opens the agent again; a new reset time is a
+  // new limit.
+  const shownUsageLimits = new Set<string>();
+  createEffect(
+    () => {
+      const ask = usageLimitAsk();
+      return ask ? `${activeAgent()?.id ?? ""}:${ask.resetsAt ?? ""}` : null;
+    },
+    (key) => {
+      const ask = usageLimitAsk();
+      if (!key || !ask || shownUsageLimits.has(key)) return;
+      shownUsageLimits.add(key);
+      desktopAnalytics.track("usage_limit_action", { action: "shown", from_provider: ask.provider });
+    },
+  );
 
   return (
     <>
@@ -387,6 +467,16 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
           setPendingPluginSlug(request.appId);
           setSkillsMarketplaceOpen(true);
         }}
+        // The server settings sign in as their MCP panel does: on this computer, or through a host that
+        // relays its sign-in page.
+        onOpenMcpSignIn={(() => {
+          const server = activeServer();
+          if (!server || (server.kind === "remote" && !remoteMcpSignIn(server))) return undefined;
+          return (mcpServerId: string, trigger: HTMLElement | null) => openMcpSignIn(server.id, mcpServerId, trigger);
+        })()}
+        mcpSignedIn={(mcpServerId) =>
+          serverSettingsTargetId() === activeServer()?.id && serverSettingsMcpSignIns()[mcpServerId]?.signedIn === true
+        }
         onOpenUsage={(trigger) => usage.openUsage(activeServer()?.id ?? "local", trigger, activeAgent()?.id)}
         agentStatus={
           activeServer()?.kind === "remote" &&
@@ -407,6 +497,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         onSignInProvider={composerSignIn() ? connectFromComposer : undefined}
         onSignInWithCodeProvider={composerCodeSignIn() ? signInWithCode : undefined}
         onManageProviders={manageProviders() ? openProviderSettings : undefined}
+        onManageBrowserProfiles={manageBrowserProfiles() ? openBrowserProfileSettings : undefined}
         agent={conversationAgent()}
         agents={agentList()}
         mentionAgents={agentList().filter((agent) => !userHiddenAgentIds().has(agent.id))}
@@ -447,10 +538,16 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
             onOwnComputer: activeServer()?.kind === "local",
           });
         }}
-        browserEnabled={!platform.landingPreview && activeServerSupportsCapability("browser-control")}
+        // The browser and the remote desktop show in the main window only.
+        browserEnabled={
+          !platform.landingPreview && !platform.chatWindow && activeServerSupportsCapability("browser-control")
+        }
+        openLinksInBrowser={generalSettings().externalLinkTarget.kind === "openbot"}
         remoteDesktopSessionActive={Boolean(activeRemoteDesktopSession())}
         remoteDesktopVisible={remoteDesktopWorkspaceVisible()}
-        remoteDesktopEnabled={!platform.landingPreview && activeServerSupportsCapability("remote-desktop")}
+        remoteDesktopEnabled={
+          !platform.landingPreview && !platform.chatWindow && activeServerSupportsCapability("remote-desktop")
+        }
         prompt={activePrompt()}
         promptUiBlock={activePromptUiBlock()}
         approval={activeApproval()}
@@ -459,6 +556,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         browserTakeover={activeBrowserTakeover()}
         activeTurnId={activeAgent() ? activeTurns()[activeAgent()?.id ?? ""] : null}
         activityDetail={activeAgent() ? turnProgress()[activeAgent()?.id ?? ""]?.detail : undefined}
+        turnStepLines={turnStepLines()}
         skillsMarketplaceOpen={skillsMarketplaceOpen()}
         mcpSettingsOpen={serverSettingsOpen() || skillsMarketplaceOpen()}
         globalOverlayOpen={
@@ -472,6 +570,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         settingsRequest={settingsRequest()}
         messageFocusRequest={messageFocusRequest()}
         onSelectAgent={selectAgent}
+        agentWaits={agentWaits()}
         onUpdateAgent={updateConversationAgent}
         onSetAgentAvatar={setAgentAvatar}
         onSendMessage={sendMessage}
@@ -492,14 +591,18 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         onRespondToApproval={respondToApproval}
         onAlwaysAllowApproval={alwaysAllowApproval()}
         agentAutoApproves={activeAgentAutoApproves()}
+        remoteBackupModelsLoaded={remoteAgentAdmin.backupModels() !== undefined}
+        remoteTaskLimitLoaded={remoteAgentAdmin.taskLimit() !== undefined}
         onUpdateAgentPermissions={permissionsEditable() ? writeAgentPermissions : undefined}
         defaultBusyMessageMode={generalSettings().busyMessageMode}
+        agentDefaults={generalSettings().agentDefaults}
         agentMemoryLimit={generalSettings().agentMemoryLimit}
         onClearAgentContext={clearActiveAgentContext()}
+        onCompactAgentContext={compactActiveAgentContext()}
         onRespondToBrowserTakeover={respondToBrowserTakeover}
         onCancelQueuedMessage={cancelQueuedMessage}
         waits={activeWaits()}
-        tasks={conversationTasks()}
+        threads={threads()}
         onCancelWait={cancelWait}
         onSteerQueuedMessage={steerQueuedMessage}
         onUpdateQueuedMessage={updateQueuedMessage}

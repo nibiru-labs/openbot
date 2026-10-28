@@ -1,15 +1,17 @@
 import { useText } from "@openbot/ui/text";
 import { Loading, Match, Show, Switch } from "solid-js";
-import { AgentUsagePanel } from "../../lazy-views";
+import { AgentUsagePanel, WorkflowsPage } from "../../lazy-views";
 import { SkillsMarketplace } from "../../WorkspaceOverlays";
 import { SchedulePanel } from "../schedule/SchedulePanel";
 import { useServers } from "../servers/servers-context";
-import { TasksPanel } from "../tasks/TasksPanel";
 import { useUsage } from "../usage/usage-context";
 import { SettingsPage } from "./SettingsPage";
 import { type SettingsKind, useWindowPage } from "./window-page-context";
 
-/** The page of the desktop window that covers the conversation: a settings page, usage, schedule, tasks or the Marketplace. */
+/**
+ * The page of the desktop window that covers the conversation: a settings page, usage, schedule,
+ * workflows or the Marketplace.
+ */
 export function WindowPageView() {
   const { t } = useText();
   const windowPage = useWindowPage();
@@ -47,8 +49,10 @@ export function WindowPageView() {
           <Match when={usage.state.view === "schedule"}>
             <SchedulePanel serverId={serverId()} hostName={hostName(serverId())} onBack={usage.closeUsage} />
           </Match>
-          <Match when={usage.state.view === "tasks"}>
-            <TasksPanel serverId={serverId()} hostName={hostName(serverId())} onBack={usage.closeUsage} />
+          <Match when={usage.state.view === "workflows"}>
+            <Loading>
+              <WorkflowsPage serverId={serverId()} />
+            </Loading>
           </Match>
         </Switch>
       )}

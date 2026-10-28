@@ -70,6 +70,15 @@ const NETWORK_CODES = [
 const AUTH_SIGNALS =
   /\b401\s+unauthorized\b|\bunauthorized\s*\(\s*401\s*\)|\bhttp\s*401\b|"status"\s*:\s*401\b|\bunauthorized_unknown\b|could not parse your authentication token|please try signing in again|\binvalid_api_key\b|\bnot authenticated\b/iu;
 
+/**
+ * Rate-limit signals that appear inside a longer sentence rather than at its start.
+ *
+ * Codex retries a throttled request by itself and then reports `exceeded retry limit, last status:
+ * 429 Too Many Requests`. The anchored status rule below cannot see that, so the raw Codex text was
+ * shown above the composer (#2751). As with {@link AUTH_SIGNALS}, bare `429` is not a signal.
+ */
+const RATE_LIMIT_SIGNALS = /\b429\s+too many requests\b|\blast status:\s*429\b|"status"\s*:\s*429\b/iu;
+
 /** Runtime output, stack traces, paths and serialized objects: never shown, whatever the kind. */
 const TECHNICAL_OUTPUT =
   /(?:\bSQLITE_\w+|\bERR_\w+|^E[A-Z_]+:|^Command failed|^spawn |\n\s*at |\[object Object\]|^\s*[<{[]|\/(?:Users|home|tmp|private|var|etc|usr)\/|[A-Za-z]:\\)/u;
@@ -99,6 +108,7 @@ export function classifyUserError(error: unknown): UserErrorKind {
   if (/^(?:HTTP )?403(?:\b|:)/u.test(message)) return "permission";
   if (/^(?:HTTP )?429(?:\b|:)/u.test(message)) return "rate-limit";
   if (/^(?:HTTP )?5\d\d(?:\b|:)/u.test(message)) return "service";
+  if (RATE_LIMIT_SIGNALS.test(message)) return "rate-limit";
   // Unanchored, and last: a 429 body that happens to mention a token is still a rate limit.
   if (AUTH_SIGNALS.test(message)) return "auth";
   return "unknown";

@@ -14,6 +14,7 @@ The architecture notes are in one file for each topic:
   - [Effect service execution](architecture/change-rules.md#effect-service-execution)
   - [Change rules](architecture/change-rules.md#change-rules)
   - [Required verification](architecture/change-rules.md#required-verification)
+- [Database migrations](architecture/database-migrations.md)
 - [Team API compatibility](architecture/team-api.md)
   - [Team API compatibility boundary](architecture/team-api.md#team-api-compatibility-boundary)
 - [Browser](architecture/browser.md)

@@ -17,7 +17,7 @@ import {
 } from "@openbot/contracts/signal-protocol/discord-api";
 import { Effect, Schema } from "effect";
 import { z } from "zod";
-import { type DiscordState, discordAuthorName, stripBotMention } from "./discord-events";
+import { attachmentsOf, type DiscordState, discordAuthorName, stripBotMention } from "./discord-events";
 
 const snowflakeSchema = z.string().regex(/^[0-9]{1,20}$/u);
 const contentSchema = z.string().min(1).max(DISCORD_MESSAGE_TEXT_LIMIT);
@@ -213,6 +213,17 @@ const historySchema = z
       author: userSchema,
       member: z.object({ nick: z.string().nullish() }).optional(),
       message_reference: z.object({ message_id: snowflakeSchema.optional() }).optional(),
+      attachments: z
+        .array(
+          z.object({
+            id: snowflakeSchema,
+            filename: z.string(),
+            content_type: z.string().optional(),
+            size: z.number().int().nonnegative(),
+            url: z.string(),
+          }),
+        )
+        .optional(),
     }),
   )
   .max(DISCORD_LIST_MESSAGES_LIMIT);
@@ -336,6 +347,7 @@ export function makeDiscordApi(transport: DiscordTransport, state: DiscordState)
               content: stripBotMention(message.content, botUserId),
               replyToId: message.message_reference?.message_id ?? null,
               sentAt: message.timestamp,
+              attachments: attachmentsOf(message.attachments ?? []),
             }))
             .sort((left, right) => compareSnowflakes(left.id, right.id)),
         };

@@ -242,6 +242,19 @@ export const UI_BLOCK_STATUSES = [
   "closed",
 ] as const satisfies readonly UiBlockStatus[];
 
+/**
+ * The answer the host gives itself when nobody answers first, such as the Start button of the plan
+ * card that `acknowledge_request` shows. Only the host sets it; an agent cannot.
+ */
+export interface UiBlockAutoAnswer {
+  /** One of the block's actions. */
+  actionId: string;
+  /** ISO time. The host answers at this time. */
+  at: string;
+  /** The host gave the answer: nobody answered before `at`. */
+  done?: boolean;
+}
+
 export interface UiBlockState {
   status: UiBlockStatus;
   /** Required when `answered`. */
@@ -251,6 +264,8 @@ export interface UiBlockState {
   respondedAt?: string;
   /** The line the frozen block shows, such as the chosen button. See `uiBlockOutcomeText`. */
   outcome?: string;
+  /** Not on the `ui-blocks-v1` wire: a remote client shows the block without the countdown. */
+  autoAnswer?: UiBlockAutoAnswer;
 }
 
 /** The `uiBlock` field of a `ConversationMessage`. */
@@ -704,6 +719,18 @@ function readSender(value: unknown): ConversationMessageSender {
   return { id: record.id, name: record.name };
 }
 
+function readAutoAnswer(spec: UiBlockSpec, value: unknown): UiBlockAutoAnswer {
+  const record = readRecord(value);
+  const actionId = readId(record.actionId);
+  check(actionsOf(spec).some((action) => action.id === actionId));
+  const at = readString(record.at, UI_BLOCK_LIMITS.timestamp);
+  check(Number.isFinite(Date.parse(at)));
+  const autoAnswer: UiBlockAutoAnswer = { actionId, at };
+  const done = readOptionalBoolean(record.done);
+  if (done !== undefined) autoAnswer.done = done;
+  return autoAnswer;
+}
+
 function readState(spec: UiBlockSpec, value: unknown): UiBlockState {
   const record = readRecord(value);
   const state: UiBlockState = { status: readOneOf(UI_BLOCK_STATUSES, record.status) };
@@ -714,6 +741,7 @@ function readState(spec: UiBlockSpec, value: unknown): UiBlockState {
   if (respondedAt !== undefined) state.respondedAt = respondedAt;
   const outcome = readOptionalString(record.outcome, UI_BLOCK_LIMITS.outcome);
   if (outcome !== undefined) state.outcome = outcome;
+  if (record.autoAnswer !== undefined) state.autoAnswer = readAutoAnswer(spec, record.autoAnswer);
   return state;
 }
 

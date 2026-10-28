@@ -21,7 +21,8 @@ OpenBot puts it in its resources folder:
 
 - macOS: `/Applications/OpenBot.app/Contents/Resources/cli/openbot-cli.mjs`
 - Linux: `resources/cli/openbot-cli.mjs` in the install folder (for an AppImage, copy it out of the image)
-- Windows: `%LOCALAPPDATA%\Programs\OpenBot\resources\cli\openbot-cli.mjs`
+- Windows: `resources\cli\openbot-cli.mjs` in the install folder. The default folder is
+  `%LOCALAPPDATA%\Programs\OpenBot`.
 
 ```sh
 alias openbot-cli='node "/Applications/OpenBot.app/Contents/Resources/cli/openbot-cli.mjs"'
@@ -138,6 +139,11 @@ set to skip at the limit drops the run instead, and its run history shows it as 
 | 413 | The body is larger than 32 KiB, or the payload is longer than 4,000 characters. |
 | 415 | `Content-Type` is not `application/json`. |
 | 429 | The agent got 30 runs from local scripts in the last hour. |
+
+An agent can have at most 20 open waits. `openbot.list_waits` shows an agent's open waits with their
+IDs, and `openbot.close_wait` closes one by ID. With `agentId`, both tools act on another local
+agent's waits, as the routine tools do. `openbot.list_agents` shows `openWaits` for each agent that
+has open waits.
 
 ### `POST /v1/agents/:agentId/messages`
 

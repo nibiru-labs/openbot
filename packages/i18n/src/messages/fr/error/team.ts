@@ -10,6 +10,7 @@ export const messages = {
   "error.team.identityCreateFailed": "Impossible de créer l’identité de l’équipe.",
   "error.team.accountChangedDuringCreate": "Le compte connecté a changé pendant la création de ce serveur.",
   "error.team.notConfigured": "Cet OpenBot n’a pas été configuré.",
+  "error.team.keyRotationMissing": "Aucun changement de clé du serveur n’est en attente.",
   "error.team.serverNotActive": "Ce serveur n’est plus le serveur actif du compte connecté.",
   "error.team.logoInvalid": "Choisissez une image PNG, JPEG ou WebP valide de 512 Ko au maximum.",
   "error.team.ownerMembershipConflict":
@@ -62,6 +63,7 @@ export const messages = {
   "error.team.channelDeleteUnsupported": "La suppression de canaux n’est pas prise en charge par cette connexion.",
   "error.team.membersCannotDeleteChannels": "Les membres ne peuvent pas supprimer de canaux.",
   "error.team.membersCannotArchiveChannels": "Les membres ne peuvent pas archiver de canaux.",
+  "error.team.membersCannotRestoreChannels": "Les membres ne peuvent pas restaurer de canaux.",
   "error.team.sharedDataUnsupported": "Les données partagées ne sont pas prises en charge par cette connexion.",
   "error.team.agentInstallUnsupported": "L’ajout d’agents n’est pas pris en charge par cette connexion.",
   "error.team.agentHideUnsupported": "Le masquage d’agents n’est pas pris en charge par cette connexion.",
@@ -69,9 +71,11 @@ export const messages = {
   "error.team.agentUpdateUnsupported": "La mise à jour des agents n’est pas prise en charge par cette connexion.",
   "error.team.contextResetUnsupported":
     "Commencer une nouvelle discussion n’est pas pris en charge par cette connexion.",
+  "error.team.contextCompactUnsupported": "Cette connexion ne prend pas en charge la compaction du contexte.",
   "error.team.workspaceDirectoryUnsupported": "L’affichage des dossiers n’est pas pris en charge par cette connexion.",
   "error.team.conversationFileSearchUnsupported":
     "La recherche de fichiers n’est pas prise en charge par cette connexion.",
+  "error.team.sideQuestionUnsupported": "Les questions annexes ne sont pas prises en charge par cette connexion.",
   "error.team.routineFlowsUnsupported":
     "Ce serveur ne prend pas en charge les flux de routines. Mettez à jour OpenBot sur l’ordinateur qui l’exécute.",
   "error.team.routineCanvasTooLarge":
@@ -89,7 +93,10 @@ export const messages = {
     "Les modifications de l’identité du serveur ne sont pas prises en charge par cette connexion.",
   "error.team.hostUpdateUnsupported": "Les mises à jour de l’hôte ne sont pas prises en charge par cette connexion.",
   "error.team.hostTimezoneUnsupported": "Cette connexion ne prend pas en charge le fuseau horaire du serveur.",
+  "error.team.routineResultsUnsupported": "Cette connexion ne prend pas en charge les destinations des routines.",
   "error.team.agentMemoryLimitUnsupported": "Cette connexion ne prend pas en charge la limite de souvenirs des agents.",
+  "error.team.promptCacheTtlUnsupported": "Cette connexion ne prend pas en charge la durée du cache de prompt.",
+  "error.team.providerDefaultUnsupported": "Cette connexion ne prend pas en charge le fournisseur par défaut.",
   "error.team.attachmentNameRequired": "Un nom de pièce jointe sûr est requis.",
   "error.team.attachmentNotFound": "Pièce jointe introuvable.",
   "error.team.sharedFileTooLarge": "Le fichier partagé dépasse la limite de 100 Mo.",

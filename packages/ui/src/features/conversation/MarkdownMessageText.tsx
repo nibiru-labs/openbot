@@ -1,6 +1,7 @@
 import { fileReferenceName, isFileReference } from "@openbot/brand/file-reference";
 import { blockChatMath, chatMathBlockStart, chatMathStart, inlineChatMath } from "@openbot/contracts/chat-math";
 import { chatPreviewKind } from "@openbot/contracts/chat-preview";
+import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import { Button, Checkbox } from "@openbot/ui";
 import { Dynamic } from "@solidjs/web";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
@@ -26,6 +27,11 @@ type MarkdownMessageTextProps = Omit<RichMessageTextProps, "showCitationFooter">
   imagesAsLinks?: boolean | undefined;
   /** Opens a markdown image in the image viewer. Without it, an image is only a picture. */
   onOpenImage?: ((image: HTMLImageElement) => void) | undefined;
+  /**
+   * A short preview, such as a reply quote: only the first blocks, and each code fence as plain
+   * text, with no highlight, toolbar or live preview.
+   */
+  excerpt?: boolean | undefined;
 };
 
 type MarkdownContentProps = Omit<
@@ -105,6 +111,9 @@ const VOID_HTML_ELEMENTS = new Set([
   "track",
   "wbr",
 ]);
+
+/** A reply quote shows four lines, and each block takes at least one. */
+const EXCERPT_BLOCK_LIMIT = 4;
 
 function tokenIs<K extends keyof MarkdownTokenByType>(token: Token, type: K): token is MarkdownTokenByType[K] {
   return token.type === type;
@@ -204,6 +213,13 @@ export function MarkdownMessageText(props: MarkdownMessageTextProps) {
     streamed = { body, tokens };
     return tokens;
   });
+  // An excerpt shows only a few lines, so it renders only the blocks that can fill them.
+  const shownTokens = createMemo((): TokensList => {
+    const all = tokens();
+    if (props.excerpt !== true) return all;
+    const blocks = all.filter((token) => token.type !== "space").slice(0, EXCERPT_BLOCK_LIMIT);
+    return Object.assign(blocks, { links: all.links });
+  });
   // A memo, so each revealed word of a streaming reply does not give the kept blocks a new
   // `content` object and run their reads again. Only a new directory changes it.
   const fileDirectory = createMemo(() => messageFileDirectory(props.body), {
@@ -212,6 +228,7 @@ export function MarkdownMessageText(props: MarkdownMessageTextProps) {
   const contentProps = createMemo(
     (): MarkdownContentProps => ({
       imagesAsLinks: props.imagesAsLinks,
+      excerpt: props.excerpt,
       onOpenImage: props.onOpenImage,
       agents: props.agents,
       skills: props.skills,
@@ -231,8 +248,8 @@ export function MarkdownMessageText(props: MarkdownMessageTextProps) {
   return (
     <>
       <MarkdownBlocks
-        tokens={tokens()}
-        linkDefinitions={JSON.stringify(tokens().links)}
+        tokens={shownTokens()}
+        linkDefinitions={JSON.stringify(shownTokens().links)}
         content={contentProps()}
         streaming={props.streaming}
         streamingTailAfter={props.streamingTailAfter}
@@ -406,6 +423,12 @@ function MarkdownBlock(props: {
     }
     case "code": {
       if (!tokenIs(token, "code")) return token.raw;
+      if (props.content.excerpt)
+        return (
+          <pre class="message-markdown-excerpt-code">
+            <code>{token.text}</code>
+          </pre>
+        );
       const language = token.lang?.trim().split(/\s+/u)[0] ?? "";
       if (language.toLowerCase() === "math") return <MathFormula tex={token.text} raw={token.raw} display block />;
       const block: MessageCodeBlock = { type: "code", code: token.text, language };
@@ -646,10 +669,7 @@ function MarkdownInline(props: {
               return <RichText body={item.semanticTag} content={props.content} streamingTailAfter={after()} />;
             }
             const url = safeBrowserUrl(token.href);
-            const fileUrl = fileUrlPath(token.href);
-            // The shared-file resolver does not decode, and the workspace resolver does.
-            const sharedPath = sharedFileTarget(fileUrl === null ? token.href : decodedFileUrlPath(fileUrl));
-            const workspacePath = workspaceFileTarget(fileUrl ?? token.href);
+            const { shared: sharedPath, workspace: workspacePath } = linkFileTargets(token.href);
             return url ? (
               <MessageLink
                 url={url}
@@ -1165,6 +1185,51 @@ function mentionedFileTarget(value: string, directory: FileDirectoryContext | nu
     path: `${directory.path.replace(/[/\\]+$/u, "")}${separator}${path}`,
     kind: directory.kind,
   };
+}
+
+const IMAGE_FILE_PATTERN = /\.(?:avif|gif|jpe?g|png|svg|webp)$/iu;
+/** A message shows at most this many named image files, as many as it can attach. */
+const IMAGE_FILE_LIMIT = INPUT_LIMITS.attachments;
+
+/** A local image file that a message names, in a code span or a file link. */
+export type MessageImageFile = FileDirectoryContext;
+
+/**
+ * The image files that the text blocks of a message name in code spans and file links, in order,
+ * without repeats. Each block resolves a file name against its own folder, as its chips do.
+ */
+export function messageImageFiles(blocks: readonly string[]): MessageImageFile[] {
+  const files = new Map<string, MessageImageFile>();
+  for (const body of blocks) {
+    const directory = messageFileDirectory(body);
+    void markdown.walkTokens(lexBlockTokens(body, true), (token) => {
+      const file = tokenIs(token, "codespan")
+        ? mentionedFileTarget(token.text, directory)
+        : tokenIs(token, "link")
+          ? linkFileTarget(token.href)
+          : null;
+      if (file && IMAGE_FILE_PATTERN.test(fileReferenceName(file.path))) files.set(`${file.kind}:${file.path}`, file);
+    });
+  }
+  return [...files.values()].slice(0, IMAGE_FILE_LIMIT);
+}
+
+/** The shared and workspace paths that a link target can open as a chip. */
+function linkFileTargets(href: string): { shared: string | null; workspace: string | null } {
+  const fileUrl = fileUrlPath(href);
+  // The shared-file resolver does not decode, and the workspace resolver does.
+  return {
+    shared: sharedFileTarget(fileUrl === null ? href : decodedFileUrlPath(fileUrl)),
+    workspace: workspaceFileTarget(fileUrl ?? href),
+  };
+}
+
+/** The file that a link opens as a chip, as the `link` token draws it. */
+function linkFileTarget(href: string): FileDirectoryContext | null {
+  if (safeBrowserUrl(href)) return null;
+  const { shared, workspace } = linkFileTargets(href);
+  if (shared) return { path: shared, kind: "shared" };
+  return workspace ? { path: workspace, kind: "workspace" } : null;
 }
 
 /** What the image viewer calls a markdown image: its alt text, else the file name in its URL. */

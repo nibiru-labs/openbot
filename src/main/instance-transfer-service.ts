@@ -11,7 +11,7 @@
 // here and never replace an MCP server, provider or custom agent that this computer has.
 
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { type FileHandle, lstat, mkdir, open, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import type { AgentProviderId } from "@openbot/contracts/agent-providers";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
@@ -68,7 +68,13 @@ import {
 } from "./agent-archive";
 import type { AgentImportSkills } from "./agent-import-service";
 import { validTimezone } from "./agent-marketplace-service";
-import { type ArchiveOperationError, archiveCall, archiveFailure, archiveSync } from "./archive-effects";
+import {
+  type ArchiveOperationError,
+  archiveCall,
+  archiveFailure,
+  archiveSync,
+  writeArchiveChunk,
+} from "./archive-effects";
 import {
   agentPrefix,
   decodeTransferManifest,
@@ -208,8 +214,9 @@ export class InstanceTransferService {
     for (const agent of this.options.agents.listAgents()) {
       // The counts are a preview: a folder that cannot be read stops the export, not this screen,
       // so an export without files stays possible.
-      const files = yield* workspaceFiles(agent.workspacePath).pipe(Effect.orElseSucceed(() => []));
-      const skills = yield* skillFolders(agent.workspacePath).pipe(Effect.orElseSucceed(() => []));
+      // No export file exists yet, so nothing is left out.
+      const files = yield* workspaceFiles(agent.workspacePath, new Set()).pipe(Effect.orElseSucceed(() => []));
+      const skills = yield* skillFolders(agent.workspacePath, new Set()).pipe(Effect.orElseSucceed(() => []));
       agents.push({
         id: agent.id,
         name: agent.name,
@@ -240,6 +247,12 @@ export class InstanceTransferService {
       return yield* archiveFailure(new Error(sourceText("error.import.agentNotInExport")));
     const agents = selected.filter((agent): agent is AgentSummary => agent !== undefined);
 
+    // The export and its temporary file can be inside a source workspace or shared folder.
+    const excludedPaths = new Set([
+      yield* archiveCall(() => resolvedPath(path)),
+      yield* archiveCall(() => resolvedPath(`${path}.part`)),
+    ]);
+
     const entries: ZipEntry[] = [];
     const warnings: string[] = [];
     const keys = new Map<string, string>();
@@ -254,13 +267,12 @@ export class InstanceTransferService {
       const resolved = this.options.agents.resolveAvatar(agent.id);
       if (resolved) {
         avatar = `${prefix}avatar.${AVATAR_EXTENSIONS[resolved.mimeType]}`;
-        const avatarPath = resolved.path;
-        entries.push({ name: avatar, read: () => readFile(avatarPath) });
+        entries.push({ name: avatar, path: resolved.path });
       }
 
       const skills: string[] = [];
       // An import refuses an agent with more skills than the limit, so the export keeps the first ones.
-      const folders = yield* skillFolders(agent.workspacePath);
+      const folders = yield* skillFolders(agent.workspacePath, excludedPaths);
       if (folders.length > INPUT_LIMITS.agentSkills)
         warnings.push(
           sourceText("error.import.transferSkillLimit", {
@@ -274,20 +286,20 @@ export class InstanceTransferService {
         skills.push(folder);
         for (const file of skill.files) {
           bytes += file.size;
-          entries.push({ name: `${folder}/${file.name}`, read: () => readFile(file.path) });
+          entries.push({ name: `${folder}/${file.name}`, path: file.path });
         }
       }
 
       let files: string | null = null;
       if (input.includeFiles) {
-        const workspace = yield* workspaceFiles(agent.workspacePath);
+        const workspace = yield* workspaceFiles(agent.workspacePath, excludedPaths);
         if (workspace.length > 0) {
           files = `${prefix}workspace`;
           for (const file of workspace) {
             bytes += file.size;
             entries.push({
               name: `${files}/${file.name}`,
-              read: () => readFile(file.path),
+              path: file.path,
               executable: file.executable,
             });
           }
@@ -341,13 +353,13 @@ export class InstanceTransferService {
 
     let shared: typeof SHARED_FOLDER | null = null;
     if (input.includeFiles) {
-      const sharedFiles = yield* walk(this.options.sharedRoot, isSharedData);
+      const sharedFiles = yield* walk(this.options.sharedRoot, isSharedData, excludedPaths);
       if (sharedFiles.length > 0) shared = SHARED_FOLDER;
       for (const file of sharedFiles) {
         bytes += file.size;
         entries.push({
           name: `${SHARED_FOLDER}/${file.name}`,
-          read: () => readFile(file.path),
+          path: file.path,
           executable: file.executable,
         });
       }
@@ -365,7 +377,7 @@ export class InstanceTransferService {
       signedIn: this.options.settings.signedInProviders(),
     };
     const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
-    entries.unshift({ name: INSTANCE_TRANSFER_MANIFEST, read: () => Promise.resolve(manifestBytes) });
+    entries.unshift({ name: INSTANCE_TRANSFER_MANIFEST, bytes: manifestBytes });
     const gone = yield* writeZipEffect(path, entries);
     return {
       saved: true,
@@ -964,8 +976,9 @@ export class InstanceTransferService {
  */
 const workspaceFiles = Effect.fn("InstanceTransfer.workspaceFiles")(function* (
   root: string,
+  excludedPaths: ReadonlySet<string>,
 ): Effect.fn.Return<FileEntry[], ArchiveOperationError> {
-  return yield* walk(root, isWorkspaceSkipped);
+  return yield* walk(root, isWorkspaceSkipped, excludedPaths);
 });
 
 /** OpenBot's own workspace folders: an export leaves them out, and an import never writes them. */
@@ -978,6 +991,7 @@ function isWorkspaceSkipped(name: string): boolean {
 const walk = Effect.fn("InstanceTransfer.walk")(function* (
   root: string,
   skip: (name: string) => boolean = () => false,
+  excludedPaths: ReadonlySet<string> = new Set(),
 ): Effect.fn.Return<FileEntry[], ArchiveOperationError> {
   const files: FileEntry[] = [];
   const pending = [root];
@@ -998,18 +1012,37 @@ const walk = Effect.fn("InstanceTransfer.walk")(function* (
       else if (entry.isFile()) {
         // A running agent can delete a file between `readdir` and `lstat`; that file is not exported.
         const info = yield* Effect.result(archiveCall(() => lstat(path)));
-        if (Result.isSuccess(info))
+        if (Result.isFailure(info)) {
+          if (!isMissingFileError(info.failure.cause)) return yield* info.failure;
+          continue;
+        }
+        const canonical = yield* Effect.result(archiveCall(() => resolvedPath(path)));
+        if (Result.isFailure(canonical)) {
+          return yield* canonical.failure;
+        }
+        if (!excludedPaths.has(canonical.success))
           files.push({ name, path, size: info.success.size, executable: (info.success.mode & 0o111) !== 0 });
-        else if (!isMissingFileError(info.failure.cause)) return yield* info.failure;
       }
     }
   }
   return files.sort((a, b) => a.name.localeCompare(b.name));
 });
 
+/** Resolves an output path through symlinked folders, including when the file does not exist yet. */
+async function resolvedPath(path: string): Promise<string> {
+  const absolute = resolve(path);
+  try {
+    return await realpath(absolute);
+  } catch (cause) {
+    if (!isMissingFileError(cause)) throw cause;
+    return join(await realpath(dirname(absolute)), basename(absolute));
+  }
+}
+
 /** The skills a user or a marketplace installed. OpenBot's own skills are installed again on import. */
 const skillFolders = Effect.fn("InstanceTransfer.skillFolders")(function* (
   workspace: string,
+  excludedPaths: ReadonlySet<string>,
 ): Effect.fn.Return<Array<{ slug: string; files: FileEntry[] }>, ArchiveOperationError> {
   const skills = new Map<string, FileEntry[]>();
   for (const folder of MANAGED_SKILL_FOLDERS) {
@@ -1027,7 +1060,7 @@ const skillFolders = Effect.fn("InstanceTransfer.skillFolders")(function* (
       // A link to a skill that is gone is not a skill.
       if (Result.isFailure(info) && !isMissingFileError(info.failure.cause)) return yield* info.failure;
       if (Result.isFailure(info) || !info.success.isDirectory()) continue;
-      const files = yield* walk(directory);
+      const files = yield* walk(directory, () => false, excludedPaths);
       if (files.some((file) => file.name === OWNERSHIP_MARKER) || !files.some((file) => file.name === "SKILL.md"))
         continue;
       skills.set(slug, files);
@@ -1043,7 +1076,7 @@ const SECRET_NAME = /token|secret|password|passwd|api[-_]?key|apikey|auth|creden
  * Removes values that can hold a secret from MCP and custom agent arguments and from URLs, and
  * records whose values it removed, so the import can ask for them again.
  */
-function createRedaction() {
+export function createRedaction() {
   const names = new Set<string>();
   const url = (owner: string, value: string): string => {
     if (!value) return value;
@@ -1113,11 +1146,17 @@ function isSharedData(name: string): boolean {
   return lower === SHARED_DATA || lower.startsWith(`${SHARED_DATA}/`);
 }
 
-interface ZipEntry {
-  name: string;
-  read: () => Promise<Uint8Array>;
-  executable?: boolean;
-}
+/**
+ * An entry of the archive. The manifest is bytes that the service holds. Every other entry is a
+ * file that the export reads in chunks, so the memory of the process does not grow with the size
+ * of the file.
+ */
+type ZipEntry =
+  | { name: string; bytes: Uint8Array; executable?: boolean }
+  | { name: string; path: string; executable?: boolean };
+
+/** The size of the chunk that the export reads from a file and writes to the archive. */
+const CHUNK_SIZE = 64 * 1024;
 
 /** Writes the archive to `<path>.part` one file at a time, then renames it. */
 const writeZipEffect = Effect.fn("InstanceTransfer.writeZip")(function* (
@@ -1131,20 +1170,22 @@ const writeZipEffect = Effect.fn("InstanceTransfer.writeZip")(function* (
     try {
       let pending = Promise.resolve();
       let error: unknown = null;
+      let position = 0;
       const zip = new Zip((failure, chunk) => {
         if (failure) error = failure;
-        else pending = pending.then(() => handle.write(chunk).then(() => undefined));
+        else
+          pending = pending.then(() =>
+            writeArchiveChunk(handle, chunk, position).then(
+              (end) => {
+                position = end;
+              },
+              (cause: unknown) => {
+                error = cause;
+              },
+            ),
+          );
       });
       for (const entry of entries) {
-        let data: Uint8Array;
-        try {
-          data = await entry.read();
-        } catch (cause) {
-          // A running agent can delete a file after the walk; the export goes on without it.
-          if (!isMissingFileError(cause)) throw cause;
-          gone += 1;
-          continue;
-        }
         // Stored, not compressed: compression would run on the main thread.
         const file = new ZipPassThrough(entry.name);
         if (entry.executable !== undefined) {
@@ -1152,8 +1193,33 @@ const writeZipEffect = Effect.fn("InstanceTransfer.writeZip")(function* (
           file.os = 3;
           file.attrs = (entry.executable ? 0o100755 : 0o100644) * 0x10000;
         }
-        zip.add(file);
-        file.push(data, true);
+        if ("path" in entry) {
+          const source = await openEntry(entry.path);
+          // A running agent can delete a file after the walk; the export goes on without it.
+          if (!source) {
+            gone += 1;
+            continue;
+          }
+          try {
+            zip.add(file);
+            const buffer = new Uint8Array(CHUNK_SIZE);
+            for (;;) {
+              const { bytesRead } = await source.read(buffer, 0, CHUNK_SIZE, null);
+              if (bytesRead === 0) break;
+              file.push(buffer.subarray(0, bytesRead));
+              // The chunk stays in the memory of the process until the write of it is done, so the
+              // export waits for that write before it reads the next chunk.
+              await pending;
+              if (error) throw error;
+            }
+            file.push(new Uint8Array(0), true);
+          } finally {
+            await source.close();
+          }
+        } else {
+          zip.add(file);
+          file.push(entry.bytes, true);
+        }
         await pending;
         if (error) throw error;
       }
@@ -1167,6 +1233,19 @@ const writeZipEffect = Effect.fn("InstanceTransfer.writeZip")(function* (
     return gone;
   }).pipe(Effect.tapError(() => archiveCall(() => rm(part, { force: true })).pipe(Effect.ignore)));
 });
+
+/**
+ * Opens the file of an entry. A file that is gone is not an error: the export goes on without it
+ * and reports how many files it missed.
+ */
+async function openEntry(path: string): Promise<FileHandle | null> {
+  try {
+    return await open(path, "r");
+  } catch (cause) {
+    if (!isMissingFileError(cause)) throw cause;
+    return null;
+  }
+}
 
 function failure(error: unknown): ArchiveOperationError {
   return archiveFailure(causeOf(error));

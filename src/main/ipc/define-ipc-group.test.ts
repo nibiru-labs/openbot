@@ -1,14 +1,19 @@
 // @vitest-environment node
 
-import type {
-  VoiceModelStatus,
-  VoiceSettings,
-  VoiceTranscriptionInput,
-  VoiceTranscriptionResult,
+import {
+  DEFAULT_SPEECH_SETTINGS,
+  type DraftAttachment,
+  type SpeechModelStatus,
+  type VoiceModelStatus,
+  type VoiceSettings,
+  type VoiceTranscriptionInput,
+  type VoiceTranscriptionResult,
 } from "@openbot/contracts/ipc";
 import { describe, expect, it, vi } from "vitest";
 import { handler, payloadHandler, registerIpcGroup } from "./define-ipc-group";
 import {
+  parseSpeechInput,
+  parseSpeechSettings,
   parseVoiceApiKey,
   parseVoiceModelRequest,
   parseVoiceSettings,
@@ -35,6 +40,18 @@ const UNTRUSTED_EVENT = { senderFrame: { url: "https://evil.example/index.html" 
 
 const READY: VoiceModelStatus = { modelId: "parakeet-tdt-0.6b-v3", phase: "ready", progress: null, message: null };
 
+const SPEECH_READY: SpeechModelStatus = { modelId: "supertonic-3", phase: "ready", progress: null, message: null };
+
+const RECORDING: DraftAttachment = {
+  id: "recording-1",
+  name: "voice.webm",
+  size: 44,
+  kind: "file",
+  mimeType: "audio/webm",
+  previewKind: "none",
+  previewUrl: null,
+};
+
 const SETTINGS: VoiceSettings = { modelId: "parakeet-tdt-0.6b-v3", language: "automatic" };
 
 function decodeNote(value: unknown): VoiceTranscriptionInput {
@@ -50,6 +67,7 @@ function registerVoice(transcribe: (input: VoiceTranscriptionInput) => VoiceTran
     prepareModel: handler(() => READY),
     downloadModel: payloadHandler(parseVoiceModelRequest, () => READY),
     cancelModelDownload: payloadHandler(parseVoiceModelRequest, () => READY),
+    removeModel: payloadHandler(parseVoiceModelRequest, () => READY),
     getSettings: handler(() => SETTINGS),
     setSettings: payloadHandler(parseVoiceSettings, (settings) => settings),
     transcribe: payloadHandler(decodeNote, transcribe),
@@ -58,6 +76,15 @@ function registerVoice(transcribe: (input: VoiceTranscriptionInput) => VoiceTran
     appendStream: payloadHandler(parseVoiceStreamAudio, () => undefined),
     finishStream: payloadHandler(parseVoiceStream, () => ({ text: "" })),
     cancelStream: payloadHandler(parseVoiceStream, () => undefined),
+    getSpeechSettings: handler(() => DEFAULT_SPEECH_SETTINGS),
+    setSpeechSettings: payloadHandler(parseSpeechSettings, (settings) => settings),
+    getSpeechModelStatus: handler(() => SPEECH_READY),
+    downloadSpeechModel: handler(() => SPEECH_READY),
+    cancelSpeechModelDownload: handler(() => SPEECH_READY),
+    removeSpeechModel: handler(() => SPEECH_READY),
+    speak: payloadHandler(parseSpeechInput, () => ({ pcm: new Uint8Array(2), sampleRate: 44_100 })),
+    warmSpeech: handler(() => undefined),
+    keepRecording: payloadHandler(decodeNote, () => RECORDING),
   });
 }
 

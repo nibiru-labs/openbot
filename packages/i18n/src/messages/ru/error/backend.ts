@@ -68,6 +68,9 @@ export const messages = {
     "Этот удалённый хост не поддерживает переход через адресную строку в существующей вкладке.",
   "error.backend.browserUserControlBusy": "Эта вкладка браузера ждёт секрет. Сначала ответьте на запрос секрета.",
   "error.backend.browserUserControlUnsupported": "Этот удалённый хост не поддерживает управление вкладкой браузера.",
+  "error.backend.browserSignInUnsupported": "Этот удалённый хост не может принять вход с этого компьютера.",
+  "error.backend.browserSignInOpenFailed": "OpenBot не удалось открыть окно входа.",
+  "error.backend.browserSignInReadFailed": "OpenBot не удалось прочитать вход из окна.",
   "error.backend.browserStopUnsupported": "Этот удалённый хост не может остановить загрузку страницы.",
   "error.backend.sharedDataLocalOnly": "Общими данными управляют на компьютере, где работают эти агенты.",
   "error.backend.browserUrlProtocol": "Допускаются только URL браузера с HTTP(S).",
@@ -81,8 +84,6 @@ export const messages = {
   "error.backend.channelNotFound": "Канал не найден.",
   "error.backend.channelMemberUnavailable": "Участник канала недоступен.",
   "error.backend.channelArchived": "Восстановите этот канал, прежде чем отправлять сообщения или менять задачи.",
-  "error.backend.channelsRetired":
-    "Каналы больше не поддерживаются. Поместите агентов в один раздел боковой панели, чтобы они работали вместе.",
   "error.backend.channelReferenceUnavailable": "Сообщение канала, на которое сделана ссылка, недоступно.",
   "error.backend.channelTaskNotFound": "Задача канала не найдена.",
   "error.backend.channelTaskComplete": "Эта задача уже выполнена.",
@@ -91,6 +92,10 @@ export const messages = {
   "error.backend.channelRoutingTooLong":
     "Этот запрос превышает лимит контекста маршрутизации. Выберите участника или отправьте запрос короче.",
   "error.backend.channelTaskMemberRequired": "Выберите участника для этой задачи.",
+  "error.backend.channelRoutingFailed": "Не удалось выполнить маршрутизацию. Выберите участника или повторите попытку.",
+  "error.backend.channelLeadTimedOut": "Ведущий канала не ответил вовремя. Выберите участника или повторите попытку.",
+  "error.backend.channelLeadFailed":
+    "Ведущему канала не удалось направить это сообщение. Выберите участника или повторите попытку.",
   "error.backend.channelRequestMemberRequired": "Выберите участника для этого запроса.",
   "error.backend.channelDeliveryNotCreated": "Доставка в канал не создана.",
   "error.backend.channelAssignmentStopped": "Это назначение в канале остановлено или заменено.",
@@ -224,6 +229,8 @@ export const messages = {
   "error.backend.mcpSignInCancelled": "Вход отменён.",
   "error.backend.mcpSignInTimedOut": "Вход в браузере не был завершён.",
   "error.backend.mcpSignInResponseTimedOut": "Ответ на вход не пришёл вовремя.",
+  "error.backend.mcpSignInMetadataUnreadable":
+    "OpenBot не удалось прочитать сведения о входе для этого сервера. Проверьте адрес сервера и повторите попытку.",
   "error.backend.mcpServerExited":
     "Сервер остановился, не ответив. Запустите команду в терминале, чтобы увидеть ошибку.",
   "error.backend.mcpOAuthProxyUnavailable":
@@ -256,6 +263,7 @@ export const messages = {
   "error.backend.directMessageSelf": "Нельзя отправить личное сообщение самому себе.",
   "error.backend.readBoundaryUnavailable": "Граница прочитанного больше недоступна.",
   "error.backend.sharedFileOutside": "Общий файл должен находиться внутри общего каталога.",
+  "error.backend.sharedPathIsFolder": "Общий путь — это папка, а не файл.",
   "error.backend.sharedPathNotFile": "Общий путь не является файлом.",
   "error.backend.workspaceFileOutside":
     "Файл рабочего пространства должен находиться внутри рабочего пространства агента.",
@@ -272,6 +280,8 @@ export const messages = {
   "error.backend.steerTurnChanged": "Активный ход изменился, прежде чем это сообщение удалось направить.",
   "error.backend.steerUnsupported":
     "Этот провайдер не умеет направлять выполняемый ход. Ваше сообщение остаётся в очереди.",
+  "error.backend.steerRoutineRun":
+    "Сейчас выполняется регулярная задача. Ваше сообщение остаётся в очереди и начнётся после неё.",
   "error.backend.steerQueuedOnly": "Направлять можно только сообщения в очереди.",
   "error.backend.promptInactive": "Этот запрос больше не активен.",
   "error.backend.promptAnswerMismatch": "Ответ не соответствует активному вопросу.",
@@ -280,11 +290,20 @@ export const messages = {
   "error.backend.approvalInactive": "Это подтверждение больше не активно.",
   "error.backend.takeoverInactive": "Этот перехват браузера больше не активен.",
   "error.backend.authSubmitting": "Отправка аутентификации уже выполняется.",
+  "error.backend.apiKeySaveFailed": "OpenBot не удалось сохранить ключ API. Повторите попытку.",
+  "error.backend.apiKeyNotAllowed": "Ввести ключ API может только владелец или админ сервера.",
+  "error.backend.apiKeySaving": "Ключ API уже сохраняется.",
   "error.backend.authRequestInactive": "Этот запрос безопасной аутентификации больше не активен.",
   "error.backend.secureAuthUnavailable": "Безопасная аутентификация недоступна.",
   "error.backend.browserUrlRequired": "Нужен URL для браузера.",
   "error.backend.browserUrlTooLong": "URL для браузера слишком длинный.",
   "error.backend.browserTabLimit": "В браузере может быть не более {limit} открытых вкладок.",
+  "error.backend.browserProfileMissing":
+    "Профиль браузера этого агента больше не существует. Выберите другой профиль в настройках агента.",
+  "error.backend.browserProfileNotFound": "Этот профиль браузера больше не существует.",
+  "error.backend.browserProfileNameTaken": "Профиль браузера с таким названием уже существует.",
+  "error.backend.browserSessionInUse": "Вкладка всё ещё использует этот сеанс браузера. Повторите попытку.",
+  "error.backend.browserProfileLimit": "Можно создать не более {limit} профилей браузера.",
   "error.backend.browserLowMemory":
     "На этом сервере мало памяти, поэтому браузер не может открыть ещё одну вкладку. Закройте вкладку или дождитесь завершения работы других агентов.",
   "error.backend.browserOpenFailed": "Не удалось открыть {url}: {reason}",
@@ -320,6 +339,15 @@ export const messages = {
   "error.backend.taskNotFound": "Эта задача недоступна.",
   "error.backend.taskClosed": "Эта задача закрыта. Откройте её снова, чтобы отправить сообщение.",
   "error.backend.taskStillRunning": "Эта задача ещё выполняется. Дождитесь её остановки, затем закройте её.",
+  "error.backend.threadNotFound": "Эта ветка недоступна.",
+  "error.backend.threadStillRunning": "Эта ветка ещё выполняется. Остановите её и повторите попытку.",
+  "error.backend.threadArchived": "Эта ветка в архиве. Восстановите её, чтобы отправить сообщение.",
+  "error.backend.threadTitleRequired": "Дайте ветке короткое название.",
+  "error.backend.threadOpenLimitReached":
+    "У этого агента открыто веток: {count}. Архивируйте ветку, затем начните или восстановите другую.",
+  "error.backend.threadRemoteUnsupported": "Ветки доступны только для агентов на этом компьютере.",
+  "error.backend.threadMoveRefused":
+    "В новой ветке можно запустить только сообщение, которое вы отправили одному этому агенту.",
   "error.backend.taskTitleRequired": "Дайте задаче короткое название.",
   "error.backend.taskToolInvalid": "Дайте задаче название не длиннее 120 символов и описание того, что нужно сделать.",
   "error.backend.taskOwnChatOnly":

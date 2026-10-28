@@ -44,6 +44,17 @@
   gap: 6px;
 }
 
+/* The model change that waits for the running turn to end. */
+.conversation-model-pending {
+  flex: none;
+  gap: 4px;
+}
+
+.conversation-model-pending svg {
+  width: 12px;
+  height: 12px;
+}
+
 .provider-model-picker {
   position: relative;
   min-width: 0;
@@ -83,7 +94,7 @@
 .provider-model-trigger:focus-visible,
 .provider-model-rail-button:focus-visible,
 .provider-model-option:focus-visible {
-  outline: 1px solid var(--openbot-accent);
+  outline: 1px solid var(--openbot-border-focus);
   outline-offset: 1px;
 }
 
@@ -121,6 +132,18 @@
 .provider-model-trigger-effort::before {
   margin-right: var(--openbot-space-1-5);
   content: "·";
+}
+
+/* The Fast chip gets its own room, so the model name keeps the width it has without it. */
+.provider-model-trigger:has(.provider-model-trigger-fast) {
+  max-width: 296px;
+}
+
+.provider-model-trigger-fast svg {
+  width: 12px;
+  height: 12px;
+  margin-right: var(--openbot-space-0-5);
+  stroke-width: var(--openbot-icon-stroke);
 }
 
 /* An email can be long: the account gives way before the model name does. */
@@ -258,7 +281,7 @@
 }
 
 .provider-model-popover {
-  --provider-model-rail-bg: color-mix(in srgb, var(--openbot-bg-notch) 22%, var(--ui-menu-bg));
+  --provider-model-rail-bg: var(--openbot-bg-sheet-inset);
   --provider-model-segment-radius: calc(var(--ui-menu-item-radius) - var(--openbot-space-0-5));
   position: relative;
   z-index: var(--openbot-layer-dropdown);

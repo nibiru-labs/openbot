@@ -65,7 +65,8 @@ SolidJS, provider, Cloudflare, and application code; and the account server to d
 ## State ownership
 
 - `openbot.db` is the source of truth for OpenBot agents, conversations, queues, reactions,
-  attachments, and provider-session bindings.
+  attachments, and provider-session bindings. Its schema changes only through the migration runner.
+  See [Database migrations](database-migrations.md).
 - `RoutineStore` saves a routine and its webhook trigger in one transaction. `WebhookRouteStore`
   owns route IDs, encrypted secrets, receipts, and route revocations. `RoutineRecords` gives main one
   owner-neutral view of these. Webhook runs use the existing agent and channel queues. Main owns
@@ -100,11 +101,14 @@ SolidJS, provider, Cloudflare, and application code; and the account server to d
   on answers its own approvals, so they never reach a client, and a client cannot grant one on a
   remote host's behalf. `AttentionRegistry` reads it at each approval, including hosted-site
   publishing, replacement and deletion. Site validation, ownership checks and activity markers
-  still apply. The registry also accepts, once, Codex's consent to run an MCP tool (`_meta.codex_approval_kind`
-  `mcp_tool_call` with `persist` that offers `always`), and saves nothing: "Always allow" stays the user's
-  choice, which Codex keeps per server and tool. A Workspace only agent, a Computer Use tool and a tool set to
-  ask every time keep their card. Other questions, MCP forms and sign-in requests, and browser takeovers
-  remain interactive.
+  still apply. A grant change (`AgentService.notifyAgentsChanged`) or an access change also answers
+  the approvals that already wait for an agent that now has Full access
+  (`AttentionRegistry.answerGrantedRequests`). The registry also accepts, once, Codex's consent to run
+  an MCP tool (`_meta.codex_approval_kind` `mcp_tool_call`, a tool set to ask every time included), and
+  saves nothing: "Always allow" stays the user's choice, which Codex keeps per server and tool. A
+  Workspace only agent keeps its card; a Computer Use tool does not. OpenBot keeps Codex's `approvalPolicy`
+  at `on-request`, because `never` denies MCP tool calls and rejects elicitations. Other questions, MCP
+  forms and sign-in requests, and browser takeovers remain interactive.
 - `browser-tabs.json` is the embedded browser's own durable state, outside `openbot.db` and outside the
   migration runner. It is versioned in the file (`v1` predates the per-tab `BrowserEnvironment`, `v2`
   carries it) and always rewritten as the current version, so a downgrade reads a file it does not know.
@@ -157,8 +161,8 @@ surface and responsive rules override earlier component rules.
 tabs, and a page for each listing. It reads a typed `MarketplaceModel` and holds no data of its
 own. The renderer's `marketplace-controller.ts` builds the model on the injected `MarketplaceCalls`,
 and `MarketplaceModal` adds the connect and uninstall dialogs. `ConnectorsProvider` creates the
-connector controllers once; a connector's app page and Server settings › Connectors show the same
-`ConnectorDetailPanel` from them.
+connector controllers once; a connector's app page shows `ConnectorDetailPanel` from them. Server
+settings has no connector section.
 
 `AgentSettingsPanel` owns the form draft, ordered save queue, avatar editor, and model controls.
 Its renderer adapter owns persisted width and native memories, routines, skills, and tables,

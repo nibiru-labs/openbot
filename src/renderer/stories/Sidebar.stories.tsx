@@ -1,7 +1,9 @@
 import type { ChannelSummary, HiddenAgent, SidebarLayoutAction, SidebarLayoutSnapshot } from "@openbot/contracts/ipc";
 import type { AvatarMood } from "@openbot/ui/bloub-avatar";
 import { Sidebar } from "@openbot/ui/features/sidebar/Sidebar";
+import { SidebarCommunityCard } from "@openbot/ui/features/sidebar/SidebarCommunityCard";
 import { SidebarMobileAppCard } from "@openbot/ui/features/sidebar/SidebarMobileAppCard";
+import { SidebarStorageCard } from "@openbot/ui/features/sidebar/SidebarStorageCard";
 import { normalizeSidebarPinnedItems, type SidebarPinnedItem } from "@openbot/ui/features/sidebar/sidebar-pins";
 import { SIDEBAR_HIDDEN_GROUP_OPEN_ID, type SidebarAgentState } from "@openbot/ui/features/sidebar/sidebar-types";
 import { createSignal, untrack } from "solid-js";
@@ -307,8 +309,63 @@ export const ServerUpdate: Story = {
   decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
 };
 
+/** Back opens the chat that was open before. Forward has no chat yet, so it is disabled. */
+export const ChatHistory: Story = {
+  args: {
+    chatHistory: {
+      back: { name: "Research" },
+      forward: null,
+      keys: { back: "⌘[", forward: "⌘]" },
+      onBack: fn(),
+      onForward: fn(),
+    },
+  },
+  decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
+};
+
 export const MobileAppCard: Story = {
   args: { footer: <SidebarMobileAppCard onOpenInstall={fn()} onDismiss={fn()} /> },
+  decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
+};
+
+export const CommunityCard: Story = {
+  args: { footer: <SidebarCommunityCard onJoinDiscord={fn()} onFollowX={fn()} onDismiss={fn()} /> },
+  decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
+};
+
+const GB = 1024 ** 3;
+
+/** A 12 GB hosted server with 1.1 GB free: the card shows, and it can be closed. */
+export const StorageLow: Story = {
+  args: {
+    footer: (
+      <SidebarStorageCard
+        level="low"
+        serverName="Acme HQ"
+        freeBytes={1.1 * GB}
+        totalBytes={12 * GB}
+        onFreeUpSpace={fn()}
+        onDismiss={fn()}
+      />
+    ),
+  },
+  decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
+};
+
+/** At "full" the card is red and has no close button. */
+export const StorageFull: Story = {
+  args: {
+    footer: (
+      <SidebarStorageCard
+        level="full"
+        serverName="Acme HQ"
+        freeBytes={0.14 * GB}
+        totalBytes={12 * GB}
+        onFreeUpSpace={fn()}
+        onDismiss={fn()}
+      />
+    ),
+  },
   decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
 };
 
@@ -431,8 +488,14 @@ export const AgentContextMenu: Story = {
   decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
 };
 
+/** A custom section's menu offers Duplicate when the server can copy agents and change the layout. */
 export const Sections: Story = {
-  args: { layout: sectionedLayout, pinnedItems: pinnedOne },
+  args: {
+    layout: sectionedLayout,
+    pinnedItems: pinnedOne,
+    sectionDuplicateSupported: true,
+    onDuplicateSection: fn(),
+  },
   decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
 };
 
@@ -594,6 +657,19 @@ export const Channels: Story = {
       { kind: "channel", id: "channel-4" },
       { kind: "agent", id: "chief" },
     ],
+  },
+  decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
+};
+
+/** Two channels whose work waits for the user: one in "Needs you" with an agent, one pinned. */
+export const ChannelsWaiting: Story = {
+  args: {
+    ...Channels.args,
+    agentStates: { ...agentStates, research: { kind: "waiting", reason: "question", detail: "Which quarter?" } },
+    channelWaits: {
+      "channel-2": { kind: "waiting", reason: "takeover", detail: null },
+      "channel-4": { kind: "waiting", reason: "approval", detail: "git push origin main" },
+    },
   },
   decorators: [(Story) => <div style={{ width: "280px", height: "100vh" }}>{Story()}</div>],
 };

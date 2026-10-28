@@ -44,6 +44,8 @@ const executablePath = resolve(contentsPath, "MacOS/OpenBot");
 const resourcesPath = resolve(contentsPath, "Resources");
 const packagedIconPath = resolve(resourcesPath, "icon.icns");
 const sourceIconPath = resolve("build/icon-production.icns");
+const packagedIconCatalogPath = resolve(resourcesPath, "Assets.car");
+const sourceIconCatalogPath = resolve("build/macos/Assets.car");
 const plistPath = resolve(contentsPath, "Info.plist");
 const voiceRuntimePath = resolve(resourcesPath, "voice/runtime");
 const voiceRuntimeFiles = ["sherpa-onnx.node", "libsherpa-onnx-c-api.dylib", "libonnxruntime.dylib"];
@@ -53,6 +55,7 @@ const cuaDriverPath = resolve(resourcesPath, "cua-driver/darwin", architecture);
 // Packed into app.asar it would still be readable, but `utilityProcess` cannot start it from there.
 const databaseHostPath = resolve(resourcesPath, "app.asar.unpacked/out/main/agent-database-host.js");
 const voiceHostPath = resolve(resourcesPath, "app.asar.unpacked/out/main/voice-transcription-host.js");
+const speechHostPath = resolve(resourcesPath, "app.asar.unpacked/out/main/voice-speech-host.js");
 
 await Promise.all([
   access(executablePath),
@@ -66,10 +69,13 @@ await Promise.all([
   access(resolve(resourcesPath, "licenses/sherpa-onnx-LICENSE")),
   access(resolve(resourcesPath, "licenses/onnxruntime-LICENSE")),
   access(resolve(resourcesPath, "licenses/NVIDIA-Parakeet-TDT-0.6B-v3-LICENSE")),
+  access(resolve(resourcesPath, "licenses/Underdog-Bark-3.0-Plus-LICENSE")),
   access(resolve(resourcesPath, "licenses/OpenAI-Whisper-LICENSE")),
+  access(resolve(resourcesPath, "licenses/Supertone-Supertonic-3-LICENSE")),
   ...voiceRuntimeFiles.map((name) => access(resolve(voiceRuntimePath, name))),
   access(databaseHostPath),
   access(voiceHostPath),
+  access(speechHostPath),
   access(resolve(resourcesPath, "remote-desktop-runtime/licenses/Sunshine-GPL-3.0.txt")),
   access(resolve(resourcesPath, "remote-desktop-runtime/licenses/moonlight-web-stream-GPL-3.0.txt")),
   access(resolve(resourcesPath, "remote-desktop-runtime/source-manifest.json")),
@@ -100,6 +106,7 @@ await Promise.all(
 // entitlement that re-signing under OpenBot's inherited entitlements would drop.
 assertCuaDriverSignature(resolve(cuaDriverPath, "cua-driver"));
 await verifyPackagedIcon(packagedIconPath, sourceIconPath);
+await verifyPackagedIconCatalog(packagedIconCatalogPath, sourceIconCatalogPath);
 await Promise.all(["codex", "claude", "grok"].map((name) => assertAbsent(resolve(resourcesPath, name))));
 await assertAbsent(resolve(resourcesPath, "cloudflared"));
 await assertAbsent(
@@ -112,6 +119,7 @@ expectEqual(plist.CFBundleDisplayName, "OpenBot", "display name");
 expectEqual(plist.CFBundleExecutable, "OpenBot", "executable name");
 expectEqual(plist.CFBundleIdentifier, "app.openbot.desktop", "bundle identifier");
 expectEqual(plist.CFBundleIconFile, "icon.icns", "application icon");
+expectEqual(plist.CFBundleIconName, "Icon", "macOS 26 application icon");
 expectEqual(plist.LSMinimumSystemVersion, "13.0", "minimum macOS version");
 expectEqual(plist.ElectronTeamID, "ZTRDTUL87R", "Apple Team ID");
 if (!Array.isArray(plist.NSUserActivityTypes) || !plist.NSUserActivityTypes.includes("NSUserActivityTypeBrowsingWeb")) {
@@ -134,9 +142,13 @@ const databaseHost = await readFile(databaseHostPath, "utf8");
 if (/from "(?!node:|effect["/])/.test(databaseHost)) {
   throw new Error("The database host must import nothing but node: builtins and effect.");
 }
-const voiceHost = await readFile(voiceHostPath, "utf8");
-if (/from "(?!node:)/.test(voiceHost)) {
-  throw new Error("The voice transcription host must import nothing but node: builtins.");
+for (const [path, name] of [
+  [voiceHostPath, "voice transcription"],
+  [speechHostPath, "speech"],
+] as const) {
+  if (/from "(?!node:)/.test(await readFile(path, "utf8"))) {
+    throw new Error(`The ${name} host must import nothing but node: builtins.`);
+  }
 }
 
 const executableArchitecture = run("file", [executablePath]);
@@ -150,10 +162,14 @@ for (const name of voiceRuntimeFiles) {
     throw new Error(`Expected a ${machOArchitecture} voice runtime library: ${voiceArchitecture}`);
   }
 }
-// The Parakeet and Whisper models are downloaded on demand.
+// The Parakeet, Bark, Whisper and Supertonic models are downloaded on demand.
 if (
-  ["voice/model", "voice/whisper-turbo-int8"].some((path) => existsSync(resolve(resourcesPath, path))) ||
-  ["encoder.int8.onnx", "turbo-encoder.int8.onnx"].some((name) => existsSync(resolve(voiceRuntimePath, name)))
+  ["voice/model", "voice/bark-3.0-plus-int8", "voice/whisper-turbo-int8", "voice/supertonic-3-int8"].some((path) =>
+    existsSync(resolve(resourcesPath, path)),
+  ) ||
+  ["encoder.int8.onnx", "turbo-encoder.int8.onnx", "vocoder.int8.onnx"].some((name) =>
+    existsSync(resolve(voiceRuntimePath, name)),
+  )
 ) {
   throw new Error("The on-demand voice models must not be in the application.");
 }
@@ -214,6 +230,14 @@ async function verifyPackagedIcon(packagedPath: string, sourcePath: string): Pro
     await Promise.all(EXPECTED_MACOS_ICON_FILES.map((name) => access(join(iconSetPath, name))));
   } finally {
     await rm(iconRoot, { recursive: true, force: true });
+  }
+}
+
+/** macOS 26 reads the icon from this catalog. It holds the dark version that the `.icns` cannot. */
+async function verifyPackagedIconCatalog(packagedPath: string, sourcePath: string): Promise<void> {
+  const [packagedCatalog, sourceCatalog] = await Promise.all([readFile(packagedPath), readFile(sourcePath)]);
+  if (!packagedCatalog.equals(sourceCatalog)) {
+    throw new Error("The packaged macOS icon catalog does not match build/macos/Assets.car.");
   }
 }
 

@@ -14,7 +14,6 @@ import {
 } from "@openbot/contracts/ui-blocks";
 import { Button } from "@openbot/ui";
 import type { AgentMessage as RendererAgentMessage, RoutineRunMarkerModel } from "@openbot/ui/data";
-import { AgentTaskPanel } from "@openbot/ui/features/conversation/AgentTasks";
 import { BrowserTakeoverCard } from "@openbot/ui/features/conversation/ConversationPrompts";
 import type { VoicePhase } from "@openbot/ui/features/conversation/VoiceRecordingMorph";
 import { currentText } from "@openbot/ui/text";
@@ -42,6 +41,7 @@ import {
   STORY_ATTACHMENTS,
   STORY_PRESENCE,
   STORY_QUEUES,
+  STORY_REPLY_QUOTE_BODY,
 } from "./fixtures";
 import { createMockOpenBot } from "./mock-openbot";
 
@@ -538,6 +538,24 @@ const longPathReplyMessages: RendererAgentMessage[] = [
     ].join("\n"),
     time: "10:03",
     kind: "text",
+  },
+];
+
+const replyQuoteMessages: RendererAgentMessage[] = [
+  {
+    id: "reply-quote-agent",
+    author: "agent",
+    body: STORY_REPLY_QUOTE_BODY,
+    time: "10:02",
+    kind: "text",
+  },
+  {
+    id: "reply-quote-user",
+    author: "you",
+    body: "Approved. Tag it after the checks pass.",
+    time: "10:03",
+    kind: "text",
+    replyToMessageId: "reply-quote-agent",
   },
 ];
 
@@ -1076,6 +1094,7 @@ function MockedConversation(props: {
   voicePhase?: VoicePhase;
   takeoverStateGallery?: boolean;
   conversationError?: string;
+  replyToMessageId?: string;
 }) {
   const previousApi = window.openbot;
   const mock = createMockOpenBot();
@@ -1089,6 +1108,12 @@ function MockedConversation(props: {
       controller.setDrafts({
         [initialAgentId]: { text: "", attachments: props.initialAttachments ?? [], replyToMessageId: null },
       });
+    });
+  }
+  const replyToMessageId = props.replyToMessageId;
+  if (initialAgentId && replyToMessageId) {
+    onSettled(() => {
+      controller.setDrafts({ [initialAgentId]: { text: "", attachments: [], replyToMessageId } });
     });
   }
   if (props.voiceModelProgress !== undefined) {
@@ -1338,7 +1363,7 @@ export const ProviderErrorBanner: Story = {
   render: (storyArgs) => (
     <MockedConversation
       args={storyArgs}
-      conversationError="Falling back from WebSockets to HTTPS transport. stream disconnected before completion: Connection refused (os error 61)"
+      conversationError="stream disconnected before completion: Connection refused (os error 61)"
     />
   ),
 };
@@ -1588,6 +1613,15 @@ export const LongFilePathInReply: Story = {
       <MockedConversation args={storyArgs} />
     </section>
   ),
+};
+
+/** The composer and the sent reply quote the same Markdown message, and render it the same way. */
+export const MarkdownReplyQuote: Story = {
+  name: "Markdown reply quote",
+  args: {
+    messages: replyQuoteMessages,
+  },
+  render: (storyArgs) => <MockedConversation args={storyArgs} replyToMessageId="reply-quote-agent" />,
 };
 
 export const StreamingMarkdownInChat: Story = {
@@ -1843,54 +1877,6 @@ export const ResponseProcessLifecycle: Story = {
   render: (props) => <ResponseProcessLifecycleConversation args={props} />,
 };
 
-export const ProcessInTaskPanel: Story = {
-  render: () => (
-    <AgentTaskPanel
-      task={{
-        id: "process-task",
-        agentId: contextStoryAgent.id,
-        threadId: "process-task-thread",
-        origin: "user",
-        title: "Check the release brief",
-        state: "idle",
-        outcome: "completed",
-        hold: null,
-        activeTurnId: null,
-        progress: null,
-        error: null,
-        queuedMessages: [],
-        createdAt: "2026-10-25T10:00:00Z",
-        updatedAt: "2026-10-25T10:01:00Z",
-        closedAt: null,
-      }}
-      limit={2}
-      agent={contextStoryAgent}
-      agents={STORY_AGENTS}
-      messages={[
-        {
-          id: "task-process",
-          turnId: "task-turn",
-          author: "agent",
-          body: "",
-          time: "10:00",
-          kind: "thinking",
-          items: ["I checked the task brief and confirmed the release owner."],
-          status: "completed",
-        },
-        { id: "task-answer", turnId: "task-turn", author: "agent", body: "The task brief is checked.", time: "10:01" },
-      ]}
-      onSend={async () => true}
-      onStop={() => undefined}
-      onCloseTask={() => undefined}
-      onReopen={() => undefined}
-      onClosePanel={() => undefined}
-      onOpenLink={() => undefined}
-      onPreview={() => undefined}
-      onAttachmentAction={() => undefined}
-    />
-  ),
-};
-
 export const ProcessStopped: Story = {
   args: {
     messages: [
@@ -1995,6 +1981,11 @@ export const WaitingForReplies: Story = {
     queue: { agentId: "chief", deliveries: [...(STORY_QUEUES.chief ?? []), queuedDelivery, runningDelivery] },
     activeTurnId: "turn-active",
   },
+};
+
+/** Every card above the input at once: one card with a line between each part, and no gaps. */
+export const WaitingForRepliesWithUsageLimit: Story = {
+  args: { ...WaitingForReplies.args, accountUsage: UsageLimitReached.args?.accountUsage },
 };
 
 /** The plan of the turn that runs: the block is open and the running step shimmers. */
@@ -2386,7 +2377,7 @@ function agentExchangeMessage(
   direction: "incoming" | "outgoing",
   otherAgentId: string,
   time: string,
-  expectsReply = true,
+  options: { body?: string; replyTo?: string; expectsReply?: boolean } = {},
 ): RendererAgentMessage {
   const timestamp = `2026-08-19T${time}:00.000Z`;
   const sourceAgentId = direction === "outgoing" ? "chief" : otherAgentId;
@@ -2394,7 +2385,7 @@ function agentExchangeMessage(
   return {
     id,
     author: "agent",
-    body: "",
+    body: options.body ?? "",
     time,
     createdAt: timestamp,
     kind: "exchange",
@@ -2403,7 +2394,7 @@ function agentExchangeMessage(
       messageId: id,
       senderAgentId: sourceAgentId,
       recipientAgentIds: [targetAgentId],
-      replyToMessageId: null,
+      replyToMessageId: options.replyTo ?? null,
       deliveries: [],
     },
     actionMarker: {
@@ -2414,13 +2405,13 @@ function agentExchangeMessage(
       status: "completed",
       timestamp,
       messageId: id,
-      replyToMessageId: null,
-      expectsReply,
+      replyToMessageId: options.replyTo ?? null,
+      expectsReply: options.expectsReply ?? true,
     },
   };
 }
 
-/* Consecutive messages with other agents show as one row in the chat. */
+/* Consecutive messages with other agents show as one row in the chat. Each message opens its text under its marker. */
 export const AgentMessageGroupInChat: Story = {
   name: "Agent message group in chat",
   args: {
@@ -2433,11 +2424,25 @@ export const AgentMessageGroupInChat: Story = {
         createdAt: "2026-08-19T09:00:00.000Z",
         kind: "text",
       },
-      agentExchangeMessage("group-1", "outgoing", "research", "09:01"),
-      agentExchangeMessage("group-2", "outgoing", "sales", "09:01"),
-      agentExchangeMessage("group-3", "incoming", "research", "09:03"),
-      agentExchangeMessage("group-4", "incoming", "sales", "09:04"),
-      agentExchangeMessage("group-5", "outgoing", "research", "09:05", false),
+      agentExchangeMessage("group-1", "outgoing", "research", "09:01", {
+        body: "Which launch sources are still not confirmed?",
+      }),
+      agentExchangeMessage("group-2", "outgoing", "sales", "09:01", {
+        body: "How many accounts are ready for the launch email?",
+      }),
+      agentExchangeMessage("group-3", "incoming", "research", "09:03", {
+        body: "Two sources are left: the pricing page archive and the analyst note from June.",
+        replyTo: "group-1",
+      }),
+      agentExchangeMessage("group-4", "incoming", "sales", "09:04", {
+        body: "14 accounts are ready. Three more wait for a contact name.",
+        replyTo: "group-2",
+      }),
+      agentExchangeMessage("group-5", "outgoing", "research", "09:05", {
+        body: "Thanks. I will tell the user that two sources are still open.",
+        replyTo: "group-3",
+        expectsReply: false,
+      }),
       {
         id: "group-agent",
         author: "agent",

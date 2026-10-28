@@ -2,14 +2,14 @@ import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type {
   AgentApproval,
   AgentEvent,
-  AgentModelOption,
   AgentRuntimeApproval,
   AgentStatus,
-  AgentSummary,
   AttachmentSummary,
   BrowserControlState,
   BrowserTab,
   BrowserTakeoverRequest,
+  ClientAgentModelOption,
+  ClientAgentSummary,
   ConversationMessage,
   ConversationPage,
   HiddenAgent,
@@ -37,11 +37,13 @@ import {
   type RemoteRecoveryStatus,
 } from "@openbot/team-client/remote-recovery";
 import { reconcilePendingRequests } from "@openbot/team-client/runtime-attention";
+import { duplicateSection as duplicateSectionWith } from "@openbot/ui/features/sidebar/duplicate-section";
 import { currentText } from "@openbot/ui/text";
 import { errorReference, type UserErrorDetails } from "@openbot/user-errors";
 import { createEffect, createMemo, createSignal, createStore, onSettled } from "solid-js";
 import { toAgentProfile } from "../../app-message-projection";
 import { mergeConversationPage, missingReplyOriginals } from "../conversation/conversation-merge";
+import { appendTurnStepLine, type TurnStepLines } from "../conversation/turn-step-lines";
 import { followsServerUpdate } from "../servers/server-update-flow";
 import { createSidebarPreferences } from "../sidebar/sidebar-preferences";
 import { defaultSidebarLayout } from "../sidebar/sidebar-sections";
@@ -101,7 +103,7 @@ function trimToLatestPage(conversation: WebConversation): void {
 interface WebWorkspaceState {
   hosts: RemoteTeamHost[];
   host: RemoteTeamHost | null;
-  agents: AgentSummary[];
+  agents: ClientAgentSummary[];
   /** The host answered an agent list. Until then, an empty `agents` does not mean the host has none. */
   agentsLoaded: boolean;
   selectedId: string | null;
@@ -130,12 +132,14 @@ interface WebWorkspaceState {
   hostedStart: HostedServerStart | null;
   /** The last connection failure, with its code. Shown while the workspace reconnects. */
   connectionError: UserErrorDetails | null;
+  /** Signal holds the connection because the host is not online. */
+  hostOffline: boolean;
   recovery: RemoteRecoveryStatus | null;
   workspaceLoaded: boolean;
   panelsFailed: boolean;
   panelsLoading: boolean;
   agentStatus: AgentStatus | null;
-  models: AgentModelOption[];
+  models: ClientAgentModelOption[];
   /** The opened host said it restarts into an update (`host-update-v1`). Cleared when it is online again. */
   hostRestart: { state: "waiting" | "restarting"; version: string | null } | null;
   /** The state of each host that this tab has not opened, from its status connection. */
@@ -208,6 +212,7 @@ export function createWebWorkspace(
     hostedIssue: null,
     hostedStart: null,
     connectionError: null,
+    hostOffline: false,
     recovery: null,
     workspaceLoaded: false,
     panelsFailed: false,
@@ -230,6 +235,8 @@ export function createWebWorkspace(
     sidebarLayout: defaultSidebarLayout(),
     userHiddenAgents: [],
   });
+  // Every progress line of the newest turns, by turn, for the steps under the activity line.
+  const [stepLines, setStepLines] = createSignal<TurnStepLines>({});
   let generation = 0;
   let selectedId: string | null = null;
   let hostId: string | null = null;
@@ -323,7 +330,7 @@ export function createWebWorkspace(
       recover();
     },
   });
-  const hostNoticeListeners = new Set<(hostId: string, event: WebHostNotice, agents: AgentSummary[]) => void>();
+  const hostNoticeListeners = new Set<(hostId: string, event: WebHostNotice, agents: ClientAgentSummary[]) => void>();
   const runtime = (props.createRuntime ?? createWebWorkspaceRuntime)(
     props.accountId,
     {
@@ -352,6 +359,9 @@ export function createWebWorkspace(
         setState((draft) => {
           if (update.state !== "online") draft.status = update.state;
           if (update.state !== "online") syncedAt = 0;
+          // A `connecting` update without `hostOffline`, such as a `rate_limited` reply, does not end the hold.
+          if (update.hostOffline) draft.hostOffline = true;
+          else if (update.state !== "connecting") draft.hostOffline = false;
           const text = currentText();
           const reference = update.reference ?? null;
           // An update without a reason keeps the last failure on screen. A working connection clears it.
@@ -475,6 +485,7 @@ export function createWebWorkspace(
           setState((draft) => {
             draft.progress[event.agentId] = { turnId: event.turnId, detail: cleanAgentMessageText(event.detail) };
           });
+          setStepLines((current) => appendTurnStepLine(current, event.turnId, cleanAgentMessageText(event.detail)));
         } else if (event.type === "turn-started") {
           setState((draft) => {
             delete draft.progress[event.agentId];
@@ -580,6 +591,7 @@ export function createWebWorkspace(
     },
   );
   // A hosted server keeps running while this tab is visible and has focus (`focus-use-v1`).
+  const [duplicatingSectionIds, setDuplicatingSectionIds] = createSignal<ReadonlySet<string>>(new Set());
   const [pageFocused, setPageFocused] = createSignal(!document.hidden && document.hasFocus());
   const focusUse = createFocusUsePing(() => void runtime.focusUse().catch(() => undefined));
   createEffect(
@@ -591,7 +603,69 @@ export function createWebWorkspace(
   );
   const [serverOrder, setServerOrder] = createSignal(readWebServerOrder(props.accountId));
   const orderedHosts = createMemo(() => orderWebHosts(state.hosts, serverOrder()));
-  const profiles = createMemo(() => state.agents.map(toAgentProfile));
+  // The host sends an `openbot-avatar:` URL, which only the desktop app can open. The image comes
+  // through the host connection; until then, the agent keeps the host URL and its generated avatar.
+  const [avatars, setAvatars] = createSignal<ReadonlyMap<string, { source: string; url: string }>>(new Map());
+  const avatarLoads = new Set<string>();
+  // The images share the host connection and its file slots with the user's downloads, so only a few
+  // load at the same time.
+  const avatarQueue: { hostId: string; id: string; source: string }[] = [];
+  let avatarReads = 0;
+  let avatarHost: string | null = null;
+  function loadAvatars() {
+    while (avatarReads < 2) {
+      const next = avatarQueue.shift();
+      if (!next) return;
+      const { hostId, id, source } = next;
+      avatarReads += 1;
+      void runtime
+        .agentAvatar(id, source)
+        .then(
+          (url) => {
+            if (avatarHost === hostId) setAvatars((current) => new Map(current).set(id, { source, url }));
+          },
+          // A failed image keeps the generated avatar, and the next agent list tries it again.
+          () => {
+            if (avatarHost === hostId) avatarLoads.delete(`${id} ${source}`);
+          },
+        )
+        .finally(() => {
+          avatarReads -= 1;
+          loadAvatars();
+        });
+    }
+  }
+  createEffect(
+    () => ({
+      hostId: state.host?.hostId ?? null,
+      sources: state.agents.flatMap((agent) =>
+        agent.avatarUrl?.startsWith("openbot-avatar:") ? [{ id: agent.id, source: agent.avatarUrl }] : [],
+      ),
+    }),
+    ({ hostId, sources }) => {
+      if (hostId !== avatarHost) {
+        avatarHost = hostId;
+        avatarLoads.clear();
+        avatarQueue.length = 0;
+        setAvatars(new Map());
+      }
+      if (!hostId) return;
+      for (const { id, source } of sources) {
+        const key = `${id} ${source}`;
+        if (avatarLoads.has(key)) continue;
+        avatarLoads.add(key);
+        avatarQueue.push({ hostId, id, source });
+      }
+      loadAvatars();
+    },
+  );
+  const shownAgents = createMemo(() =>
+    state.agents.map((agent) => {
+      const avatar = avatars().get(agent.id);
+      return avatar && avatar.source === agent.avatarUrl ? { ...agent, avatarUrl: avatar.url } : agent;
+    }),
+  );
+  const profiles = createMemo(() => shownAgents().map(toAgentProfile));
   const selected = createMemo(() => profiles().find((agent) => agent.id === state.selectedId));
   const conversation = createMemo(() => (state.selectedId ? state.conversations[state.selectedId] : undefined));
 
@@ -636,7 +710,7 @@ export function createWebWorkspace(
     if (!capabilities.includes(AGENT_HIDDEN_CAPABILITY) || !read) return [];
     return (await read()).agents;
   }
-  function reconcileAgents(agents: AgentSummary[]): void {
+  function reconcileAgents(agents: ClientAgentSummary[]): void {
     const ids = new Set(agents.map((agent) => agent.id));
     const nextSelected = selectedId && ids.has(selectedId) ? selectedId : null;
     selectedId = nextSelected;
@@ -697,6 +771,7 @@ export function createWebWorkspace(
             draft.approvals = [];
             draft.prompts = [];
             draft.progress = {};
+            setStepLines({});
             draft.takeovers = [];
             draft.browserTabs = [];
             draft.activeBrowserTabId = null;
@@ -811,6 +886,7 @@ export function createWebWorkspace(
       draft.approvals = [];
       draft.prompts = [];
       draft.progress = {};
+      setStepLines({});
       draft.takeovers = [];
       draft.browserTabs = [];
       draft.activeBrowserTabId = null;
@@ -897,6 +973,7 @@ export function createWebWorkspace(
       draft.recovery = null;
       // A retry keeps the last failure on screen until it ends.
       if (!sameHost) draft.connectionError = null;
+      if (!sameHost) draft.hostOffline = false;
       if (!sameHost) {
         draft.workspaceLoaded = false;
         draft.agentStatus = null;
@@ -1447,7 +1524,9 @@ export function createWebWorkspace(
   });
   return {
     state,
+    stepLines,
     hostViews,
+    shownAgents,
     profiles,
     retryPanels: loadPanels,
     selected,
@@ -1455,6 +1534,7 @@ export function createWebWorkspace(
     runtime,
     preferences,
     orderedHosts,
+    duplicatingSectionIds,
     reorderHosts(hostIds: string[]) {
       setServerOrder(hostIds);
       writeWebServerOrder(props.accountId, hostIds);
@@ -1467,7 +1547,7 @@ export function createWebWorkspace(
       };
     },
     /** The events of the hosts this tab has not opened that a notification can show. Returns the unsubscribe function. */
-    onHostNotice(listener: (hostId: string, event: WebHostNotice, agents: AgentSummary[]) => void) {
+    onHostNotice(listener: (hostId: string, event: WebHostNotice, agents: ClientAgentSummary[]) => void) {
       hostNoticeListeners.add(listener);
       return () => {
         hostNoticeListeners.delete(listener);
@@ -1553,6 +1633,72 @@ export function createWebWorkspace(
           setState((draft) => {
             draft.duplicatingAgentIds = draft.duplicatingAgentIds.filter((id) => id !== agentId);
           });
+      }
+    },
+    /** Copies a custom section and each of its agents. The selection stays where it is. */
+    async duplicateSection(sectionId: string): Promise<void> {
+      if (
+        state.status !== "online" ||
+        !state.capabilities.includes("agent-duplication") ||
+        !state.capabilities.includes("sidebar-layout")
+      ) {
+        return;
+      }
+      const mutate = runtime.mutateSidebarLayout;
+      if (!mutate || duplicatingSectionIds().has(sectionId)) return;
+      const current = generation;
+      const isCurrent = () => !disposed && current === generation;
+      const acceptLayout = (layout: SidebarLayoutSnapshot) =>
+        setState((draft) => {
+          if (layout.revision >= draft.sidebarLayout.revision) draft.sidebarLayout = layout;
+        });
+      setDuplicatingSectionIds((ids) => new Set(ids).add(sectionId));
+      try {
+        const hidden = new Set(state.userHiddenAgents.map((entry) => entry.agentId));
+        await duplicateSectionWith(
+          {
+            layout: state.sidebarLayout,
+            agentIds: state.agents.filter((agent) => !hidden.has(agent.id)).map((agent) => agent.id),
+            // The agent's own Duplicate item waits too: the host refuses a second copy of one agent.
+            duplicateAgent: async (agentId) => {
+              if (!isCurrent()) return null;
+              setState((draft) => {
+                draft.duplicatingAgentIds = [...draft.duplicatingAgentIds, agentId];
+              });
+              try {
+                const result = await runtime.duplicateAgent(agentId);
+                if (!isCurrent()) return null;
+                setState((draft) => {
+                  draft.agents = [result.agent, ...draft.agents.filter((agent) => agent.id !== result.agent.id)];
+                });
+                acceptLayout(result.layout);
+                return { agentId: result.agent.id, layout: result.layout };
+              } finally {
+                if (isCurrent())
+                  setState((draft) => {
+                    draft.duplicatingAgentIds = draft.duplicatingAgentIds.filter((id) => id !== agentId);
+                  });
+              }
+            },
+            mutateLayout: async (action) => {
+              if (!isCurrent()) return null;
+              const layout = await mutate(action);
+              if (!isCurrent()) return null;
+              acceptLayout(layout);
+              return layout;
+            },
+          },
+          sectionId,
+        );
+      } catch (error) {
+        if (current === generation) report(error);
+        throw error;
+      } finally {
+        setDuplicatingSectionIds((ids) => {
+          const next = new Set(ids);
+          next.delete(sectionId);
+          return next;
+        });
       }
     },
     /**

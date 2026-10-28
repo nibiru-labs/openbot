@@ -23,8 +23,8 @@ export interface ServerMemoryLimitOptions {
 }
 
 /**
- * Server Settings > General: how many memories each agent of a joined server can keep
- * (`agent-memory-limit-v1`). The values come from the host. The host checks the role again.
+ * Server Settings > General: how many memories each agent of this computer or a joined server can
+ * keep (`agent-memory-limit-v1`). The values come from the host. The host checks the role again.
  */
 export function ServerMemoryLimitSetting(
   props: ServerMemoryLimitOptions & {

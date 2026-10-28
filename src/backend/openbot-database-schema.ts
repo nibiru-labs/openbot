@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
 import { COMPUTER_USE_MCP_SERVER_NAME } from "@openbot/contracts/ipc";
 import { type DynamicRecord, isDynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-values";
 import { isGeneratedAgentId } from "@openbot/contracts/validation";
@@ -6,7 +6,9 @@ import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
 import { AGENT_MEMORY_SELECTION_SCHEMA_SQL, migrateAgentMemorySelection } from "./agent-memory-selection";
 import { AGENT_TASK_SCHEMA_SQL } from "./agent-tasks/agent-task-schema";
+import { AGENT_THREAD_MIGRATION_SQL, AGENT_THREAD_SCHEMA_SQL } from "./agent-threads/agent-thread-schema";
 import { AGENT_WAIT_SCHEMA_SQL } from "./agent-waits/agent-wait-schema";
+import { BROWSER_PROFILE_SCHEMA_SQL } from "./browser-profiles/browser-profile-schema";
 import { CHANNEL_SCHEMA_SQL, CHANNEL_SETTINGS_SCHEMA_SQL } from "./channel-schema";
 import { PROVIDER_HISTORY_SCHEMA_SQL } from "./database/provider-history-schema";
 import { MCP_SERVERS_SCHEMA_SQL } from "./mcp-schema";
@@ -18,6 +20,7 @@ import {
 import { ROUTINE_BACKOFF_SCHEMA_SQL } from "./routine-backoff/routine-backoff-schema";
 import { ROUTINE_FLOW_SCHEMA_SQL } from "./routine-flows/routine-flow-schema";
 import { ROUTINE_RESULT_SCHEMA_SQL } from "./routine-results/routine-result-schema";
+import { WORKFLOW_SCHEMA_SQL } from "./workflows/workflow-schema";
 
 const BASELINE_SCHEMA_VERSION = 8;
 
@@ -594,12 +597,14 @@ const LATEST_SCHEMA_SQL =
   AGENT_WAIT_SCHEMA_SQL +
   MESSAGING_MEMORY_SCHEMA_SQL +
   ROUTINE_RESULT_SCHEMA_SQL +
-  AGENT_TASK_SCHEMA_SQL +
   V40_THREAD_MESSAGE_ORDER_INDEX_SQL +
   V41_ATTACHMENT_OWNER_INDEX_SQL +
   V42_ROUTINE_FLOW_SWEEP_INDEX_SQL +
   V43_THREAD_EVENT_TYPE_INDEX_SQL +
   MESSAGING_ALLOWED_ROLES_SCHEMA_SQL +
+  BROWSER_PROFILE_SCHEMA_SQL +
+  WORKFLOW_SCHEMA_SQL +
+  AGENT_THREAD_SCHEMA_SQL +
   ROUTINE_BACKOFF_SCHEMA_SQL;
 
 /** The end of the thread message table with the migration 40 columns before its PRIMARY KEY constraint. */
@@ -857,6 +862,31 @@ const MIGRATIONS: readonly OpenBotMigration[] = [
     // every routine runs on its own schedule, which is what it did before.
     up: (db) => db.exec(ROUTINE_BACKOFF_SCHEMA_SQL),
   },
+  {
+    version: 46,
+    up: (db) => {
+      if (!hasTable(db, "browser_profiles")) db.exec(BROWSER_PROFILE_SCHEMA_SQL);
+    },
+  },
+  {
+    version: 47,
+    up: (db) => {
+      if (!hasTable(db, "workflows")) db.exec(WORKFLOW_SCHEMA_SQL);
+    },
+  },
+  {
+    version: 48,
+    up: (db) => {
+      if (!hasTable(db, "projection_agent_threads")) db.exec(AGENT_THREAD_MIGRATION_SQL);
+    },
+  },
+  {
+    version: 49,
+    // Imported upstream histories have no routine backoff operation. Fork histories keep their rows.
+    up: (db) => {
+      if (!hasTable(db, "routine_backoff")) db.exec(ROUTINE_BACKOFF_SCHEMA_SQL);
+    },
+  },
 ];
 
 const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? BASELINE_SCHEMA_VERSION;
@@ -873,6 +903,7 @@ export function migrateOpenBotDatabase(db: DatabaseSync, options: OpenBotMigrati
   const appliedVersions = readAppliedVersions(db);
   validateAppliedVersions(appliedVersions);
   const currentVersion = latestAppliedVersion(appliedVersions);
+  validateReservedSchema(db, currentVersion);
   const pending = MIGRATIONS.filter((migration) => migration.version > currentVersion);
 
   for (const migration of pending) {
@@ -958,6 +989,198 @@ function validateMigrationRegistry(): void {
   }
 }
 
+// SQLite keeps the name as it was declared, and a table name is the same table whatever its case.
+// A lookup that compares the text exactly therefore misses a table written in upper case.
+function hasTable(db: DatabaseSync, name: string): boolean {
+  return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? COLLATE NOCASE").get(name));
+}
+
+// Compare complete reserved declarations, including checks, keys and indexes. A table name alone
+// cannot prove that an imported operation is safe to skip. The reference database has no user data.
+function validateReservedSchema(db: DatabaseSync, version: number): void {
+  const reference = new DatabaseSync(":memory:");
+  try {
+    reference.exec("PRAGMA foreign_keys = OFF");
+    const groups = [
+      ROUTINE_BACKOFF_SCHEMA_SQL,
+      BROWSER_PROFILE_SCHEMA_SQL,
+      WORKFLOW_SCHEMA_SQL,
+      AGENT_THREAD_SCHEMA_SQL,
+      AGENT_TASK_SCHEMA_SQL,
+    ];
+    const reservedNames = new Set<string>();
+    const reservedTables: string[] = [];
+    const states = groups.map((sql) => {
+      reference.exec(sql);
+      const expected = reference.prepare("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL").all();
+      let present = 0;
+      for (const entry of expected) {
+        const name = String(entry.name);
+        reservedNames.add(name.toLowerCase());
+        // The name of a table is the same table in any case, so the lookup finds it under either.
+        const actual = db.prepare("SELECT sql FROM sqlite_master WHERE name = ? COLLATE NOCASE").get(name);
+        if (!actual) continue;
+        if (
+          typeof actual.sql !== "string" ||
+          typeof entry.sql !== "string" ||
+          !sameReservedSql(actual.sql, entry.sql)
+        ) {
+          throw new Error(`OpenBot database has an unknown reserved schema: ${entry.name}.`);
+        }
+        present += 1;
+      }
+      if (present !== 0 && present !== expected.length) {
+        throw new Error("OpenBot database has an incomplete reserved schema.");
+      }
+      reservedTables.push(
+        ...reference
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .all()
+          .map((entry) => String(entry.name)),
+      );
+      // Each group is independent. Remove only the empty reference objects, never user objects.
+      for (const entry of reference.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()) {
+        reference.exec(`DROP TABLE "${entry.name}"`);
+      }
+      return present > 0;
+    });
+    const reserved = db
+      .prepare(`SELECT name FROM sqlite_master WHERE sql IS NOT NULL AND (
+      name LIKE 'workflow%' OR name LIKE 'browser_profiles%' OR name = 'routine_backoff' COLLATE NOCASE OR
+      name LIKE 'projection_agent_task%' OR name LIKE 'projection_agent_thread%' OR
+      name LIKE 'agent_tasks_%' OR name LIKE 'agent_threads_%' OR
+      tbl_name COLLATE NOCASE IN (${reservedTables.map(() => "?").join(",")}))`)
+      .all(...reservedTables);
+    if (reserved.some((entry) => !reservedNames.has(String(entry.name).toLowerCase()))) {
+      throw new Error("OpenBot database has an unknown reserved schema object.");
+    }
+    const [backoff, profiles, workflows, threads, tasks] = states;
+    const fork =
+      version >= 45 &&
+      backoff &&
+      profiles === version >= 46 &&
+      workflows === version >= 47 &&
+      threads === version >= 48 &&
+      tasks === version < 48;
+    const upstream =
+      !backoff &&
+      profiles &&
+      ((version === 45 && !workflows && !threads && tasks) ||
+        (version === 46 && !threads && tasks) ||
+        (version === 47 && workflows && threads !== tasks));
+    // Imported 45 can commit marker 46 without workflow tables, and imported 46 can commit
+    // marker 47 without threads. These are valid retry states, not marker rewrites.
+    // Upstream 47 can commit our marker 48 before completion 49. Its shape stays unchanged.
+    const imported48 = version === 48 && !backoff && profiles && workflows && threads && !tasks;
+    const earlier = version < 45 && !backoff && !profiles && !workflows && !threads && tasks === version >= 38;
+    if (!earlier && !fork && !upstream && !imported48) {
+      throw new Error("OpenBot database has a contradictory reserved schema and migration history.");
+    }
+  } finally {
+    reference.close();
+  }
+}
+
+// Two declarations of the same schema can hold different text: a space before a comma, `TEXT`
+// against `text`, `IF NOT EXISTS` in one and not in the other, a comment only one side carries.
+// The runner compares the reserved declarations by their token sequence, like the parity test
+// compares the two build paths, so that a difference no caller can observe does not stop the app
+// on a database that comes from the upstream release, whose text is not recorded here.
+function sameReservedSql(left: string, right: string): boolean {
+  const leftTokens = tokenizeSql(left);
+  const rightTokens = tokenizeSql(right);
+  return leftTokens.length === rightTokens.length && leftTokens.every((token, index) => token === rightTokens[index]);
+}
+
+// SQLite stores a CREATE statement close to how it was written, so this text is as much a record
+// of the author's formatting as of the schema. Comparing the token sequence instead drops
+// formatting entirely and keeps what a caller can observe: the identifiers, keywords, operators
+// and literals, in order.
+//
+// A string literal keeps its case, because a DEFAULT 'grok' is data rather than syntax, and
+// IF NOT EXISTS is dropped because only one path writes it.
+export function tokenizeSql(sql: string): readonly string[] {
+  const tokens: string[] = [];
+  let index = 0;
+
+  while (index < sql.length) {
+    const character = sql[index] ?? "";
+
+    if (/\s/.test(character)) {
+      index += 1;
+      continue;
+    }
+    if (character === "-" && sql[index + 1] === "-") {
+      const newline = sql.indexOf("\n", index);
+      index = newline === -1 ? sql.length : newline + 1;
+      continue;
+    }
+    if (character === "/" && sql[index + 1] === "*") {
+      const close = sql.indexOf("*/", index + 2);
+      index = close === -1 ? sql.length : close + 2;
+      continue;
+    }
+    if (character === "'") {
+      const end = closingQuote(sql, index, "'");
+      tokens.push(sql.slice(index, end));
+      index = end;
+      continue;
+    }
+    if (character === '"' || character === "`" || character === "[") {
+      const closing = character === "[" ? "]" : character;
+      const end = closingQuote(sql, index, closing);
+      tokens.push(sql.slice(index + 1, end - 1).toUpperCase());
+      index = end;
+      continue;
+    }
+    const word = /^[A-Za-z_][A-Za-z0-9_$]*/.exec(sql.slice(index));
+    if (word) {
+      tokens.push(word[0].toUpperCase());
+      index += word[0].length;
+      continue;
+    }
+    const number = /^\d+(\.\d+)?/.exec(sql.slice(index));
+    if (number) {
+      tokens.push(number[0]);
+      index += number[0].length;
+      continue;
+    }
+    const operator = TWO_CHARACTER_OPERATORS.find((candidate) => sql.startsWith(candidate, index));
+    tokens.push(operator ?? character);
+    index += operator?.length ?? 1;
+  }
+
+  return withoutIfNotExists(tokens);
+}
+
+const TWO_CHARACTER_OPERATORS = ["<=", ">=", "<>", "!=", "==", "||", "<<", ">>"];
+
+const IF_NOT_EXISTS = ["IF", "NOT", "EXISTS"];
+
+function withoutIfNotExists(tokens: readonly string[]): readonly string[] {
+  const kept: string[] = [];
+  for (const token of tokens) {
+    kept.push(token);
+    if (kept.slice(-IF_NOT_EXISTS.length).join(" ") === IF_NOT_EXISTS.join(" ")) kept.length -= IF_NOT_EXISTS.length;
+  }
+  return kept;
+}
+
+// A quoted run ends at its closing delimiter, which a doubled delimiter escapes.
+// Returns the offset just past it.
+function closingQuote(sql: string, start: number, closing: string): number {
+  let index = start + 1;
+  while (index < sql.length) {
+    if (sql[index] === closing) {
+      if (sql[index + 1] !== closing) return index + 1;
+      index += 2;
+      continue;
+    }
+    index += 1;
+  }
+  return sql.length;
+}
+
 function hasExistingSchema(db: DatabaseSync): boolean {
   return Boolean(
     db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1").get(),
@@ -1021,6 +1244,8 @@ function runMigration(db: DatabaseSync, migration: OpenBotMigration, appliedAt: 
   if (migration.disableForeignKeys) db.exec("PRAGMA foreign_keys = OFF");
   try {
     db.exec("BEGIN IMMEDIATE");
+    // Recheck while the write lock is held before an appended operation skips an imported structure.
+    if (migration.version >= 46) validateReservedSchema(db, migration.version - 1);
     migration.up(db, appliedAt);
     db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(migration.version, appliedAt);
     assertForeignKeys(db);

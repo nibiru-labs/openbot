@@ -15,8 +15,12 @@ import { DatabaseSync } from "node:sqlite";
 import type { DynamicRecord } from "@openbot/contracts/runtime-values";
 import { isDynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-values";
 import { afterEach, describe, expect, it } from "vitest";
-import { migrateOpenBotDatabase } from "./openbot-database-schema";
+import { AGENT_THREAD_SCHEMA_SQL } from "./agent-threads/agent-thread-schema";
+import { BROWSER_PROFILE_SCHEMA_SQL } from "./browser-profiles/browser-profile-schema";
+import { migrateOpenBotDatabase, tokenizeSql } from "./openbot-database-schema";
 import recordedSchemaHistory from "./openbot-database-schema-history.json";
+import upstreamSchemaHistory from "./openbot-database-upstream-schema-history.json";
+import { WORKFLOW_SCHEMA_SQL } from "./workflows/workflow-schema";
 
 const appliedAt = "2026-09-03T10:00:00.000Z";
 
@@ -57,6 +61,14 @@ describe("OpenBot database build paths", () => {
 // entries only grow. A change to a recorded entry is allowed only for a version that has not shipped.
 // Data-only statements, such as an UPDATE, leave no trace in the schema, so review still covers them.
 describe("OpenBot database migration history", () => {
+  it("keeps the released upstream operations at appended fork versions", async () => {
+    const actual = await schemaChangesByVersion();
+    for (const [version, recorded] of Object.entries(upstreamSchemaHistory)) {
+      expect(actual[String(Number(version) + 1)]).toEqual(recorded);
+    }
+    expect(actual["49"]).toEqual({});
+  });
+
   it("keeps the schema change of every recorded migration", async () => {
     const actual = await schemaChangesByVersion();
 
@@ -73,6 +85,49 @@ describe("OpenBot database migration history", () => {
     ).toEqual([]);
   });
 });
+
+describe("OpenBot database reserved schema", () => {
+  // The migration runner builds a reference database from the reserved schema parts and compares
+  // the declarations of the user's database with it, by token sequence. The reference must be the
+  // declaration the upstream release recorded: a database that comes from the upstream release
+  // holds text that this repository does not keep, and the runner must not refuse it for its
+  // formatting alone.
+  const reservedParts: { label: string; sql: string; recorded: Record<string, string | null> }[] = [
+    { label: "browser profiles", sql: BROWSER_PROFILE_SCHEMA_SQL, recorded: upstreamSchemaHistory["45"] },
+    { label: "workflows", sql: WORKFLOW_SCHEMA_SQL, recorded: upstreamSchemaHistory["46"] },
+    { label: "agent threads", sql: AGENT_THREAD_SCHEMA_SQL, recorded: upstreamSchemaHistory["47"] },
+  ];
+
+  it("declares every reserved part the way the upstream release recorded it", () => {
+    for (const part of reservedParts) {
+      const declared = referenceDeclarations(part.sql);
+      const recorded = Object.fromEntries(
+        Object.entries(part.recorded).filter((entry): entry is [string, string] => entry[1] !== null),
+      );
+      expect(Object.keys(declared).sort(), part.label).toEqual(Object.keys(recorded).sort());
+      for (const [name, tokens] of Object.entries(declared)) {
+        expect(tokens, `${part.label}: ${name}`).toEqual(recorded[name]);
+      }
+    }
+  });
+});
+
+// The runner builds its reference the same way: it executes the reserved schema part in an empty
+// database and reads the declarations SQLite kept.
+function referenceDeclarations(sql: string): Record<string, string> {
+  const reference = new DatabaseSync(":memory:");
+  try {
+    reference.exec(sql);
+    return Object.fromEntries(
+      query(reference, "SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL").map((row) => [
+        `${text(row, "type")} ${text(row, "name")}`,
+        tokenizeSql(text(row, "sql")).join(" "),
+      ]),
+    );
+  } finally {
+    reference.close();
+  }
+}
 
 type SchemaChanges = Record<string, string | null>;
 
@@ -250,93 +305,11 @@ function readNormalizedDeclarations(database: DatabaseSync): readonly Declaratio
 // declare the same table from two different pieces of source - the latest schema
 // and the migration that produced it - so comparing the text would go red on a
 // space before a comma, `TEXT` against `text`, `x > 0` against `x>0` or a comment
-// only one side carries, none of which any caller can observe. Comparing the
-// token sequence instead drops formatting entirely and keeps what a caller can
-// observe: the identifiers, keywords, operators and literals, in order.
+// only one side carries, none of which any caller can observe.
 //
-// A string literal keeps its case, because a DEFAULT 'grok' is data rather than
-// syntax, and IF NOT EXISTS is dropped because only one path writes it.
-function tokenizeSql(sql: string): readonly string[] {
-  const tokens: string[] = [];
-  let index = 0;
-
-  while (index < sql.length) {
-    const character = sql[index] ?? "";
-
-    if (/\s/.test(character)) {
-      index += 1;
-      continue;
-    }
-    if (character === "-" && sql[index + 1] === "-") {
-      const newline = sql.indexOf("\n", index);
-      index = newline === -1 ? sql.length : newline + 1;
-      continue;
-    }
-    if (character === "/" && sql[index + 1] === "*") {
-      const close = sql.indexOf("*/", index + 2);
-      index = close === -1 ? sql.length : close + 2;
-      continue;
-    }
-    if (character === "'") {
-      const end = closingQuote(sql, index, "'");
-      tokens.push(sql.slice(index, end));
-      index = end;
-      continue;
-    }
-    if (character === '"' || character === "`" || character === "[") {
-      const closing = character === "[" ? "]" : character;
-      const end = closingQuote(sql, index, closing);
-      tokens.push(sql.slice(index + 1, end - 1).toUpperCase());
-      index = end;
-      continue;
-    }
-    const word = /^[A-Za-z_][A-Za-z0-9_$]*/.exec(sql.slice(index));
-    if (word) {
-      tokens.push(word[0].toUpperCase());
-      index += word[0].length;
-      continue;
-    }
-    const number = /^\d+(\.\d+)?/.exec(sql.slice(index));
-    if (number) {
-      tokens.push(number[0]);
-      index += number[0].length;
-      continue;
-    }
-    const operator = TWO_CHARACTER_OPERATORS.find((candidate) => sql.startsWith(candidate, index));
-    tokens.push(operator ?? character);
-    index += operator?.length ?? 1;
-  }
-
-  return withoutIfNotExists(tokens);
-}
-
-const TWO_CHARACTER_OPERATORS = ["<=", ">=", "<>", "!=", "==", "||", "<<", ">>"];
-
-const IF_NOT_EXISTS = ["IF", "NOT", "EXISTS"];
-
-function withoutIfNotExists(tokens: readonly string[]): readonly string[] {
-  const kept: string[] = [];
-  for (const token of tokens) {
-    kept.push(token);
-    if (kept.slice(-IF_NOT_EXISTS.length).join(" ") === IF_NOT_EXISTS.join(" ")) kept.length -= IF_NOT_EXISTS.length;
-  }
-  return kept;
-}
-
-// A quoted run ends at its closing delimiter, which a doubled delimiter escapes.
-// Returns the offset just past it.
-function closingQuote(sql: string, start: number, closing: string): number {
-  let index = start + 1;
-  while (index < sql.length) {
-    if (sql[index] === closing) {
-      if (sql[index + 1] !== closing) return index + 1;
-      index += 2;
-      continue;
-    }
-    index += 1;
-  }
-  return sql.length;
-}
+// The tokenizer is the one the migration runner uses for the reserved declarations, so the runner
+// and this test cannot drift apart: a database whose reserved declaration differs in text only is
+// accepted by the runner, and this test compares the two build paths the same way.
 
 function readAppliedVersions(database: DatabaseSync): readonly number[] {
   return query(database, "SELECT version FROM schema_migrations ORDER BY version").map((row) => count(row, "version"));

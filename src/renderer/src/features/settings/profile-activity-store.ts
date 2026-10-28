@@ -1,4 +1,4 @@
-import { type AgentSummary, analyticsRange, type HostAnalytics, LOCAL_SERVER_ID } from "@openbot/contracts/ipc";
+import { analyticsRange, type ClientAgentSummary, type HostAnalytics, LOCAL_SERVER_ID } from "@openbot/contracts/ipc";
 import type { ProfileActivityPhase } from "@openbot/ui/features/settings/ProfileActivity";
 import type { ProfileActivityState } from "@openbot/ui/features/settings/SettingsProfileTab";
 import { errorReference } from "@openbot/user-errors";
@@ -19,7 +19,7 @@ export function createProfileActivityStore(
   const [state, setState] = createStore<{
     phase: ProfileActivityPhase;
     report: HostAnalytics | null;
-    agents: AgentSummary[];
+    agents: ClientAgentSummary[];
     errorReference: string | null;
   }>({ phase: "loading", report: null, agents: [], errorReference: null });
   let generation = 0;

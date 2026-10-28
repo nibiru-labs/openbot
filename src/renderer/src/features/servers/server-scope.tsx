@@ -7,8 +7,10 @@ import { isGlobalSearchShortcut } from "../../global-search-shortcut";
 import { useNavigation } from "../../navigation";
 import { createSimpleContext } from "../../simple-context";
 import { useAuth } from "../account/account-context";
+import { useAgentThreads } from "../agent-threads/agent-threads-context";
 import { useAgents } from "../agents/agents-context";
 import { useBrowserTabs } from "../browser/browser-context";
+import { useChannels } from "../channels/channels-context";
 import { useConversation } from "../conversation/conversation-context";
 import { useDirectMessages } from "../conversation/direct-messages-context";
 import { useSetup } from "../onboarding/onboarding-context";
@@ -46,7 +48,16 @@ const ServerScope = createSimpleContext({
     const { centralAuth } = useAuth();
     const { setupState } = useSetup();
     const { servers, activeServerId, initialServersReady, serverLoadRequest, serversLoaded } = useServers();
-    const { pendingAgentSelection, setPendingAgentSelection } = useServerSwitch();
+    const {
+      pendingAgentSelection,
+      setPendingAgentSelection,
+      pendingChannelSelection,
+      setPendingChannelSelection,
+      pendingThreadSelection,
+      setPendingThreadSelection,
+    } = useServerSwitch();
+    const agentThreads = useAgentThreads();
+    const channels = useChannels();
     const { setTeamPresence } = usePresence();
     const {
       activeDirectMemberId,
@@ -157,8 +168,9 @@ const ServerScope = createSimpleContext({
         draft.loading = false;
         draft.sequence = sequence;
       });
+      // By id: a chat window can show a server that the main window does not.
       void serversPort()
-        .servers.getPresence()
+        .servers.getPresenceFor(serverId)
         .then((value) => {
           if (isCurrent()) setTeamPresence(value);
         })
@@ -299,6 +311,22 @@ const ServerScope = createSimpleContext({
         if (!agentId) return;
         setPendingAgentSelection(null);
         selectAgent(agentId);
+      },
+    );
+    createEffect(
+      () => pendingThreadSelection(),
+      (selection) => {
+        if (!selection) return;
+        setPendingThreadSelection(null);
+        void agentThreads.openConversation(selection.agentId, selection.threadId);
+      },
+    );
+    createEffect(
+      () => pendingChannelSelection(),
+      (channelId) => {
+        if (!channelId) return;
+        setPendingChannelSelection(null);
+        void channels.open(channelId);
       },
     );
 

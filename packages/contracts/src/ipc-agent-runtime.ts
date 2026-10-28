@@ -70,6 +70,8 @@ export interface AgentRuntimePromptQuestion {
   question: string;
   isSecret: boolean;
   options: Array<{ label: string; description: string }> | null;
+  /** See `AgentPromptQuestion.multiSelect`. */
+  multiSelect?: boolean;
 }
 
 function isRuntimePromptQuestion(value: unknown): value is AgentRuntimePromptQuestion {
@@ -79,6 +81,7 @@ function isRuntimePromptQuestion(value: unknown): value is AgentRuntimePromptQue
     isBoundedString(value.header, AGENT_RUNTIME_QUESTION_HEADER_LIMIT) &&
     isBoundedString(value.question, AGENT_RUNTIME_TEXT_LIMIT) &&
     isBoolean(value.isSecret) &&
+    (value.multiSelect === undefined || isBoolean(value.multiSelect)) &&
     (value.options === null ||
       (Array.isArray(value.options) &&
         value.options.length <= INPUT_LIMITS.promptOptions &&

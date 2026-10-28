@@ -3,27 +3,35 @@ import {
   memberUpdateRoute,
 } from "@openbot/contracts/team-protocol/host-member-update-v1";
 import { HOST_RELEASE_CAPABILITY, HOST_RELEASE_ROUTES } from "@openbot/contracts/team-protocol/host-release-v1";
-import type { Effect } from "effect";
+import { Effect, Result } from "effect";
 import type { RemoteWorkflowError } from "../remote-service-effects";
-// The server name, logo, timezone, agent memory limit and app update of one server's host. On a
-// joined server the request goes to the host. Identity, timezone, memory limit, settings,
-// cancellation, and forced restarts require an owner or admin.
+// The server name, logo, timezone, agent memory limit, prompt cache time and app update of one
+// server's host. On a joined server the request goes to the host. Identity, timezone, memory limit,
+// prompt cache time, settings, cancellation, and forced restarts require an owner or admin.
 // Ordinary members can check and request an idle update through host-member-update-v1.
 
 import {
+  type AgentAccessChange,
+  type AgentAccessSnapshot,
+  decodeAgentAccessSnapshot,
   decodeHostAgentMemoryLimit,
   decodeHostTimezoneSettings,
   decodeHostUpdateStatus,
+  decodePromptCacheTtlSetting,
   type HostUpdateSettingsChange,
   type HostUpdateStatus,
   hostAgentMemoryLimit,
+  isPromptCacheTtl,
   LOCAL_SERVER_ID,
+  type PromptCacheTtl,
+  parseAgentAccessChange,
   type ServerSummary,
   UPDATE_RESTART_MODES,
   type UpdateHostIdentityInput,
   type UpdateRestartMode,
 } from "@openbot/contracts/ipc";
 import { isOneOf } from "@openbot/contracts/runtime-values";
+import { AGENT_ACCESS_CAPABILITY, AGENT_ACCESS_ROUTES } from "@openbot/contracts/team-protocol/agent-access-v1";
 import {
   AGENT_MEMORY_LIMIT_CAPABILITY,
   AGENT_MEMORY_LIMIT_ROUTES,
@@ -32,10 +40,16 @@ import type { TeamCurrentCapability } from "@openbot/contracts/team-protocol/cur
 import { HOST_ADMIN_CAPABILITY, HOST_ADMIN_ROUTES } from "@openbot/contracts/team-protocol/host-admin-v1";
 import { HOST_TIMEZONE_CAPABILITY, HOST_TIMEZONE_ROUTES } from "@openbot/contracts/team-protocol/host-timezone-v1";
 import { HOST_UPDATE_CAPABILITY, HOST_UPDATE_ROUTES } from "@openbot/contracts/team-protocol/host-update-v1";
+import {
+  PROMPT_CACHE_TTL_CAPABILITY,
+  PROMPT_CACHE_TTL_ROUTES,
+} from "@openbot/contracts/team-protocol/prompt-cache-ttl-v1";
 import { sourceText } from "@openbot/i18n/source";
 import { runCauseEffect } from "../../backend/effect-boundary";
+import { type AgentAccessStore, agentAccessSnapshot } from "../agent-access-store";
 import type { AgentMemoryLimitSetting } from "../agent-memory-limit-preference-store";
 import type { HostService } from "../host-service";
+import type { PromptCacheTtlPreferenceStore } from "../prompt-cache-ttl-preference-store";
 import { acceptEmpty, decodeHostReleaseStatusFromHost, type ResponseDecoder } from "../remote-host-decoding";
 import type { RemoteRequestInit } from "../remote-server-client";
 import { parseServerTimezone, type ServerTimezonePreferenceStore } from "../server-timezone-preference-store";
@@ -62,7 +76,15 @@ interface HostAdminIpcDependencies {
   remoteServers: HostAdminRemoteServers;
   serverTimezone: Pick<ServerTimezonePreferenceStore, "get" | "set">;
   agentMemoryLimit: AgentMemoryLimitSetting;
+  promptCacheTtl: Pick<PromptCacheTtlPreferenceStore, "get" | "set">;
+  agentAccess: Pick<AgentAccessStore, "levels" | "set">;
+  /** The server ID of this computer's host, when it has one. Roles are stored by it. */
+  localServerId: () => string | undefined;
+  localAgentIds: () => string[];
 }
+
+// The user of this computer owns its server, so the roles give them every agent.
+const LOCAL_OWNER = { id: "local-owner", role: "owner" } as const;
 
 /** The body of a `host-update-v1` route: `start` carries the mode, `settings` the switches. */
 type HostUpdateBody = Record<string, never> | { restart: UpdateRestartMode } | HostUpdateSettingsChange;
@@ -72,6 +94,10 @@ export function hostAdminIpcHandlers({
   remoteServers,
   serverTimezone,
   agentMemoryLimit,
+  promptCacheTtl,
+  agentAccess,
+  localServerId,
+  localAgentIds,
 }: HostAdminIpcDependencies): Pick<IpcGroupHandlers, "hostAdmin"> {
   function remoteUpdate(serverId: string, route: string, body: HostUpdateBody): Promise<HostUpdateStatus> {
     const role = remoteServers.list().find((server) => server.id === serverId)?.role;
@@ -94,6 +120,27 @@ export function hostAdminIpcHandlers({
     if (!remoteServers.supportsCapability(serverId, AGENT_MEMORY_LIMIT_CAPABILITY))
       throw new Error(sourceText("error.team.agentMemoryLimitUnsupported"));
     return runCauseEffect(remoteServers.request(serverId, route, decodeHostAgentMemoryLimit, { method: "POST", body }));
+  }
+  function remotePromptCacheTtl(serverId: string, route: string, body: { ttl?: PromptCacheTtl }) {
+    if (!remoteServers.supportsCapability(serverId, PROMPT_CACHE_TTL_CAPABILITY))
+      throw new Error(sourceText("error.team.promptCacheTtlUnsupported"));
+    return runCauseEffect(
+      remoteServers.request(serverId, route, decodePromptCacheTtlSetting, { method: "POST", body }),
+    );
+  }
+  function localAccessServerId(): string {
+    const serverId = localServerId();
+    if (!serverId) throw new Error(sourceText("error.team.agentAccessUnsupported"));
+    return serverId;
+  }
+  function remoteAccess(
+    serverId: string,
+    route: string,
+    body: AgentAccessChange | Record<string, never>,
+  ): Promise<AgentAccessSnapshot> {
+    if (!remoteServers.supportsCapability(serverId, AGENT_ACCESS_CAPABILITY))
+      throw new Error(sourceText("error.team.agentAccessUnsupported"));
+    return runCauseEffect(remoteServers.request(serverId, route, decodeAgentAccessSnapshot, { method: "POST", body }));
   }
   // This computer updates from Settings. The renderer shows the tab for a joined server only.
   const localUpdate = (): never => {
@@ -185,6 +232,35 @@ export function hostAdminIpcHandlers({
           hostAgentMemoryLimit(await runCauseEffect(agentMemoryLimit.set(parseAgentMemoryLimitPreference({ limit })))),
         remote: (limit, serverId) => remoteMemoryLimit(serverId, AGENT_MEMORY_LIMIT_ROUTES.update, { limit }),
       }),
+      getPromptCacheTtl: scopedQueryHandler({
+        local: () => promptCacheTtl.get(),
+        remote: (serverId) => remotePromptCacheTtl(serverId, PROMPT_CACHE_TTL_ROUTES.settings, {}),
+      }),
+      setPromptCacheTtl: scopedHandler(parsePromptCacheTtl, {
+        local: (ttl) => runCauseEffect(promptCacheTtl.set(ttl)),
+        remote: (ttl, serverId) => remotePromptCacheTtl(serverId, PROMPT_CACHE_TTL_ROUTES.update, { ttl }),
+      }),
+      getAgentAccess: scopedQueryHandler({
+        local: () => {
+          const serverId = localAccessServerId();
+          return agentAccessSnapshot(agentAccess.levels(serverId), LOCAL_OWNER, localAgentIds());
+        },
+        remote: (serverId) => remoteAccess(serverId, AGENT_ACCESS_ROUTES.read, {}),
+      }),
+      setAgentAccess: scopedHandler(parseAgentAccessChange, {
+        local: async (change) => {
+          const serverId = localAccessServerId();
+          // The local owner sees every agent of this host.
+          const shown = new Set(localAgentIds());
+          const saved = await Effect.runPromise(Effect.result(agentAccess.set(serverId, change, shown, shown)));
+          if (Result.isFailure(saved)) {
+            if (saved.failure._tag === "AgentAccessStale") throw new Error(sourceText("error.team.agentAccessStale"));
+            throw saved.failure.cause;
+          }
+          return agentAccessSnapshot(agentAccess.levels(serverId), LOCAL_OWNER, [...shown]);
+        },
+        remote: (change, serverId) => remoteAccess(serverId, AGENT_ACCESS_ROUTES.set, change),
+      }),
     },
   };
 }
@@ -200,6 +276,11 @@ function wireIdentity(input: UpdateHostIdentityInput) {
             : null,
         }),
   };
+}
+
+function parsePromptCacheTtl(value: unknown): PromptCacheTtl {
+  if (!isPromptCacheTtl(value)) throw new Error("Prompt cache time is required.");
+  return value;
 }
 
 function parseMemoryLimitCount(value: unknown): number {

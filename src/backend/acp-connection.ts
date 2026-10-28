@@ -5,7 +5,7 @@ import { type Client, ClientSideConnection, ndJsonStream } from "@agentclientpro
 import { createOpenBotLogger } from "@openbot/logging";
 import { Deferred, Effect } from "effect";
 import { AgentProcessExitError, type DiagnosticOrigin } from "./agent-client";
-import { type AgentCliInfo, cliSpawnTarget } from "./cli";
+import { type AgentCliInfo, cliPathEnvironment, cliSpawnTarget } from "./cli";
 import { LineTooLongError, limitLineLength } from "./jsonl";
 import type { SpawnTarget } from "./process-confinement";
 import {
@@ -74,7 +74,13 @@ export class AcpConnection {
     const child = spawnWithProviderTemp(privateTemp && { ...privateTemp, provider: this.options.label() }, (tempEnv) =>
       spawn(target.command, target.args, {
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, ...this.options.env, ...this.options.extraEnv?.(), ...tempEnv },
+        env: {
+          ...process.env,
+          ...cliPathEnvironment(this.options.cli),
+          ...this.options.env,
+          ...this.options.extraEnv?.(),
+          ...tempEnv,
+        },
         windowsVerbatimArguments: target.windowsVerbatimArguments,
         windowsHide: true,
       }),

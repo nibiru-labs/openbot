@@ -1,11 +1,16 @@
-export type ExternalLinkTarget = "Default browser" | "OpenBot";
-
 import {
+  type AgentDefaults,
   type AgentMemoryLimit,
   type BusyMessageMode,
+  DEFAULT_AGENT_DEFAULTS,
   DEFAULT_AGENT_MEMORY_LIMIT,
+  DEFAULT_EXTERNAL_LINK_PREFERENCE,
   DEFAULT_TOKEN_BUDGET,
+  type ExternalLinkTarget,
 } from "@openbot/contracts/ipc";
+
+export type { ExternalLinkTarget };
+
 /** Which chord sends a message. Re-exported here so settings state can name the same type. */
 import type { SendShortcutMode } from "../conversation/send-shortcut";
 
@@ -18,8 +23,14 @@ export type SoundTheme = (typeof SOUND_THEMES)[number];
 export type SoundChoice = "off" | SoundTheme;
 
 export interface GeneralSettingsValue {
-  launchAtLogin: boolean;
-  keepRunningInBackground: boolean;
+  /** Null hides the switch: a development run and a server cannot open at login. */
+  launchAtLogin: boolean | null;
+  /** Null hides the switch: macOS always keeps running, and a server has no window. */
+  keepRunningInBackground: boolean | null;
+  /** Null hides the switch: Linux does not report a change of the power source, and a server never sleeps. */
+  keepAwake: boolean | null;
+  /** Null where `keepAwake` is null. */
+  keepAwakeOnBattery: boolean | null;
   restoreLastWorkspace: boolean;
   externalLinkTarget: ExternalLinkTarget;
   desktopNotifications: boolean;
@@ -39,9 +50,13 @@ export interface GeneralSettingsValue {
   taskCompletionSound: boolean;
   /** How the user sends a message: plain Enter, or the platform modifier with Enter. */
   sendShortcut: SendShortcutMode;
+  /** The steps of an agent's turn (thinking, progress, memory changes) are open at first. */
+  showAgentSteps: boolean;
   /** What a message sent to a busy agent does, unless the agent or the message sets its own. */
   busyMessageMode: BusyMessageMode;
-  /** How many memories one agent on this computer can hold. */
+  /** What an agent of this computer does when it has no value of its own for the setting. */
+  agentDefaults: AgentDefaults;
+  /** How many memories one agent on this computer can hold. Read only here: Server settings set it. */
   agentMemoryLimit: AgentMemoryLimit;
   /** The tokens one agent may use in an hour, or 0 for no limit. */
   tokenBudgetPerHour: number;
@@ -61,10 +76,12 @@ export interface GeneralSettingsValue {
 }
 
 export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsValue = {
-  launchAtLogin: true,
-  keepRunningInBackground: false,
+  launchAtLogin: null,
+  keepRunningInBackground: null,
+  keepAwake: null,
+  keepAwakeOnBattery: null,
   restoreLastWorkspace: true,
-  externalLinkTarget: "Default browser",
+  externalLinkTarget: DEFAULT_EXTERNAL_LINK_PREFERENCE.target,
   desktopNotifications: true,
   notificationPreview: true,
   macBookNotch: true,
@@ -77,7 +94,9 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsValue = {
   macBookNotchNewServers: true,
   taskCompletionSound: true,
   sendShortcut: "enter",
+  showAgentSteps: false,
   busyMessageMode: "queue",
+  agentDefaults: DEFAULT_AGENT_DEFAULTS,
   agentMemoryLimit: DEFAULT_AGENT_MEMORY_LIMIT,
   tokenBudgetPerHour: DEFAULT_TOKEN_BUDGET.perHour,
   tokenBudgetPerTurn: DEFAULT_TOKEN_BUDGET.perTurn,

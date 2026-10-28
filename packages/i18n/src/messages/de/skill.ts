@@ -15,7 +15,6 @@ export const messages = {
   "skill.emptyEnabled": "Dieser Agent hat keine aktivierten Fähigkeiten.",
   "skill.emptyAssigned": "Diesem Agenten sind noch keine Fähigkeiten zugewiesen.",
   "skill.folderSkill": "OpenBot hat diese Fähigkeit nicht installiert. Bearbeite oder entferne sie in {location}.",
-  "skill.localOnHost": "Diese lokale Fähigkeit ist auf dem Host gespeichert. Öffne ihre Details auf dem Host-Computer.",
   "skill.moreFor": "Mehr für {name}",
   "skill.update": "Aktualisieren",
   "skill.updateName": "{name} aktualisieren",

@@ -145,6 +145,7 @@ const browser: AgentBrowserHost = {
   clearControls: () => {},
   endControl: () => {},
   close: () => Effect.void,
+  clearAgentSession: () => Effect.void,
 };
 
 /** The `thread/start` parameters that OpenBot sent to the fake Codex. */

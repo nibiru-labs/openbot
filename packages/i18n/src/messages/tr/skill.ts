@@ -14,7 +14,6 @@ export const messages = {
   "skill.emptyEnabled": "Bu ajanın etkinleştirilmiş becerisi yok.",
   "skill.emptyAssigned": "Bu ajanın henüz atanmış becerisi yok.",
   "skill.folderSkill": "OpenBot bu beceriyi yüklemedi. {location} içinde düzenleyin veya kaldırın.",
-  "skill.localOnHost": "Bu yerel beceri ana makinede depolanır. Ayrıntılarını o bilgisayarda açın.",
   "skill.moreFor": "{name} için daha fazlası",
   "skill.update": "Güncelle",
   "skill.updateName": "Güncelle: {name}",

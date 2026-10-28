@@ -8,7 +8,7 @@ import { Pressable, View } from "react-native";
 import { MobileChatView } from "@/features/chat/components/agent-chat-view";
 import { useLeaveChat } from "@/features/chat/components/use-leave-chat";
 import { noteChatOpened } from "@/features/quick-actions/model/recent-agents";
-import { useMobileWorkspace } from "@/features/workspace/context/mobile-workspace-context";
+import { useMobileWorkspaceSelector } from "@/features/workspace/context/mobile-workspace-context";
 import { haptics } from "@/shared/lib/haptics";
 import { useText } from "@/shared/lib/text";
 
@@ -17,11 +17,13 @@ export function AgentChatScreen() {
   const leaveChat = useLeaveChat();
 
   const { agentId, messageId } = useLocalSearchParams<{ agentId: string; messageId?: string }>();
-  const { agents } = useMobileWorkspace();
   const foreground = useThemeColor("foreground");
   const resolvedAgentId = Array.isArray(agentId) ? agentId[0] : agentId;
   const resolvedMessageId = Array.isArray(messageId) ? messageId[0] : messageId;
-  const agent = agents.find((candidate) => candidate.id === resolvedAgentId);
+  // Only this agent: a change elsewhere in the workspace does not render the whole chat again.
+  const agent = useMobileWorkspaceSelector((current) =>
+    current.agents.find((candidate) => candidate.id === resolvedAgentId),
+  );
   const openedAgentId = agent?.id;
   // The app icon offers the chats that the user opened last.
   useFocusEffect(

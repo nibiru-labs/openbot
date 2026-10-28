@@ -6,6 +6,7 @@ import {
   parseGenerateAgentProfile,
   parseHostAnalyticsInput,
   parseSaveAgentProfile,
+  type RespondToBrowserSecretInput,
 } from "@openbot/contracts/ipc";
 import { hiddenProviderAgentIds, isPeerHiddenProvider } from "./provider-visibility";
 // Agents: the collection, the sidebar that arranges them, and everything under one agent's id.
@@ -23,10 +24,15 @@ import { hiddenProviderAgentIds, isPeerHiddenProvider } from "./provider-visibil
 import { readFile } from "node:fs/promises";
 import { isAvatarMimeType } from "@openbot/contracts/avatar-images";
 import { AVATAR_IMAGE_LIMITS, INPUT_LIMITS } from "@openbot/contracts/input-limits";
-import type { CreateAgentInput, DuplicateAgentResult } from "@openbot/contracts/ipc";
+import { type CreateAgentInput, type DuplicateAgentResult, WORKFLOWS_USAGE_ID } from "@openbot/contracts/ipc";
 import { TEAM_API_ROUTES } from "@openbot/contracts/team-api-routes";
+import {
+  BROWSER_SECRET_VAULT_CAPABILITY,
+  BROWSER_SECRET_VAULT_ROUTES,
+} from "@openbot/contracts/team-protocol/browser-secret-vault-v1";
 import { V5_AGENT_MODEL } from "@openbot/contracts/team-protocol/v5-adapter";
 import { V6_AGENT_MODEL } from "@openbot/contracts/team-protocol/v6-adapter";
+import { WORKFLOWS_CAPABILITY } from "@openbot/contracts/team-protocol/workflows-v1";
 import { sourceText } from "@openbot/i18n/source";
 import type { Effect } from "effect";
 import type { AgentDuplicationFailed } from "../../backend/agent/duplication-gate";
@@ -49,6 +55,8 @@ import {
   promptRequestId,
   readBinary,
   readJson,
+  requireAdmin,
+  requireAgentLevel,
   stringField,
 } from "./request-helpers";
 import { routeAgentConversation } from "./route-agent-conversation";
@@ -94,6 +102,18 @@ export async function routeAgents(
   function requireVisible(id: string | undefined | null): void {
     if (id && hidden.has(id)) throw new HttpError(404, sourceText("error.team.agentNotFound"));
   }
+  // An agent that the roles close to the member answers as a missing agent. The dispatcher does that
+  // for an id in the path or in the query; an id in the body needs the same rule here.
+  function requireVisibleAgent(agentId: string): void {
+    if (context.agentLevel(agentId) === "none") throw new HttpError(404, sourceText("error.team.agentNotFound"));
+  }
+  // An answer to a prompt, an approval or a browser request acts for its agent, so it needs `chat`.
+  // The agent service refuses a request that is not pending.
+  function requireRequestAgent(agentId: string | undefined): void {
+    if (agentId === undefined) return;
+    requireVisibleAgent(agentId);
+    requireAgentLevel(context, agentId, "chat");
+  }
 
   if (method === "GET" && url.pathname === TEAM_API_ROUTES.analytics) {
     if (!capabilities.has("host-analytics"))
@@ -104,9 +124,19 @@ export async function routeAgents(
       endDate: url.searchParams.get("endDate"),
       timeZone: url.searchParams.get("timeZone"),
     });
-    if (input.agentId && !agents.listAgents().some((agent) => agent.id === input.agentId))
+    // A peer without workflows-v1 does not know the Workflows row.
+    const workflows = capabilities.has(WORKFLOWS_CAPABILITY);
+    if (
+      input.agentId &&
+      !(workflows && input.agentId === WORKFLOWS_USAGE_ID) &&
+      !agents.listAgents().some((agent) => agent.id === input.agentId)
+    )
       throw new HttpError(404, sourceText("error.team.agentNotFound"));
-    return json(200, agents.getHostAnalytics(input));
+    const report = agents.getHostAnalytics(input);
+    return json(
+      200,
+      workflows ? report : { ...report, agents: report.agents.filter((row) => row.agentId !== WORKFLOWS_USAGE_ID) },
+    );
   }
   if (
     method === "POST" &&
@@ -127,6 +157,12 @@ export async function routeAgents(
           agents.generateProfile(parseGenerateAgentProfile(body), sidebarLayout.getSnapshot().sections),
         ),
       );
+    }
+    if (typeof body.agentId === "string") {
+      // An agent that the roles close to the member answers as a missing agent, as an id in the path
+      // does.
+      requireVisibleAgent(body.agentId);
+      requireAgentLevel(context, body.agentId, "manage");
     }
     return json(
       200,
@@ -195,6 +231,11 @@ export async function routeAgents(
   if (agentMatch) {
     const agentId = pathIdentifier(agentMatch[1], "agentId");
     const action = agentMatch[2] ?? "";
+    // The gate runs for the writes that a route below really serves. A wrong method or an unknown
+    // action is not a route: the request stays "unmatched" and the dispatcher answers 404, as it
+    // did before the gate existed. Delete keeps its own admin check and message.
+    const writeLevel = agentWriteLevel(method, action);
+    if (writeLevel) requireAgentLevel(context, agentId, writeLevel);
     if (method === "GET" && action === "analytics") {
       if (!capabilities.has("agent-analytics"))
         throw new HttpError(400, sourceText("error.team.agentAnalyticsUnsupported"));
@@ -217,7 +258,8 @@ export async function routeAgents(
     if (method === "PATCH" && !action) {
       const input = agentUpdate(await readJson(request), agentId);
       if (input.provider !== undefined) requireVisibleProvider({ provider: input.provider });
-      return json(200, await runCauseEffect(agents.updateAgent(input)));
+      // The released protocol has no `pendingRuntime`, so a provider change during work is refused.
+      return json(200, await runCauseEffect(agents.updateAgent(input, undefined, false)));
     }
     if (method === "POST" && action === "duplicate") {
       const body = await readJson(request);
@@ -268,10 +310,12 @@ export async function routeAgents(
 
   if (method === "POST" && url.pathname === TEAM_API_ROUTES.respond.prompt) {
     const body = await readJson(request);
+    const requestId = promptRequestId(body.requestId);
+    requireRequestAgent(agents.agentIdForRequest(requestId));
     const sender = memberSender(member);
     await runCauseEffect(
       agents.respondToPrompt(
-        { requestId: promptRequestId(body.requestId), answers: promptAnswers(body.answers) },
+        { requestId, answers: promptAnswers(body.answers) },
         // A UI block's privileged action is for the owner and admins only.
         { ...(sender ? { sender } : {}), privileged: member.role !== "member" },
       ),
@@ -280,25 +324,55 @@ export async function routeAgents(
   }
   if (method === "POST" && url.pathname === TEAM_API_ROUTES.respond.approval) {
     const body = await readJson(request);
+    const requestId = promptRequestId(body.requestId);
+    requireRequestAgent(agents.agentIdForRequest(requestId));
     await runCauseEffect(
-      agents.respondToApproval({
-        requestId: promptRequestId(body.requestId),
-        decision: approvalDecision(body.decision),
-      }),
-    ).catch(inactiveAsConflict);
+      agents.respondToApproval(
+        { requestId, decision: approvalDecision(body.decision) },
+        // Some approvals let agents use what is the owner's alone, such as a saved card.
+        { owner: member.role === "owner" },
+      ),
+    ).catch(refusedPromptAnswer);
     return empty(204);
   }
   if (method === "POST" && url.pathname === BROWSER_SECRET_RESPONSE_PATH) {
     if (!capabilities.has("browser-secret-handoff"))
       throw new HttpError(400, sourceText("error.team.secureAuthUnsupported"));
-    await runCauseEffect(agents.respondToBrowserSecret(parseBrowserSecretResponse(await readJson(request))));
+    const input = parseBrowserSecretResponse(await readJson(request));
+    // The agent service refuses an agent ID that is not the request's own.
+    requireRequestAgent(input.agentId);
+    await runCauseEffect(agents.respondToBrowserSecret(input));
     return empty(204);
+  }
+  if (method === "POST" && url.pathname === BROWSER_SECRET_VAULT_ROUTES.respond) {
+    // The submit has the gates of the released route; the save adds its own.
+    if (!capabilities.has("browser-secret-handoff"))
+      throw new HttpError(400, sourceText("error.team.secureAuthUnsupported"));
+    if (!capabilities.has(BROWSER_SECRET_VAULT_CAPABILITY))
+      throw new HttpError(400, sourceText("error.team.vaultUnsupported"));
+    // The Vault is the owner's and the admins', as on the `vault-v1` routes.
+    requireAdmin(member);
+    const body = await readJson(request);
+    let input: RespondToBrowserSecretInput;
+    try {
+      input = parseBrowserSecretResponse({ ...body, decision: "submit" });
+    } catch (error) {
+      // The frozen codec of the vault route takes an empty secret, but the parser of the released
+      // response does not. The parser throws a plain error, so the route answers 400 for the body,
+      // as the released route does.
+      throw new HttpError(400, error instanceof Error ? error.message : "Invalid secure authentication response.");
+    }
+    requireRequestAgent(input.agentId);
+    await runCauseEffect(agents.respondToBrowserSecret({ ...input, saveToVault: true }));
+    return json(200, {});
   }
   if (method === "POST" && url.pathname === TEAM_API_ROUTES.respond.browserTakeover) {
     const body = await readJson(request);
+    const requestId = promptRequestId(body.requestId);
+    requireRequestAgent(agents.agentIdForRequest(requestId));
     await runCauseEffect(
       agents.respondToBrowserTakeover({
-        requestId: promptRequestId(body.requestId),
+        requestId,
         decision: browserTakeoverDecision(body.decision),
       }),
     );
@@ -306,6 +380,50 @@ export async function routeAgents(
   }
 
   return "unmatched";
+}
+
+type AgentWriteLevel = "view" | "chat" | "manage";
+
+// Every write under one agent, with the level it needs. A pair that is not in this table is not a
+// route: the request must stay "unmatched", so that the dispatcher answers 404 as it did before the
+// write gate. A new write route belongs here with the level it needs.
+const AGENT_WRITE_ROUTES: readonly (readonly [method: string, action: RegExp, level: AgentWriteLevel])[] = [
+  // The agent itself.
+  ["PATCH", /^$/, "manage"],
+  ["POST", /^duplicate$/, "manage"],
+  ["PUT", /^avatar$/, "manage"],
+  ["DELETE", /^avatar$/, "manage"],
+  // The memories of the agent.
+  ["POST", /^memories$/, "manage"],
+  ["DELETE", /^memories$/, "manage"],
+  ["PATCH", /^memories\/[^/]+$/, "manage"],
+  ["DELETE", /^memories\/[^/]+$/, "manage"],
+  // The routines of the agent.
+  ["POST", /^routines$/, "manage"],
+  ["PATCH", /^routines\/[^/]+$/, "manage"],
+  ["DELETE", /^routines\/[^/]+$/, "manage"],
+  ["POST", /^routines\/[^/]+\/test$/, "manage"],
+  // The read markers of the member are the member's own.
+  ["POST", /^conversation\/read$/, "view"],
+  ["POST", /^conversation\/unread$/, "view"],
+  // Talking to the agent.
+  ["POST", /^messages$/, "chat"],
+  ["POST", /^reactions$/, "chat"],
+  ["POST", /^interrupt$/, "chat"],
+  ["POST", /^failures\/acknowledge$/, "chat"],
+  ["POST", /^queue\/edit$/, "chat"],
+  ["POST", /^queue\/cancel$/, "chat"],
+  ["POST", /^queue\/steer$/, "chat"],
+  ["POST", /^queue\/update$/, "chat"],
+  ["POST", /^queue\/reorder$/, "chat"],
+];
+
+/** The level that the write needs, or `undefined` when no route serves this method and action. */
+function agentWriteLevel(method: string, action: string): AgentWriteLevel | undefined {
+  for (const [routeMethod, routeAction, level] of AGENT_WRITE_ROUTES) {
+    if (routeMethod === method && routeAction.test(action)) return level;
+  }
+  return undefined;
 }
 
 /**
@@ -317,7 +435,7 @@ function inactiveAsConflict(error: unknown): never {
   throw error;
 }
 
-/** As `inactiveAsConflict`, and a member's answer that only the owner or an admin may give is forbidden. */
+/** As `inactiveAsConflict`, and an answer that the member's role may not give is forbidden. */
 function refusedPromptAnswer(error: unknown): never {
   if (error instanceof ForbiddenAttentionAnswer) throw new HttpError(403, error.message);
   return inactiveAsConflict(error);

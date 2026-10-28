@@ -128,6 +128,7 @@ async function verifyLiveCompletion(store: AgentStore): Promise<void> {
     clearControls: () => {},
     endControl: () => {},
     close: () => Effect.void,
+    clearAgentSession: () => Effect.void,
   };
   const agents = new AgentService({
     store,

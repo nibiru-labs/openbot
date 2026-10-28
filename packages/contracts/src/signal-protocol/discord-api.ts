@@ -51,9 +51,11 @@ export interface DiscordInboundAttachment {
 export interface DiscordInboundQuote {
   authorId: string;
   authorName: string;
-  /** Discord markdown. Mentions stay as `<@id>`. */
+  /** Discord markdown. Mentions stay as `<@id>`. Empty when the message has only attachments. */
   content: string;
   sentAt: string;
+  /** Empty from an older Signal. */
+  attachments: DiscordInboundAttachment[];
 }
 
 /** One guild message that mentions OpenBot. */
@@ -161,6 +163,8 @@ export interface DiscordHistoryMessage {
   content: string;
   replyToId: string | null;
   sentAt: string;
+  /** Empty from an older Signal. */
+  attachments: DiscordInboundAttachment[];
 }
 
 /** One place of `listChannels`. A thread is a channel too: a post to its id goes into the thread. */
@@ -249,7 +253,15 @@ function quote(value: unknown): DiscordInboundQuote | null {
     authorName: text(item.authorName),
     content,
     sentAt: text(item.sentAt),
+    attachments: attachments(item.attachments),
   };
+}
+
+function attachments(value: unknown): DiscordInboundAttachment[] {
+  // An older Signal sends no attachments.
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > DISCORD_ATTACHMENTS_LIMIT) invalid();
+  return value.map(attachment);
 }
 
 function inboundMessage(value: unknown): DiscordInboundMessage {
@@ -330,6 +342,7 @@ export function decodeDiscordHistory(value: unknown): DiscordHistoryMessage[] {
       content: text(item.content),
       replyToId: nullableSnowflake(item.replyToId),
       sentAt: text(item.sentAt),
+      attachments: attachments(item.attachments),
     };
   });
 }
