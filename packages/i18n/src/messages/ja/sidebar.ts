@@ -98,6 +98,8 @@ export const messages = {
   "sidebar.state.routineFailed": { other: "{count} 件のルーティンが失敗しました" },
   "sidebar.state.routineWaiting": { other: "{count} 件のルーティンが待機中です" },
   "sidebar.state.routineRunning": { other: "{count} 件のルーティンが実行中です" },
+  "sidebar.state.usageLimitAttention": "使用量の上限に対応が必要です",
+  "sidebar.state.usageLimitAttentionChip": "確認",
   "sidebar.state.usageLimit": "上限のリセット待ち",
   "sidebar.state.usageLimitResets": "上限のリセット待ち · {reset}",
   "sidebar.state.usageLimitChip": "上限",

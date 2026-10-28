@@ -38,6 +38,7 @@ import {
 } from "./agent-runtime-snapshot";
 import { useAgents } from "./agents-context";
 import { agentsPort } from "./agents-port";
+import { reconcileWaitedUsageLimits } from "./waited-usage-limits";
 
 /**
  * The one subscriber to `agent.onEvent`, and the only place a single event is
@@ -82,6 +83,7 @@ export function AgentEventBridge() {
     setTurnProgress,
     setTurnStepLines,
     setFailedTurns,
+    usageLimits,
     setUsageLimits,
     setUsageLimitedModels,
     setWaitedUsageLimits,
@@ -389,14 +391,16 @@ export function AgentEventBridge() {
     );
     setFailedTurns(Object.fromEntries(snapshot.failedTurns.map((turn) => [turn.agentId, turn.turnId])));
     setContextStates(Object.fromEntries((snapshot.contextStates ?? []).map((state) => [state.agentId, state])));
-    const usageLimits = Object.fromEntries(
-      (snapshot.usageLimits ?? []).map((limit) => [limit.agentId, limit.resetsAt]),
+    const prevUsageLimits = usageLimits();
+    const nextUsageLimits = Object.fromEntries(
+      (snapshot.usageLimits ?? []).map((limit) => [
+        limit.agentId,
+        { resetsAt: limit.resetsAt, attention: limit.attention },
+      ]),
     );
-    setUsageLimits(usageLimits);
+    setUsageLimits(nextUsageLimits);
     // A hold that ended takes its "Wait" with it, so the next hold asks again.
-    setWaitedUsageLimits((current) =>
-      Object.fromEntries(Object.entries(current).filter(([agentId]) => agentId in usageLimits)),
-    );
+    setWaitedUsageLimits((current) => reconcileWaitedUsageLimits(current, prevUsageLimits, nextUsageLimits));
     setUsageLimitedModels(snapshot.usageLimitedModels ?? []);
     setQueues((current) => reconcileQueuesWithRuntimeWork(current, snapshot.work, runtimeTurns));
     setPendingPrompts((current) => reconcileAttentionPrompts(current, snapshot, submittedPromptRequests()));

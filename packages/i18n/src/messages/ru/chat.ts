@@ -208,6 +208,9 @@ export const messages = {
   "chat.marker.contextReset": "Начат новый чат",
   "chat.marker.pause.continue": "Продолжить",
   "chat.marker.pause.continued": "Продолжено",
+  "chat.usageLimit.attention": "Требует внимания",
+  "chat.usageLimit.attentionBody":
+    "Повторная попытка не подтвердила восстановление. Проверьте аккаунт провайдера или переключитесь на другую модель, чтобы продолжить.",
   "chat.usageLimit.title": "Лимит использования {provider} исчерпан",
   "chat.usageLimit.onHold": "Сообщение отложено",
   "chat.usageLimit.bodyReset":
@@ -217,6 +220,7 @@ export const messages = {
   "chat.usageLimit.sendTo": "Отправить в",
   "chat.usageLimit.remember": "В следующий раз переключать без вопросов",
   "chat.usageLimit.wait": "Дождаться сброса",
+  "chat.usageLimit.switch": "Переключить на {model}",
   "chat.usageLimit.send": "Отправить в {model}",
   "chat.usageLimit.failed": "Не удалось изменить модель. Повторите попытку.",
   "chat.marker.marketplaceSuggestion": "Предложено приложение из каталога",

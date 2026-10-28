@@ -291,6 +291,9 @@ export interface UsageLimitAskCardProps {
   provider: AgentProviderId;
   /** Epoch seconds, or null when the provider has not said. */
   resetsAt: number | null;
+  /** The probe did not confirm recovery and needs the user to act. */
+  attention?: boolean;
+  hasQueuedMessage?: boolean;
   /** The models that can take the message now, the first one preselected. */
   options: readonly BackupModelOption[];
   /** Moves the agent. `remember` saves the choice first in the order and switches without asking next time. */
@@ -313,6 +316,7 @@ export function UsageLimitAskCard(props: UsageLimitAskCardProps) {
   const [sending, setSending] = createSignal(false);
   const [failure, setFailure] = createSignal<{ message: string; reference: string | null } | null>(null);
   const body = () => {
+    if (props.attention) return t("chat.usageLimit.attentionBody");
     const reset = formatUsageReset(props.resetsAt, format);
     return reset ? t("chat.usageLimit.bodyReset", { reset }) : t("chat.usageLimit.body");
   };
@@ -332,46 +336,50 @@ export function UsageLimitAskCard(props: UsageLimitAskCardProps) {
       <header class="conversation-interaction-header">
         <strong id={titleId}>{t("chat.usageLimit.title", { provider: agentProviderName(props.provider) })}</strong>
         <Badge variant="warning-light" class="conversation-interaction-status" role="status">
-          <LoaderCircle class="conversation-interaction-spinner" data-icon="inline-start" aria-hidden="true" />
-          {t("chat.usageLimit.onHold")}
+          <Show when={!props.attention}>
+            <LoaderCircle class="conversation-interaction-spinner" data-icon="inline-start" aria-hidden="true" />
+          </Show>
+          {props.attention ? t("chat.usageLimit.attention") : t("chat.usageLimit.onHold")}
         </Badge>
       </header>
       <p class="usage-limit-ask-body">{body()}</p>
-      <Select<BackupModelOption>
-        class="usage-limit-ask-select"
-        options={[...props.options]}
-        optionValue="key"
-        optionTextValue={label}
-        value={picked() ?? null}
-        disabled={sending()}
-        onChange={(option) => {
-          if (option) setChoice(option);
-        }}
-        itemComponent={(item) => (
-          <SelectItem item={item.item}>
-            <OptionContent option={item.item.rawValue} />
-          </SelectItem>
-        )}
-      >
-        <SelectTrigger aria-label={t("chat.usageLimit.sendTo")}>
-          <SelectValue<BackupModelOption>>
-            {(state) => {
-              const option = state.selectedOption();
-              return option ? <OptionContent option={option} /> : null;
-            }}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent />
-      </Select>
-      <label class="usage-limit-ask-remember" for={rememberId}>
-        <Checkbox
-          id={rememberId}
-          checked={remember()}
+      <Show when={props.options.length > 0}>
+        <Select<BackupModelOption>
+          class="usage-limit-ask-select"
+          options={[...props.options]}
+          optionValue="key"
+          optionTextValue={label}
+          value={picked() ?? null}
           disabled={sending()}
-          onChange={(event) => setRemember(event.currentTarget.checked)}
-        />
-        {t("chat.usageLimit.remember")}
-      </label>
+          onChange={(option) => {
+            if (option) setChoice(option);
+          }}
+          itemComponent={(item) => (
+            <SelectItem item={item.item}>
+              <OptionContent option={item.item.rawValue} />
+            </SelectItem>
+          )}
+        >
+          <SelectTrigger aria-label={t("chat.usageLimit.sendTo")}>
+            <SelectValue<BackupModelOption>>
+              {(state) => {
+                const option = state.selectedOption();
+                return option ? <OptionContent option={option} /> : null;
+              }}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent />
+        </Select>
+        <label class="usage-limit-ask-remember" for={rememberId}>
+          <Checkbox
+            id={rememberId}
+            checked={remember()}
+            disabled={sending()}
+            onChange={(event) => setRemember(event.currentTarget.checked)}
+          />
+          {t("chat.usageLimit.remember")}
+        </label>
+      </Show>
       <Show when={failure()}>
         {(details) => (
           <p class="usage-limit-ask-error" role="alert">
@@ -381,13 +389,17 @@ export function UsageLimitAskCard(props: UsageLimitAskCardProps) {
         )}
       </Show>
       <div class="usage-limit-ask-actions">
-        <Button type="button" variant="outline" disabled={sending()} onClick={() => props.onWait()}>
-          {t("chat.usageLimit.wait")}
-        </Button>
+        <Show when={!props.attention}>
+          <Button type="button" variant="outline" disabled={sending()} onClick={() => props.onWait()}>
+            {t("chat.usageLimit.wait")}
+          </Button>
+        </Show>
         <Show when={picked()}>
           {(option) => (
             <Button type="button" loading={sending()} onClick={() => void send(option())}>
-              {t("chat.usageLimit.send", { model: option().model })}
+              {t(props.attention && !props.hasQueuedMessage ? "chat.usageLimit.switch" : "chat.usageLimit.send", {
+                model: option().model,
+              })}
             </Button>
           )}
         </Show>

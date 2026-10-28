@@ -101,6 +101,8 @@ export const messages = {
   "sidebar.state.routineFailed": { one: "Échec de la routine", other: "{count} routines ont échoué" },
   "sidebar.state.routineWaiting": { one: "Routine en attente", other: "{count} routines en attente" },
   "sidebar.state.routineRunning": { one: "Routine en cours", other: "{count} routines en cours" },
+  "sidebar.state.usageLimitAttention": "La limite d'utilisation requiert votre attention",
+  "sidebar.state.usageLimitAttentionChip": "Examiner",
   "sidebar.state.usageLimit": "Limite atteinte",
   "sidebar.state.usageLimitResets": "Limite atteinte · {reset}",
   "sidebar.state.usageLimitChip": "Limite",

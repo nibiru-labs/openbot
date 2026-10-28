@@ -1462,6 +1462,8 @@ export function ConversationTimeline() {
                 <UsageLimitAskCard
                   provider={ask().provider}
                   resetsAt={ask().resetsAt}
+                  attention={ask().attention}
+                  hasQueuedMessage={ask().hasQueuedMessage}
                   options={ask().options}
                   onSend={ask().onSend}
                   onWait={ask().onWait}

@@ -138,6 +138,8 @@ export const messages = {
     many: "{count} rutyn działa",
     other: "{count} rutyny działa",
   },
+  "sidebar.state.usageLimitAttention": "Limit użycia wymaga twojej uwagi",
+  "sidebar.state.usageLimitAttentionChip": "Sprawdź",
   "sidebar.state.usageLimit": "Czeka na limit",
   "sidebar.state.usageLimitResets": "Czeka na limit · {reset}",
   "sidebar.state.usageLimitChip": "Limit",

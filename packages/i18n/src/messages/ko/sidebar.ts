@@ -98,6 +98,8 @@ export const messages = {
   "sidebar.state.routineFailed": { other: "루틴 {count}개 실패" },
   "sidebar.state.routineWaiting": { other: "루틴 {count}개 대기 중" },
   "sidebar.state.routineRunning": { other: "루틴 {count}개 실행 중" },
+  "sidebar.state.usageLimitAttention": "사용 한도에 조치가 필요해요",
+  "sidebar.state.usageLimitAttentionChip": "확인",
   "sidebar.state.usageLimit": "한도 대기 중",
   "sidebar.state.usageLimitResets": "한도 대기 중 · {reset}",
   "sidebar.state.usageLimitChip": "한도",

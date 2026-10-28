@@ -148,11 +148,12 @@ await Effect.runPromise(gate.accountReset("claude", "acc-1"));
 // The clock controls the ten-minute wait without making a provider request.
 const clock: { scheduled: (() => void) | null } = { scheduled: null };
 let cleared = 0;
+let now = 0;
 const wakes: string[] = [];
-process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS = "1";
 const timedGate = new UsageLimitGate({
   store,
   timers: {
+    now: () => now,
     set: (callback, delay) => {
       assert.equal(delay, 600_000);
       clock.scheduled = callback;
@@ -180,8 +181,11 @@ await Effect.runPromise(timedGate.reached("c-opus-peer", null, "claude-opus-4-5"
 check("unknown hold waits before reservation", () =>
   assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), false),
 );
-const fire = clock.scheduled;
-if (fire) fire();
+const fireTimer = () => {
+  now += 600_000;
+  clock.scheduled?.();
+};
+fireTimer();
 check("timer wakes same-model agents once", () => assert.deepEqual(wakes, ["c-opus", "c-opus-peer"]));
 check("only one agent reserves the probe", () => {
   assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), true);
@@ -204,13 +208,13 @@ await Effect.runPromise(timedGate.completed("c-opus"));
 check("a stale success does not clear a refused probe", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), true));
 await Effect.runPromise(timedGate.accountReset("claude", "acc-1"));
 await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
-clock.scheduled?.();
+fireTimer();
 check("a ready probe can be reserved", () => assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), true));
 timedGate.bindUnknownProbe("c-opus", "delivery-1", "turn-1");
 await Effect.runPromise(timedGate.completed("c-opus", null, "turn-1"));
 check("a successful reserved probe releases the hold", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), false));
 await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
-clock.scheduled?.();
+fireTimer();
 timedGate.reserveUnknownProbe("c-opus", "delivery-1");
 timedGate.finishUnknownProbe("c-opus", { deliveryId: "delivery-1" });
 check("a cancelled probe stays held", () =>
@@ -218,8 +222,9 @@ check("a cancelled probe stays held", () =>
 );
 await Effect.runPromise(timedGate.accountReset("claude", "acc-1"));
 await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
+const clearedBeforeDispose = cleared;
 await Effect.runPromise(timedGate.dispose());
-check("disposal cancels the pending timer", () => assert.equal(cleared, 1));
+check("disposal cancels the pending timer", () => assert.equal(cleared, clearedBeforeDispose + 1));
 
 await Effect.runPromise(gate.dispose());
 

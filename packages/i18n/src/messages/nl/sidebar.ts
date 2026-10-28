@@ -101,6 +101,8 @@ export const messages = {
   "sidebar.state.routineFailed": { one: "Routine mislukt", other: "{count} routines mislukt" },
   "sidebar.state.routineWaiting": { one: "Routine wacht", other: "{count} routines wachten" },
   "sidebar.state.routineRunning": { one: "Routine actief", other: "{count} routines actief" },
+  "sidebar.state.usageLimitAttention": "Gebruikslimiet vereist je aandacht",
+  "sidebar.state.usageLimitAttentionChip": "Bekijken",
   "sidebar.state.usageLimit": "Wacht op limiet",
   "sidebar.state.usageLimitResets": "Wacht op limiet · {reset}",
   "sidebar.state.usageLimitChip": "Limiet",
