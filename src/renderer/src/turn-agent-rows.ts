@@ -48,10 +48,3 @@ export function agentTurnFieldRecord<K extends keyof AgentTurnRow>(
   }
   return record;
 }
-
-export function withoutAgentRow<T>(rows: Record<string, T>, agentId: string): Record<string, T> {
-  if (!(agentId in rows)) return rows;
-  const next = { ...rows };
-  delete next[agentId];
-  return next;
-}
