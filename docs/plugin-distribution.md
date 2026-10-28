@@ -437,12 +437,12 @@ Degraded conditions:
 ## 6. Tests that are mandatory
 
 This work changes the renderer-to-main boundary and the IPC contracts, so `AGENTS.md` makes tests
-mandatory. Check the link forms, the page, the install and the uninstall end to end with
-`bun run dev:automation`; the ones below are vitest files.
+mandatory. Check the page with `bun run dev:automation`; the ones below are the checks of the code.
 
 | File | What it proves |
 | --- | --- |
 | `src/main/ipc-channel-coverage.test.ts` | Exists. It fails until the channels are in the contracts, the preload and the mock. |
+| `scripts/plugin-install-e2e.ts` | The link forms, the install of the pinned skills into the chosen agent, the app as a host-global MCP server, the uninstall, and the refusal of a slug the catalog does not hold. |
 
 ## 7. Open questions
 
