@@ -112,7 +112,8 @@ export class UsageLimitGate {
     const family = modelFamily(agent.model);
     return (
       !(family && this.#limits.has(limitKey(provider, accountId, family))) &&
-      !this.#limits.has(limitKey(provider, accountId, `model:${agent.model}`))
+      !this.#limits.has(limitKey(provider, accountId, `model:${agent.model}`)) &&
+      !this.#limits.has(limitKey(provider, accountId, `unknown:${agent.model}`))
     );
   }
 
@@ -122,7 +123,8 @@ export class UsageLimitGate {
     const family = modelFamily(limit.model);
     return (
       (family !== null && this.#limits.has(limitKey(limit.provider, limit.accountId, family))) ||
-      this.#limits.has(limitKey(limit.provider, limit.accountId, `model:${limit.model}`))
+      this.#limits.has(limitKey(limit.provider, limit.accountId, `model:${limit.model}`)) ||
+      this.#limits.has(limitKey(limit.provider, limit.accountId, `unknown:${limit.model}`))
     );
   }
 
@@ -133,6 +135,15 @@ export class UsageLimitGate {
   failureKey(agentId: string, model: string | null = null): string | null {
     const agent = this.#agent(agentId);
     return agent ? limitKey(providerForAgent(agent), accountOf(agent), model ?? agent.model) : null;
+  }
+
+  /** An unspecified refusal cannot justify an automatic model or account switch. */
+  hasUnknownLimit(agentId: string): boolean {
+    const agent = this.#agent(agentId);
+    return (
+      agent !== undefined &&
+      this.#limits.has(limitKey(providerForAgent(agent), accountOf(agent), `unknown:${agent.model}`))
+    );
   }
 
   /** Whether a provider error passes over this provider account and model. */
@@ -175,7 +186,8 @@ export class UsageLimitGate {
       const limit =
         this.#limits.get(limitKey(provider, accountId, null)) ??
         (family ? this.#limits.get(limitKey(provider, accountId, family)) : undefined) ??
-        this.#limits.get(limitKey(provider, accountId, `model:${agent.model}`));
+        this.#limits.get(limitKey(provider, accountId, `model:${agent.model}`)) ??
+        this.#limits.get(limitKey(provider, accountId, `unknown:${agent.model}`));
       return limit ? [{ agentId: agent.id, resetsAt: limit.resetsAt }] : [];
     });
   }
@@ -193,7 +205,7 @@ export class UsageLimitGate {
    * The plan refused a turn of this agent. `resetsAt` is in epoch seconds. `model` is the one the
    * turn ran on; the agent's current model when null. `family` is the model family the provider
    * reported for the refused window; null when it reported a window for the whole account. An
-   * unspecified window holds only the model that was refused.
+   * unspecified window holds the refused model without enabling an automatic switch.
    */
   readonly reached = Effect.fn("UsageLimitGate.reached")(function* (
     this: UsageLimitGate,
@@ -207,7 +219,7 @@ export class UsageLimitGate {
     const provider = providerForAgent(agent);
     const turnModel = model ?? agent.model;
     const accountId = accountOf(agent);
-    const scope = family === undefined ? `model:${turnModel}` : family;
+    const scope = family === undefined ? `unknown:${turnModel}` : family;
     const key = limitKey(provider, accountId, scope);
     const limit = this.#limits.get(key) ?? {
       provider,
@@ -221,10 +233,10 @@ export class UsageLimitGate {
     const future = (value: number | null) => (value !== null && value * 1_000 > Date.now() ? value : null);
     limit.resetsAt = future(resetsAt) ?? future(limit.resetsAt);
     this.#limits.set(key, limit);
-    this.#arm(key, limit);
+    if (family !== undefined) this.#arm(key, limit);
     yield* this.#hooks.held(this.#heldAgents(limit).map((held) => held.id));
     this.#hooks.emitRuntimeSnapshot();
-    if (limit.resetsAt !== null) {
+    if (family === undefined || limit.resetsAt !== null) {
       this.#announce(agentId, limit);
       return;
     }
@@ -262,6 +274,8 @@ export class UsageLimitGate {
     }
     const modelKey = limitKey(provider, accountId, `model:${model ?? agent.model}`);
     if (this.#limits.has(modelKey)) yield* this.#release(modelKey);
+    const unknownKey = limitKey(provider, accountId, `unknown:${model ?? agent.model}`);
+    if (this.#limits.has(unknownKey)) yield* this.#release(unknownKey);
     const failedKey = limitKey(provider, accountId, model ?? agent.model);
     if (this.#failures.has(failedKey)) yield* this.#releaseFailure(failedKey);
     if (![...this.#limits.values()].some((limit) => limit.provider === provider)) this.#announced.delete(provider);
@@ -390,7 +404,8 @@ export class UsageLimitGate {
           accountOf(agent) === limit.accountId &&
           (limit.family === null ||
             modelFamily(agent.model) === limit.family ||
-            `model:${agent.model}` === limit.family),
+            `model:${agent.model}` === limit.family ||
+            `unknown:${agent.model}` === limit.family),
       );
   }
 }

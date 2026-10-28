@@ -62,7 +62,7 @@ check("every agent may drain before any refusal", () => {
   for (const agent of agents) assert.equal(gate.mayDrain(agent.id), true, agent.id);
 });
 
-await Effect.runPromise(gate.reached("a-fast", resetInSeconds, "model-fast"));
+await Effect.runPromise(gate.reached("a-fast", resetInSeconds, "model-fast", null));
 
 check("refusal on one model holds the other model on the same account", () => {
   assert.equal(gate.mayDrain("a-large"), false);
@@ -106,7 +106,7 @@ check("a completed turn of the other family does not end the family hold", () =>
   assert.equal(gate.mayDrain("c-opus"), false);
 });
 
-await Effect.runPromise(gate.reached("c-sonnet", resetInSeconds, "claude-sonnet-4-5"));
+await Effect.runPromise(gate.reached("c-sonnet", resetInSeconds, "claude-sonnet-4-5", null));
 
 check("an account-wide window holds every family on the account", () => {
   assert.equal(gate.mayDrain("c-opus"), false);
@@ -128,7 +128,19 @@ check("a completed turn of the held family ends the family hold", () => {
   assert.equal(gate.mayDrain("c-opus"), true);
 });
 
-gate.dispose();
+await Effect.runPromise(gate.reached("c-opus", null, "claude-opus-4-5"));
+check("unknown scope holds the refused model and blocks automatic backup", () => {
+  assert.equal(gate.mayDrain("c-opus"), false);
+  assert.equal(gate.hasUnknownLimit("c-opus"), true);
+  assert.equal(gate.mayDrain("c-sonnet"), true);
+  assert.equal(gate.hasUnknownLimit("c-sonnet"), false);
+});
+await Effect.runPromise(gate.completed("c-opus"));
+check("a successful same-model turn clears the unknown hold", () => {
+  assert.equal(gate.hasUnknownLimit("c-opus"), false);
+});
+
+await Effect.runPromise(gate.dispose());
 
 const passed = cases.every((item) => item.passed);
 await mkdir(OUT, { recursive: true });

@@ -3008,7 +3008,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   /** The first ready backup model of an agent set to switch without asking, or undefined. */
   #usageLimitBackup(agentId: string): AgentModelChoice | undefined {
     const agent = this.#store.list().find((candidate) => candidate.id === agentId);
-    if (!agent?.backupModels?.automatic) return undefined;
+    if (!agent?.backupModels?.automatic || this.#usageLimits.hasUnknownLimit(agentId)) return undefined;
     const current = agentModelChoice(agent);
     return agent.backupModels.order.find(
       (choice) => !sameAgentModelChoice(choice, current) && this.#usageLimitReady(choice),
@@ -5022,7 +5022,10 @@ function sameUsageLimit(choice: AgentModelChoice, limit: UsageLimitKey): boolean
   return (
     own.provider === limit.provider &&
     own.accountId === limit.accountId &&
-    (limit.family === null || own.family === limit.family || `model:${choice.model}` === limit.family)
+    (limit.family === null ||
+      own.family === limit.family ||
+      `model:${choice.model}` === limit.family ||
+      `unknown:${choice.model}` === limit.family)
   );
 }
 
