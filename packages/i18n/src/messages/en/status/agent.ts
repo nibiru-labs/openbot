@@ -7,6 +7,8 @@ export const messages = defineMessages("status.agent", {
   "status.agent.dispatchFinished":
     "Coding work ended: {title}. Host: {host}. Result: {status}. Review the result before reporting success.",
   "status.agent.dispatchNoResult": "The openswarm runner ended without a result file.",
+  "status.agent.dispatchWatchExpired":
+    "OpenBot stopped checking this run. Use dispatch_abort to cancel it on the executor.",
   "status.agent.claudeWriteOutside":
     "Write {path}, outside the agent's workspace, the shared folder and the temporary folders.",
   "status.agent.contextCleared": "Context cleared. A new chat starts here.",

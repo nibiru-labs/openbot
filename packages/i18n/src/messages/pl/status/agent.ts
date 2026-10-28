@@ -8,6 +8,8 @@ export const messages = {
   "status.agent.dispatchFinished":
     "Praca programistyczna zakończona: {title}. Host: {host}. Wynik: {status}. Sprawdź wynik, zanim zgłosisz sukces.",
   "status.agent.dispatchNoResult": "Wykonawca openswarm zakończył się bez pliku wyniku.",
+  "status.agent.dispatchWatchExpired":
+    "OpenBot przestał sprawdzać to uruchomienie. Użyj dispatch_abort, aby anulować je na wykonawcy.",
   "status.agent.claudeWriteOutside":
     "Zapis {path} poza obszarem roboczym agenta, folderem współdzielonym i folderami tymczasowymi.",
   "status.agent.contextCleared": "Kontekst wyczyszczony. Tutaj zaczyna się nowy czat.",

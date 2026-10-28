@@ -8,6 +8,8 @@ export const messages = {
   "status.agent.dispatchFinished":
     "Kodlama işi bitti: {title}. Ana makine: {host}. Sonuç: {status}. Başarı bildirmeden önce sonucu inceleyin.",
   "status.agent.dispatchNoResult": "openswarm yürütücüsü sonuç dosyası olmadan bitti.",
+  "status.agent.dispatchWatchExpired":
+    "OpenBot bu çalıştırmayı izlemeyi durdurdu. Yürütücüde iptal etmek için dispatch_abort kullanın.",
   "status.agent.claudeWriteOutside":
     "Ajanın çalışma alanı, paylaşılan klasör ve geçici klasörler dışındaki {path} konumuna yaz.",
   "status.agent.contextCleared": "Bağlam temizlendi. Yeni bir sohbet burada başlıyor.",
