@@ -28,6 +28,7 @@ const agents: FixtureAgent[] = [
   { id: "a-other-account", provider: "codex", providerAccountId: "acc-2", model: "model-fast" },
   { id: "a-other-provider", provider: "claude", providerAccountId: "acc-1", model: "model-fast" },
   { id: "c-opus", provider: "claude", providerAccountId: "acc-1", model: "claude-opus-4-5" },
+  { id: "c-opus-peer", provider: "claude", providerAccountId: "acc-1", model: "claude-opus-4-5" },
   { id: "c-sonnet", provider: "claude", providerAccountId: "acc-1", model: "claude-sonnet-4-5" },
 ];
 
@@ -131,6 +132,8 @@ check("a completed turn of the held family ends the family hold", () => {
 await Effect.runPromise(gate.reached("c-opus", null, "claude-opus-4-5"));
 check("unknown scope holds the refused model and blocks automatic backup", () => {
   assert.equal(gate.mayDrain("c-opus"), false);
+  assert.equal(gate.mayDrain("c-opus-peer"), false);
+  assert.equal(gate.hasUnknownLimit("c-opus-peer"), true);
   assert.equal(gate.hasUnknownLimit("c-opus"), true);
   assert.equal(gate.mayDrain("c-sonnet"), true);
   assert.equal(gate.hasUnknownLimit("c-sonnet"), false);

@@ -2976,6 +2976,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const agent = this.#store.list().find((candidate) => candidate.id === agentId);
     if (!agent || (!agent.usageLimitReturn && !agent.backupModels?.automatic)) return null;
     if (this.#runsTurn(agentId) || this.#mailbox.hasStartedDelivery(agentId)) return null;
+    // An unknown refusal does not authorize any automatic model or account change, including a return.
+    if (this.#usageLimits.hasUnknownLimit(agentId)) return null;
     // The agent keeps its reasoning effort where the other model has it. It goes back with the effort it left.
     const move = (choice: AgentModelChoice, reasoningEffort = agent.reasoningEffort) => {
       const model = this.#endpoints
