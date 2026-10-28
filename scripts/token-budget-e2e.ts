@@ -16,29 +16,30 @@ import type { AgentBrowserHost } from "../src/backend/agent/turn-lifecycle";
 import { getString, isRecord } from "../src/backend/protocol";
 
 const OUT = resolve(import.meta.dirname, "../.openbot-build/token-budget-e2e");
-const root = await mkdtemp(join(tmpdir(), "openbot-token-budget-"));
-const userData = join(root, "user-data");
-const home = join(root, "home");
-const logPath = join(root, "protocol.jsonl");
-const fakeCodex = join(root, "codex");
+async function main() {
+  const root = await mkdtemp(join(tmpdir(), "openbot-token-budget-"));
+  const userData = join(root, "user-data");
+  const home = join(root, "home");
+  const logPath = join(root, "protocol.jsonl");
+  const fakeCodex = join(root, "codex.cjs");
 
-// Before the service modules load: the Codex process and the stores read the home folder.
-process.env.OPENBOT_CODEX_PATH = fakeCodex;
-process.env.OPENBOT_FAKE_CODEX_LOG = logPath;
-mkdirSync(home, { recursive: true });
+  // Before the service modules load: the Codex process and the stores read the home folder.
+  process.env.OPENBOT_CODEX_PATH = fakeCodex;
+  process.env.OPENBOT_FAKE_CODEX_LOG = logPath;
+  mkdirSync(home, { recursive: true });
 
-const { AgentService } = await import("../src/backend/agent-service");
-const { AgentStore } = await import("../src/backend/agent-store");
-const { runCauseEffect } = await import("../src/backend/effect-boundary");
-const { MailboxStore } = await import("../src/backend/mailbox-store");
-const { OpenBotDatabase } = await import("../src/backend/openbot-database");
+  const { AgentService } = await import("../src/backend/agent-service");
+  const { AgentStore } = await import("../src/backend/agent-store");
+  const { runCauseEffect } = await import("../src/backend/effect-boundary");
+  const { MailboxStore } = await import("../src/backend/mailbox-store");
+  const { OpenBotDatabase } = await import("../src/backend/openbot-database");
 
-/**
- * A turn whose input has STEPS-n runs n steps, 60 ms apart. Each step reports 400 more tokens and
- * finishes a command, and an interrupt ends the turn at once. A turn whose input has PLAN-n runs one
- * step and then reports that the plan refused it, with a reset 2 seconds away.
- */
-const FAKE_CODEX = `#!${process.execPath}
+  /**
+   * A turn whose input has STEPS-n runs n steps, 60 ms apart. Each step reports 400 more tokens and
+   * finishes a command, and an interrupt ends the turn at once. A turn whose input has PLAN-n runs one
+   * step and then reports that the plan refused it, with a reset 2 seconds away.
+   */
+  const FAKE_CODEX = `#!/usr/bin/env node
 const fs = require("node:fs");
 if (process.argv.includes("--version")) {
   process.stdout.write("codex-cli 0.160.1\\n");
@@ -158,219 +159,228 @@ process.stdin.on("data", (chunk) => {
 });
 `;
 
-const unused = () => Effect.die(new Error("Not used by this check."));
-const browser: AgentBrowserHost = {
-  listTabs: () => [],
-  beginTakeover: unused,
-  endTakeover: () => {},
-  resolveUploadTarget: unused,
-  handleDynamicTool: unused,
-  userControlTabFor: () => null,
-  awaitUserControlRelease: unused,
-  onChanged: () => () => {},
-  onControlChanged: () => () => {},
-  onDocumentChanged: () => () => {},
-  clearControls: () => {},
-  endControl: () => {},
-  close: () => Effect.void,
-  clearAgentSession: () => Effect.void,
-};
+  const unused = () => Effect.die(new Error("Not used by this check."));
+  const browser: AgentBrowserHost = {
+    listTabs: () => [],
+    beginTakeover: unused,
+    endTakeover: () => {},
+    resolveUploadTarget: unused,
+    handleDynamicTool: unused,
+    userControlTabFor: () => null,
+    awaitUserControlRelease: unused,
+    onChanged: () => () => {},
+    onControlChanged: () => () => {},
+    onDocumentChanged: () => () => {},
+    clearControls: () => {},
+    endControl: () => {},
+    close: () => Effect.void,
+    clearAgentSession: () => Effect.void,
+  };
 
-function recordOf(value: unknown) {
-  return isRecord(value) ? value : {};
-}
+  function recordOf(value: unknown) {
+    return isRecord(value) ? value : {};
+  }
 
-function protocol() {
+  function protocol() {
+    try {
+      return readFileSync(logPath, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const entry = recordOf(JSON.parse(line));
+          const params = isRecord(entry.params) ? entry.params : {};
+          return { method: getString(entry, "method"), input: JSON.stringify(params.input ?? "") };
+        });
+    } catch {
+      return [];
+    }
+  }
+
+  const calls = (method: string) => protocol().filter((entry) => entry.method === method);
+  const startsWith = (text: string) => calls("turn/start").filter((entry) => entry.input.includes(text)).length;
+
+  /** Waits for a state of the service or of the fake Codex. */
+  async function waitFor<T>(
+    label: string,
+    read: () => T | null | undefined | false | Promise<T | null | undefined | false>,
+    timeoutMs = 20_000,
+  ): Promise<T> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const value = await read();
+      if (value) return value;
+      if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
+      await new Promise((done) => setTimeout(done, 25));
+    }
+  }
+
+  /** Waits long enough for a start that would be wrong to show. */
+  const settle = (ms = 400) => new Promise((done) => setTimeout(done, ms));
+
+  await writeFile(fakeCodex, FAKE_CODEX, { mode: 0o755 });
+  const database = new OpenBotDatabase(userData);
+  const store = new AgentStore(userData, home, database);
+  const mailbox = new MailboxStore(userData, store.sharedRoot, store.database);
+  let limits: TokenBudgetPreference = { perHour: 0, perTurn: 0 };
+  const agents = new AgentService({
+    store,
+    mailbox,
+    browser,
+    preferredProvider: "codex",
+    offProviders: AGENT_PROVIDERS.filter((provider) => provider !== "codex"),
+    busyMessageMode: () => "queue",
+    tokenBudget: () => limits,
+  });
+
+  const status = (deliveryId: string | undefined) =>
+    deliveryId ? mailbox.getDelivery(deliveryId)?.delivery.status : null;
+  let sends = 0;
+  const send = async (agentId: string, text: string) => {
+    const receipt = await runCauseEffect(agents.sendMessage({ agentId, text, clientMessageId: `send-${++sends}` }));
+    const id = receipt.deliveries[0]?.id;
+    assert(id, `no delivery for ${text}`);
+    return id;
+  };
+  /** The pause markers of the agent's chat, oldest first, read from the stored conversation. */
+  const pauses = async (agentId: string) => {
+    const snapshot = await runCauseEffect(agents.readConversation(agentId));
+    return snapshot.messages.filter((message) => message.itemType === AGENT_PAUSE_ITEM_TYPE && message.pause);
+  };
+
+  const report: { passed: boolean; checks: string[]; error?: string } = { passed: false, checks: [] };
   try {
-    return readFileSync(logPath, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => {
-        const entry = recordOf(JSON.parse(line));
-        const params = isRecord(entry.params) ? entry.params : {};
-        return { method: getString(entry, "method"), input: JSON.stringify(params.input ?? "") };
-      });
-  } catch {
-    return [];
+    await runCauseEffect(agents.initialize());
+    const agent = await runCauseEffect(
+      agents.createAgent({
+        name: "Budget",
+        description: "Synthetic",
+        avatarSeed: "budget",
+        avatarHue: null,
+        initialMessage: "Hello.",
+      }),
+    );
+    const idle = () =>
+      agents.listQueue(agent.id).deliveries.every((item) => !["queued", "starting", "running"].includes(item.status));
+    await waitFor("the first turn to end", idle);
+
+    // 1. The turn limit stops a turn after a step and holds the agent.
+    limits = { perHour: 0, perTurn: 1_000 };
+    const longTurn = await send(agent.id, "STEPS-10");
+    await waitFor("the long turn to stop", () => status(longTurn) === "interrupted");
+    const stepsRun = calls("step").length;
+    assert(stepsRun >= 3 && stepsRun < 10, `the turn ran ${stepsRun} steps`);
+    assert.equal(calls("turn/interrupt").length, 1);
+    const [turnMarker] = await pauses(agent.id);
+    assert.equal(turnMarker?.pause?.reason, "turn-budget");
+    assert.equal(turnMarker?.pause?.resolved, false);
+    assert.equal(turnMarker?.pause?.resume, true);
+    report.checks.push(
+      `A turn past the turn limit stops after ${stepsRun} of 10 steps and writes a marker with a resume`,
+    );
+
+    const queuedAfter = await send(agent.id, "QUEUED-AFTER");
+    await settle();
+    assert.equal(status(queuedAfter), "queued");
+    assert.equal(startsWith("QUEUED-AFTER"), 0);
+    report.checks.push("The agent starts no new turn while the stop holds it");
+
+    // 2. Continue ends the hold, starts the queue, and carries the stopped work on once.
+    limits = { perHour: 0, perTurn: 0 };
+    assert(turnMarker, "no marker");
+    await runCauseEffect(agents.continueAgentPause({ agentId: agent.id, messageId: turnMarker.id }));
+    await waitFor(
+      "the queued message and the resume to end",
+      () => idle() && startsWith("Continue the work you stopped") === 1,
+    );
+    assert.equal(status(queuedAfter), "completed");
+    assert.equal((await pauses(agent.id))[0]?.pause?.resolved, true);
+    await runCauseEffect(agents.continueAgentPause({ agentId: agent.id, messageId: turnMarker.id }));
+    await settle();
+    assert.equal(startsWith("Continue the work you stopped"), 1);
+    report.checks.push("Continue starts the held queue and one resume turn; a second Continue changes nothing");
+
+    // 3. The hourly limit holds the agent after the work that crossed it, and does not stop that work.
+    limits = { perHour: 1_500, perTurn: 0 };
+    const firstHour = await send(agent.id, "STEPS-3");
+    await waitFor("the first hour turn to end", () => status(firstHour) === "completed");
+    assert.equal((await pauses(agent.id)).filter((marker) => marker.pause?.reason === "hour-budget").length, 0);
+    const crossing = await send(agent.id, "STEPS-3");
+    await waitFor("the crossing turn to end", () => status(crossing) === "completed");
+    const hourMarker = (await pauses(agent.id)).find((marker) => marker.pause?.reason === "hour-budget");
+    assert(hourMarker && !hourMarker.pause?.resolved, "no open hour marker");
+    const interruptsBefore = calls("turn/interrupt").length;
+    assert.equal(interruptsBefore, 1, "the hourly limit stopped a turn");
+    const blocked = await send(agent.id, "BLOCKED-HOUR");
+    await settle();
+    assert.equal(status(blocked), "queued");
+    assert.equal(startsWith("BLOCKED-HOUR"), 0);
+    report.checks.push("The hourly limit lets the crossing turn finish, then holds the next message");
+
+    await runCauseEffect(agents.continueAgentPause({ agentId: agent.id, messageId: hourMarker.id }));
+    await waitFor("the held message to end", () => status(blocked) === "completed");
+    const afterContinue = await send(agent.id, "STEPS-3");
+    await waitFor("a turn in the new window", () => status(afterContinue) === "completed");
+    assert.equal(
+      (await pauses(agent.id)).filter((marker) => marker.pause?.reason === "hour-budget" && !marker.pause.resolved)
+        .length,
+      0,
+    );
+    report.checks.push("Continue starts a new window: the tokens before it do not count again");
+
+    // 4. Raising the limit ends an hourly hold without a click.
+    limits = { perHour: 1_500, perTurn: 0 };
+    const second = await send(agent.id, "STEPS-3");
+    await waitFor("the second window turn to end", () => status(second) === "completed");
+    const held = await send(agent.id, "BLOCKED-RAISE");
+    await settle();
+    assert.equal(status(held), "queued");
+    limits = { perHour: 0, perTurn: 0 };
+    await runCauseEffect(agents.tokenBudgetChanged());
+    await waitFor("the held message after the limit was raised", () => status(held) === "completed");
+    assert.equal(
+      (await pauses(agent.id)).filter((marker) => marker.pause?.reason === "hour-budget" && !marker.pause.resolved)
+        .length,
+      0,
+    );
+    report.checks.push("A raised limit ends the hourly hold and resolves its marker");
+
+    // 5. A spent plan stops a turn that did work; the agent carries on when the limit ends.
+    const planTurn = await send(agent.id, "PLAN-1");
+    await waitFor("the refused turn to end", () => status(planTurn) === "interrupted");
+    const open = await waitFor("the open plan marker", async () =>
+      (await pauses(agent.id)).find((marker) => marker.pause?.reason === "plan-limit" && !marker.pause.resolved),
+    );
+    assert.equal(open.pause?.resume, true);
+    const resumesBefore = startsWith("Continue the work you stopped");
+    await waitFor(
+      "the resume after the plan limit",
+      () => startsWith("Continue the work you stopped") > resumesBefore && idle(),
+      60_000,
+    );
+    assert.equal((await pauses(agent.id)).find((marker) => marker.id === open.id)?.pause?.resolved, true);
+    report.checks.push(
+      "A turn the plan refused after work ends as interrupted, and the agent resumes when the limit ends",
+    );
+
+    report.passed = true;
+  } catch (error) {
+    report.error = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    process.exitCode = 1;
+  } finally {
+    await runCauseEffect(agents.stop()).catch(() => {});
+    database.close();
+    mkdirSync(OUT, { recursive: true });
+    writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+    await rm(root, { recursive: true, force: true });
+    // Machine-readable: the E2E report, without provider credentials or user content.
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   }
 }
 
-const calls = (method: string) => protocol().filter((entry) => entry.method === method);
-const startsWith = (text: string) => calls("turn/start").filter((entry) => entry.input.includes(text)).length;
-
-/** Waits for a state of the service or of the fake Codex. */
-async function waitFor<T>(
-  label: string,
-  read: () => T | null | undefined | false | Promise<T | null | undefined | false>,
-  timeoutMs = 20_000,
-): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const value = await read();
-    if (value) return value;
-    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
-    await new Promise((done) => setTimeout(done, 25));
-  }
-}
-
-/** Waits long enough for a start that would be wrong to show. */
-const settle = (ms = 400) => new Promise((done) => setTimeout(done, ms));
-
-await writeFile(fakeCodex, FAKE_CODEX, { mode: 0o755 });
-const database = new OpenBotDatabase(userData);
-const store = new AgentStore(userData, home, database);
-const mailbox = new MailboxStore(userData, store.sharedRoot, store.database);
-let limits: TokenBudgetPreference = { perHour: 0, perTurn: 0 };
-const agents = new AgentService({
-  store,
-  mailbox,
-  browser,
-  preferredProvider: "codex",
-  offProviders: AGENT_PROVIDERS.filter((provider) => provider !== "codex"),
-  busyMessageMode: () => "queue",
-  tokenBudget: () => limits,
-});
-
-const status = (deliveryId: string | undefined) =>
-  deliveryId ? mailbox.getDelivery(deliveryId)?.delivery.status : null;
-let sends = 0;
-const send = async (agentId: string, text: string) => {
-  const receipt = await runCauseEffect(agents.sendMessage({ agentId, text, clientMessageId: `send-${++sends}` }));
-  const id = receipt.deliveries[0]?.id;
-  assert(id, `no delivery for ${text}`);
-  return id;
-};
-/** The pause markers of the agent's chat, oldest first, read from the stored conversation. */
-const pauses = async (agentId: string) => {
-  const snapshot = await runCauseEffect(agents.readConversation(agentId));
-  return snapshot.messages.filter((message) => message.itemType === AGENT_PAUSE_ITEM_TYPE && message.pause);
-};
-
-const report: { passed: boolean; checks: string[]; error?: string } = { passed: false, checks: [] };
-try {
-  await runCauseEffect(agents.initialize());
-  const agent = await runCauseEffect(
-    agents.createAgent({
-      name: "Budget",
-      description: "Synthetic",
-      avatarSeed: "budget",
-      avatarHue: null,
-      initialMessage: "Hello.",
-    }),
-  );
-  const idle = () =>
-    agents.listQueue(agent.id).deliveries.every((item) => !["queued", "starting", "running"].includes(item.status));
-  await waitFor("the first turn to end", idle);
-
-  // 1. The turn limit stops a turn after a step and holds the agent.
-  limits = { perHour: 0, perTurn: 1_000 };
-  const longTurn = await send(agent.id, "STEPS-10");
-  await waitFor("the long turn to stop", () => status(longTurn) === "interrupted");
-  const stepsRun = calls("step").length;
-  assert(stepsRun >= 3 && stepsRun < 10, `the turn ran ${stepsRun} steps`);
-  assert.equal(calls("turn/interrupt").length, 1);
-  const [turnMarker] = await pauses(agent.id);
-  assert.equal(turnMarker?.pause?.reason, "turn-budget");
-  assert.equal(turnMarker?.pause?.resolved, false);
-  assert.equal(turnMarker?.pause?.resume, true);
-  report.checks.push(
-    `A turn past the turn limit stops after ${stepsRun} of 10 steps and writes a marker with a resume`,
-  );
-
-  const queuedAfter = await send(agent.id, "QUEUED-AFTER");
-  await settle();
-  assert.equal(status(queuedAfter), "queued");
-  assert.equal(startsWith("QUEUED-AFTER"), 0);
-  report.checks.push("The agent starts no new turn while the stop holds it");
-
-  // 2. Continue ends the hold, starts the queue, and carries the stopped work on once.
-  limits = { perHour: 0, perTurn: 0 };
-  assert(turnMarker, "no marker");
-  await runCauseEffect(agents.continueAgentPause({ agentId: agent.id, messageId: turnMarker.id }));
-  await waitFor(
-    "the queued message and the resume to end",
-    () => idle() && startsWith("Continue the work you stopped") === 1,
-  );
-  assert.equal(status(queuedAfter), "completed");
-  assert.equal((await pauses(agent.id))[0]?.pause?.resolved, true);
-  await runCauseEffect(agents.continueAgentPause({ agentId: agent.id, messageId: turnMarker.id }));
-  await settle();
-  assert.equal(startsWith("Continue the work you stopped"), 1);
-  report.checks.push("Continue starts the held queue and one resume turn; a second Continue changes nothing");
-
-  // 3. The hourly limit holds the agent after the work that crossed it, and does not stop that work.
-  limits = { perHour: 1_500, perTurn: 0 };
-  const firstHour = await send(agent.id, "STEPS-3");
-  await waitFor("the first hour turn to end", () => status(firstHour) === "completed");
-  assert.equal((await pauses(agent.id)).filter((marker) => marker.pause?.reason === "hour-budget").length, 0);
-  const crossing = await send(agent.id, "STEPS-3");
-  await waitFor("the crossing turn to end", () => status(crossing) === "completed");
-  const hourMarker = (await pauses(agent.id)).find((marker) => marker.pause?.reason === "hour-budget");
-  assert(hourMarker && !hourMarker.pause?.resolved, "no open hour marker");
-  const interruptsBefore = calls("turn/interrupt").length;
-  assert.equal(interruptsBefore, 1, "the hourly limit stopped a turn");
-  const blocked = await send(agent.id, "BLOCKED-HOUR");
-  await settle();
-  assert.equal(status(blocked), "queued");
-  assert.equal(startsWith("BLOCKED-HOUR"), 0);
-  report.checks.push("The hourly limit lets the crossing turn finish, then holds the next message");
-
-  await runCauseEffect(agents.continueAgentPause({ agentId: agent.id, messageId: hourMarker.id }));
-  await waitFor("the held message to end", () => status(blocked) === "completed");
-  const afterContinue = await send(agent.id, "STEPS-3");
-  await waitFor("a turn in the new window", () => status(afterContinue) === "completed");
-  assert.equal(
-    (await pauses(agent.id)).filter((marker) => marker.pause?.reason === "hour-budget" && !marker.pause.resolved)
-      .length,
-    0,
-  );
-  report.checks.push("Continue starts a new window: the tokens before it do not count again");
-
-  // 4. Raising the limit ends an hourly hold without a click.
-  limits = { perHour: 1_500, perTurn: 0 };
-  const second = await send(agent.id, "STEPS-3");
-  await waitFor("the second window turn to end", () => status(second) === "completed");
-  const held = await send(agent.id, "BLOCKED-RAISE");
-  await settle();
-  assert.equal(status(held), "queued");
-  limits = { perHour: 0, perTurn: 0 };
-  await runCauseEffect(agents.tokenBudgetChanged());
-  await waitFor("the held message after the limit was raised", () => status(held) === "completed");
-  assert.equal(
-    (await pauses(agent.id)).filter((marker) => marker.pause?.reason === "hour-budget" && !marker.pause.resolved)
-      .length,
-    0,
-  );
-  report.checks.push("A raised limit ends the hourly hold and resolves its marker");
-
-  // 5. A spent plan stops a turn that did work; the agent carries on when the limit ends.
-  const planTurn = await send(agent.id, "PLAN-1");
-  await waitFor("the refused turn to end", () => status(planTurn) === "interrupted");
-  const open = await waitFor("the open plan marker", async () =>
-    (await pauses(agent.id)).find((marker) => marker.pause?.reason === "plan-limit" && !marker.pause.resolved),
-  );
-  assert.equal(open.pause?.resume, true);
-  const resumesBefore = startsWith("Continue the work you stopped");
-  await waitFor(
-    "the resume after the plan limit",
-    () => startsWith("Continue the work you stopped") > resumesBefore && idle(),
-    60_000,
-  );
-  assert.equal((await pauses(agent.id)).find((marker) => marker.id === open.id)?.pause?.resolved, true);
-  report.checks.push(
-    "A turn the plan refused after work ends as interrupted, and the agent resumes when the limit ends",
-  );
-
-  report.passed = true;
-} catch (error) {
-  report.error = error instanceof Error ? (error.stack ?? error.message) : String(error);
+await main().catch((error: unknown) => {
+  const report = { passed: false, error: error instanceof Error ? (error.stack ?? error.message) : String(error) };
   process.exitCode = 1;
-} finally {
-  await runCauseEffect(agents.stop()).catch(() => {});
-  database.close();
   mkdirSync(OUT, { recursive: true });
   writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
-  await rm(root, { recursive: true, force: true });
-  // Machine-readable: the E2E report, without provider credentials or user content.
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-}
+  process.stderr.write(`FAIL ${join(OUT, "report.json")}\n${report.error}\n`);
+});

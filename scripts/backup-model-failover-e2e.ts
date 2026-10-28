@@ -39,45 +39,46 @@ import { providerFailure, providerSync } from "../src/backend/provider-client-ef
 import type { ReadProviderHistory } from "../src/backend/provider-history";
 
 const OUT = resolve(import.meta.dirname, `../.openbot-build/backup-model-failover-e2e-${randomUUID()}`);
-mkdirSync(OUT, { recursive: true });
-const root = await mkdtemp(join(OUT, "profile-"));
-const userData = join(root, "user-data");
-const home = join(root, "home");
-const turnLog = join(root, "claude-turns.jsonl");
-const failingFile = join(root, "failing.json");
-const claudeExecutable = join(root, "claude");
-const codexExecutable = join(root, "codex");
-const codexLog = join(root, "codex-turns.jsonl");
-const workLog = join(root, "work.jsonl");
-const probeRelease = join(root, "probe-release");
-const CODEX_MODEL = defaultProviderModel("codex");
-const PRIMARY: AgentModelId = defaultProviderModel("claude");
-const BACKUP: AgentModelId = PRIMARY === "claude-sonnet-5-5" ? "claude-opus-5-5" : "claude-sonnet-5-5";
-// The text the Claude CLI writes in an outage. It names no HTTP status phrase, only the 529 and its type.
-const PROVIDER_ERROR =
-  'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"},"request_id":"req_e2e"}';
+async function main() {
+  mkdirSync(OUT, { recursive: true });
+  const root = await mkdtemp(join(OUT, "profile-"));
+  const userData = join(root, "user-data");
+  const home = join(root, "home");
+  const turnLog = join(root, "claude-turns.jsonl");
+  const failingFile = join(root, "failing.json");
+  const claudeExecutable = join(root, "claude.cjs");
+  const codexExecutable = join(root, "codex.cjs");
+  const codexLog = join(root, "codex-turns.jsonl");
+  const workLog = join(root, "work.jsonl");
+  const probeRelease = join(root, "probe-release");
+  const CODEX_MODEL = defaultProviderModel("codex");
+  const PRIMARY: AgentModelId = defaultProviderModel("claude");
+  const BACKUP: AgentModelId = PRIMARY === "claude-sonnet-5-5" ? "claude-opus-5-5" : "claude-sonnet-5-5";
+  // The text the Claude CLI writes in an outage. It names no HTTP status phrase, only the 529 and its type.
+  const PROVIDER_ERROR =
+    'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"},"request_id":"req_e2e"}';
 
-// Before the service modules load: the stores and the CLI search read these.
-process.env.HOME = home;
-process.env.OPENBOT_CLAUDE_PATH = claudeExecutable;
-process.env.CLAUDE_CONFIG_DIR = join(home, ".claude");
-process.env.OPENBOT_CODEX_PATH = codexExecutable;
-process.env.CODEX_HOME = join(home, ".codex");
-mkdirSync(home, { recursive: true });
+  // Before the service modules load: the stores and the CLI search read these.
+  process.env.HOME = home;
+  process.env.OPENBOT_CLAUDE_PATH = claudeExecutable;
+  process.env.CLAUDE_CONFIG_DIR = join(home, ".claude");
+  process.env.OPENBOT_CODEX_PATH = codexExecutable;
+  process.env.CODEX_HOME = join(home, ".codex");
+  mkdirSync(home, { recursive: true });
 
-const { AgentService } = await import("../src/backend/agent-service");
-const { AgentStore } = await import("../src/backend/agent-store");
-const { ClaudeAgentClient } = await import("../src/backend/claude-client");
-const { CodexAppServerClient } = await import("../src/backend/app-server-client");
-const { runCauseEffect } = await import("../src/backend/effect-boundary");
-const { MailboxStore } = await import("../src/backend/mailbox-store");
-const { OpenBotDatabase } = await import("../src/backend/openbot-database");
-const { migrateOpenBotDatabase } = await import("../src/backend/openbot-database-schema");
-const { importProviderHistory } = await import("../src/backend/provider-history-import");
+  const { AgentService } = await import("../src/backend/agent-service");
+  const { AgentStore } = await import("../src/backend/agent-store");
+  const { ClaudeAgentClient } = await import("../src/backend/claude-client");
+  const { CodexAppServerClient } = await import("../src/backend/app-server-client");
+  const { runCauseEffect } = await import("../src/backend/effect-boundary");
+  const { MailboxStore } = await import("../src/backend/mailbox-store");
+  const { OpenBotDatabase } = await import("../src/backend/openbot-database");
+  const { migrateOpenBotDatabase } = await import("../src/backend/openbot-database-schema");
+  const { importProviderHistory } = await import("../src/backend/provider-history-import");
 
-// The stand-in for the Claude CLI. It speaks enough of the stream-json protocol for a turn to end,
-// and logs the model and the outcome of each turn.
-const STAND_IN_CLAUDE = `#!${process.execPath}
+  // The stand-in for the Claude CLI. It speaks enough of the stream-json protocol for a turn to end,
+  // and logs the model and the outcome of each turn.
+  const STAND_IN_CLAUDE = `#!/usr/bin/env node
 const fs = require("node:fs");
 const { randomUUID } = require("node:crypto");
 const args = process.argv.slice(2);
@@ -183,9 +184,9 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", () => process.exit(0));
 `;
 
-// Codex's app-server reports a plan refusal through the nested usageLimitExceeded error. The
-// process writes a checkpoint before the refusal and serves it from the paged rollout endpoints.
-const STAND_IN_CODEX = `#!${process.execPath}
+  // Codex's app-server reports a plan refusal through the nested usageLimitExceeded error. The
+  // process writes a checkpoint before the refusal and serves it from the paged rollout endpoints.
+  const STAND_IN_CODEX = `#!/usr/bin/env node
 const fs = require("node:fs");
 const { randomUUID } = require("node:crypto");
 if (process.argv.includes("--version")) { console.log("codex-cli 0.160.1"); process.exit(0); }
@@ -288,1153 +289,1167 @@ process.stdin.on("data", (chunk) => {
 process.stdout.on("error", (error) => { if (error.code === "EPIPE") process.exit(0); else throw error; });
 `;
 
-interface ClientEvents {
-  notification: [notification: AppServerNotification];
-  request: [request: AppServerRequest];
-  exit: [error: Error];
-  diagnostic: [message: string, origin?: DiagnosticOrigin];
-}
+  interface ClientEvents {
+    notification: [notification: AppServerNotification];
+    request: [request: AppServerRequest];
+    exit: [error: Error];
+    diagnostic: [message: string, origin?: DiagnosticOrigin];
+  }
 
-const claudeNotifications: {
-  client: number;
-  method: string;
-  threadId: string | null;
-  turnId: string | null;
-  family?: string | null;
-}[] = [];
-let nextClaudeClient = 0;
+  const claudeNotifications: {
+    client: number;
+    method: string;
+    threadId: string | null;
+    turnId: string | null;
+    family?: string | null;
+  }[] = [];
+  let nextClaudeClient = 0;
 
-/**
- * The real Claude client. Only the account, usage and model reads are answered here: the real ones
- * run `claude auth status` or a probe query. It also records the provider thread of the last turn, and
- * keeps the answers to the tool calls this check sends as the provider would.
- */
-class ClaudeStandIn extends EventEmitter<ClientEvents> implements AgentClient {
-  readonly provider = "claude";
-  readonly contextCompaction = "native";
-  readonly #real: InstanceType<typeof ClaudeAgentClient>;
-  readonly #clientId = ++nextClaudeClient;
-  readonly readHistory: ReadProviderHistory;
-  /** The provider thread of the last turn that started. */
-  lastThread: string | null = null;
-  readonly toolAnswers = new Map<RequestId, unknown>();
-  readonly limitReports: { turnId: string; family: string | null | undefined }[] = [];
-  readonly unreadableThreads = new Set<string>();
-  readonly slowThreads = new Set<string>();
+  /**
+   * The real Claude client. Only the account, usage and model reads are answered here: the real ones
+   * run `claude auth status` or a probe query. It also records the provider thread of the last turn, and
+   * keeps the answers to the tool calls this check sends as the provider would.
+   */
+  class ClaudeStandIn extends EventEmitter<ClientEvents> implements AgentClient {
+    readonly provider = "claude";
+    readonly contextCompaction = "native";
+    readonly #real: InstanceType<typeof ClaudeAgentClient>;
+    readonly #clientId = ++nextClaudeClient;
+    readonly readHistory: ReadProviderHistory;
+    /** The provider thread of the last turn that started. */
+    lastThread: string | null = null;
+    readonly toolAnswers = new Map<RequestId, unknown>();
+    readonly limitReports: { turnId: string; family: string | null | undefined }[] = [];
+    readonly unreadableThreads = new Set<string>();
+    readonly slowThreads = new Set<string>();
 
-  constructor(cli: ClaudeCliInfo) {
-    super();
-    this.#real = new ClaudeAgentClient(cli);
-    this.readHistory = (request, consume) => {
-      if (this.unreadableThreads.has(request.threadId))
-        return Effect.fail(providerFailure(new Error("History could not be read.")));
-      if (this.slowThreads.has(request.threadId)) return Effect.never;
-      return this.#real.readHistory(request, consume);
-    };
-    this.#real.on("notification", (notification) => {
-      if (
-        ["turn/started", "openbot/usageLimit", "turn/completed"].includes(notification.method) &&
-        isDynamicRecord(notification.params)
-      ) {
-        const { threadId, turnId, family } = notification.params;
-        const turn = notification.params.turn;
-        const nestedTurnId = isDynamicRecord(turn) && typeof turn.id === "string" ? turn.id : null;
-        claudeNotifications.push({
-          client: this.#clientId,
-          method: notification.method,
-          threadId: typeof threadId === "string" ? threadId : null,
-          turnId: typeof turnId === "string" ? turnId : nestedTurnId,
-          ...(typeof family === "string" || family === null ? { family } : {}),
-        });
-      }
-      if (notification.method === "openbot/usageLimit" && isDynamicRecord(notification.params)) {
-        const { turnId, family } = notification.params;
-        if (typeof turnId === "string")
-          this.limitReports.push({
-            turnId,
-            family: typeof family === "string" || family === null ? family : undefined,
+    constructor(cli: ClaudeCliInfo) {
+      super();
+      this.#real = new ClaudeAgentClient(cli);
+      this.readHistory = (request, consume) => {
+        if (this.unreadableThreads.has(request.threadId))
+          return Effect.fail(providerFailure(new Error("History could not be read.")));
+        if (this.slowThreads.has(request.threadId)) return Effect.never;
+        return this.#real.readHistory(request, consume);
+      };
+      this.#real.on("notification", (notification) => {
+        if (
+          ["turn/started", "openbot/usageLimit", "turn/completed"].includes(notification.method) &&
+          isDynamicRecord(notification.params)
+        ) {
+          const { threadId, turnId, family } = notification.params;
+          const turn = notification.params.turn;
+          const nestedTurnId = isDynamicRecord(turn) && typeof turn.id === "string" ? turn.id : null;
+          claudeNotifications.push({
+            client: this.#clientId,
+            method: notification.method,
+            threadId: typeof threadId === "string" ? threadId : null,
+            turnId: typeof turnId === "string" ? turnId : nestedTurnId,
+            ...(typeof family === "string" || family === null ? { family } : {}),
           });
+        }
+        if (notification.method === "openbot/usageLimit" && isDynamicRecord(notification.params)) {
+          const { turnId, family } = notification.params;
+          if (typeof turnId === "string")
+            this.limitReports.push({
+              turnId,
+              family: typeof family === "string" || family === null ? family : undefined,
+            });
+        }
+        if (notification.method === "turn/started" && isDynamicRecord(notification.params)) {
+          const threadId = notification.params.threadId;
+          if (typeof threadId === "string") this.lastThread = threadId;
+        }
+        this.emit("notification", notification);
+      });
+      this.#real.on("request", (request) => this.emit("request", request));
+      this.#real.on("diagnostic", (message) => this.emit("diagnostic", message));
+      this.#real.on("exit", (error) => this.emit("exit", error));
+    }
+
+    get running(): boolean {
+      return this.#real.running;
+    }
+
+    start(): void {
+      this.#real.start();
+    }
+
+    stop() {
+      return this.#real.stop();
+    }
+
+    canReleaseProcess = () => this.#real.canReleaseProcess();
+
+    releaseThread(externalThreadId: string) {
+      return this.#real.releaseThread(externalThreadId);
+    }
+
+    releaseIdleThreads() {
+      return this.#real.releaseIdleThreads();
+    }
+
+    request<T>(method: string, params: unknown, decoder: ResponseDecoder<T>, timeoutMs?: number) {
+      if (!this.#real.running) return this.#real.request(method, params, decoder, timeoutMs);
+      switch (method) {
+        case "account/read":
+          return providerSync(() => decoder({ account: { type: "claude", email: "claude@example.com" } }));
+        case "account/rateLimits/read":
+          return providerSync(() => decoder({ rateLimits: null, rateLimitsByLimitId: null }));
+        case "model/list":
+          return providerSync(() =>
+            decoder({
+              data: [
+                { model: PRIMARY, displayName: "Primary" },
+                { model: BACKUP, displayName: "Backup" },
+                { model: "claude-opus-5-5", displayName: "Opus" },
+              ],
+            }),
+          );
+        default:
+          return this.#real.request(method, params, decoder, timeoutMs);
       }
-      if (notification.method === "turn/started" && isDynamicRecord(notification.params)) {
-        const threadId = notification.params.threadId;
-        if (typeof threadId === "string") this.lastThread = threadId;
-      }
-      this.emit("notification", notification);
-    });
-    this.#real.on("request", (request) => this.emit("request", request));
-    this.#real.on("diagnostic", (message) => this.emit("diagnostic", message));
-    this.#real.on("exit", (error) => this.emit("exit", error));
-  }
+    }
 
-  get running(): boolean {
-    return this.#real.running;
-  }
+    notify(): void {
+      this.#real.notify();
+    }
 
-  start(): void {
-    this.#real.start();
-  }
+    respond(id: RequestId, result: unknown): void {
+      if (typeof id === "string" && id.startsWith("e2e-tool-")) this.toolAnswers.set(id, result);
+      else this.#real.respond(id, result);
+    }
 
-  stop() {
-    return this.#real.stop();
-  }
-
-  canReleaseProcess = () => this.#real.canReleaseProcess();
-
-  releaseThread(externalThreadId: string) {
-    return this.#real.releaseThread(externalThreadId);
-  }
-
-  releaseIdleThreads() {
-    return this.#real.releaseIdleThreads();
-  }
-
-  request<T>(method: string, params: unknown, decoder: ResponseDecoder<T>, timeoutMs?: number) {
-    if (!this.#real.running) return this.#real.request(method, params, decoder, timeoutMs);
-    switch (method) {
-      case "account/read":
-        return providerSync(() => decoder({ account: { type: "claude", email: "claude@example.com" } }));
-      case "account/rateLimits/read":
-        return providerSync(() => decoder({ rateLimits: null, rateLimitsByLimitId: null }));
-      case "model/list":
-        return providerSync(() =>
-          decoder({
-            data: [
-              { model: PRIMARY, displayName: "Primary" },
-              { model: BACKUP, displayName: "Backup" },
-              { model: "claude-opus-5-5", displayName: "Opus" },
-            ],
-          }),
-        );
-      default:
-        return this.#real.request(method, params, decoder, timeoutMs);
+    respondError(id: RequestId, error: Parameters<AgentClient["respondError"]>[1]): void {
+      if (typeof id === "string" && id.startsWith("e2e-tool-")) this.toolAnswers.set(id, { error });
+      else this.#real.respondError(id, error);
     }
   }
 
-  notify(): void {
-    this.#real.notify();
+  interface Check {
+    name: string;
+    passed: boolean;
+    detail?: unknown;
   }
 
-  respond(id: RequestId, result: unknown): void {
-    if (typeof id === "string" && id.startsWith("e2e-tool-")) this.toolAnswers.set(id, result);
-    else this.#real.respond(id, result);
+  const report: {
+    primary: string;
+    backup: string;
+    checks: Check[];
+    passed: boolean;
+    checkedAt?: string;
+    error?: string;
+    usageWorkTrace?: unknown;
+  } = {
+    primary: PRIMARY,
+    backup: BACKUP,
+    checks: [],
+    passed: false,
+  };
+
+  const unused = () => Effect.die(new Error("Not used by this check."));
+  const browser: AgentBrowserHost = {
+    listTabs: () => [],
+    beginTakeover: unused,
+    endTakeover: () => {},
+    userControlTabFor: () => null,
+    awaitUserControlRelease: unused,
+    resolveUploadTarget: unused,
+    handleDynamicTool: unused,
+    onChanged: () => () => {},
+    onControlChanged: () => () => {},
+    onDocumentChanged: () => () => {},
+    clearControls: () => {},
+    endControl: () => {},
+    close: () => Effect.void,
+    clearAgentSession: () => Effect.void,
+  };
+
+  /** Waits for a state of the service or of its database. */
+  async function waitFor<T>(label: string, read: () => T | null | undefined | false, timeoutMs = 20_000): Promise<T> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const value = read();
+      if (value) return value;
+      if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
+      await new Promise((done) => setTimeout(done, 25));
+    }
   }
 
-  respondError(id: RequestId, error: Parameters<AgentClient["respondError"]>[1]): void {
-    if (typeof id === "string" && id.startsWith("e2e-tool-")) this.toolAnswers.set(id, { error });
-    else this.#real.respondError(id, error);
+  function turns(): { model: string; failed: boolean; input: string }[] {
+    try {
+      return readFileSync(turnLog, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+    } catch {
+      return [];
+    }
   }
-}
 
-interface Check {
-  name: string;
-  passed: boolean;
-  detail?: unknown;
-}
+  const failing = (models: string[]) => writeFileSync(failingFile, JSON.stringify(models));
 
-const report: {
-  primary: string;
-  backup: string;
-  checks: Check[];
-  passed: boolean;
-  checkedAt?: string;
-  error?: string;
-  usageWorkTrace?: unknown;
-} = {
-  primary: PRIMARY,
-  backup: BACKUP,
-  checks: [],
-  passed: false,
-};
-
-const unused = () => Effect.die(new Error("Not used by this check."));
-const browser: AgentBrowserHost = {
-  listTabs: () => [],
-  beginTakeover: unused,
-  endTakeover: () => {},
-  userControlTabFor: () => null,
-  awaitUserControlRelease: unused,
-  resolveUploadTarget: unused,
-  handleDynamicTool: unused,
-  onChanged: () => () => {},
-  onControlChanged: () => () => {},
-  onDocumentChanged: () => () => {},
-  clearControls: () => {},
-  endControl: () => {},
-  close: () => Effect.void,
-  clearAgentSession: () => Effect.void,
-};
-
-/** Waits for a state of the service or of its database. */
-async function waitFor<T>(label: string, read: () => T | null | undefined | false, timeoutMs = 20_000): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const value = read();
-    if (value) return value;
-    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
-    await new Promise((done) => setTimeout(done, 25));
+  function readLog<T>(path: string): T[] {
+    try {
+      return readFileSync(path, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+    } catch {
+      return [];
+    }
   }
-}
 
-function turns(): { model: string; failed: boolean; input: string }[] {
-  try {
-    return readFileSync(turnLog, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
-  } catch {
-    return [];
+  interface CodexTurn {
+    model: string;
+    threadId: string;
+    turnId: string;
+    input: string;
+    limited: boolean;
   }
-}
 
-const failing = (models: string[]) => writeFileSync(failingFile, JSON.stringify(models));
+  await writeFile(claudeExecutable, STAND_IN_CLAUDE, { mode: 0o755 });
+  await writeFile(codexExecutable, STAND_IN_CODEX, { mode: 0o755 });
+  failing([]);
+  const database = new OpenBotDatabase(userData);
+  const clients: ClaudeStandIn[] = [];
+  const events: AgentEvent[] = [];
+  const probeTimers = new Map<ReturnType<typeof setTimeout>, () => void>();
+  let probeNow = Date.now();
 
-function readLog<T>(path: string): T[] {
-  try {
-    return readFileSync(path, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
-  } catch {
-    return [];
-  }
-}
-
-interface CodexTurn {
-  model: string;
-  threadId: string;
-  turnId: string;
-  input: string;
-  limited: boolean;
-}
-
-await writeFile(claudeExecutable, STAND_IN_CLAUDE, { mode: 0o755 });
-await writeFile(codexExecutable, STAND_IN_CODEX, { mode: 0o755 });
-failing([]);
-const database = new OpenBotDatabase(userData);
-const clients: ClaudeStandIn[] = [];
-const events: AgentEvent[] = [];
-const probeTimers = new Map<ReturnType<typeof setTimeout>, () => void>();
-let probeNow = Date.now();
-
-function startService() {
-  const store = new AgentStore(userData, home, database);
-  const mailbox = new MailboxStore(userData, store.sharedRoot, store.database);
-  const service = new AgentService({
-    store,
-    mailbox,
-    browser,
-    usageLimitTimers: {
-      now: () => probeNow,
-      set: (callback, delay) => {
-        assert.ok(delay >= 0 && delay <= 600_000);
-        const timer = setTimeout(() => {}, delay);
-        timer.unref();
-        probeTimers.set(timer, callback);
-        return timer;
+  function startService() {
+    const store = new AgentStore(userData, home, database);
+    const mailbox = new MailboxStore(userData, store.sharedRoot, store.database);
+    const service = new AgentService({
+      store,
+      mailbox,
+      browser,
+      usageLimitTimers: {
+        now: () => probeNow,
+        set: (callback, delay) => {
+          assert.ok(delay >= 0 && delay <= 600_000);
+          const timer = setTimeout(() => {}, delay);
+          timer.unref();
+          probeTimers.set(timer, callback);
+          return timer;
+        },
+        clear: (timer) => {
+          clearTimeout(timer);
+          probeTimers.delete(timer);
+        },
       },
-      clear: (timer) => {
-        clearTimeout(timer);
-        probeTimers.delete(timer);
+      preferredProvider: "claude",
+      offProviders: AGENT_PROVIDERS.filter((provider) => provider !== "claude" && provider !== "codex"),
+      clientFactory: (provider, cli) => {
+        if (provider === "codex") return new CodexAppServerClient(cli.executable, 30000);
+        const client = new ClaudeStandIn(cli);
+        clients.push(client);
+        return client;
       },
-    },
-    preferredProvider: "claude",
-    offProviders: AGENT_PROVIDERS.filter((provider) => provider !== "claude" && provider !== "codex"),
-    clientFactory: (provider, cli) => {
-      if (provider === "codex") return new CodexAppServerClient(cli.executable, 30000);
-      const client = new ClaudeStandIn(cli);
-      clients.push(client);
-      return client;
-    },
-  });
-  service.on("event", (event) => events.push(event));
-  return { store, mailbox, service };
-}
+    });
+    service.on("event", (event) => events.push(event));
+    return { store, mailbox, service };
+  }
 
-let { store, mailbox, service } = startService();
+  let { store, mailbox, service } = startService();
 
-function agentOf(agentId: string) {
-  const agent = store.list().find((candidate) => candidate.id === agentId);
-  assert.ok(agent, `Agent ${agentId} exists.`);
-  return agent;
-}
+  function agentOf(agentId: string) {
+    const agent = store.list().find((candidate) => candidate.id === agentId);
+    assert.ok(agent, `Agent ${agentId} exists.`);
+    return agent;
+  }
 
-function errorsFor(agentId: string, since: number) {
-  return events.slice(since).filter((event) => event.type === "error" && event.agentId === agentId);
-}
+  function errorsFor(agentId: string, since: number) {
+    return events.slice(since).filter((event) => event.type === "error" && event.agentId === agentId);
+  }
 
-/** Sends a message and waits for its delivery to end. */
-async function send(agentId: string, text: string, sourcePaths?: string[]) {
-  const attachments = await runCauseEffect(mailbox.prepareAttachments(sourcePaths ?? []));
-  const receipt = await runCauseEffect(
-    service.sendMessage({ agentId, text, attachmentDraftIds: attachments.map((attachment) => attachment.id) }),
-  );
-  const deliveryId = receipt.deliveries[0]?.id;
-  assert.ok(deliveryId, "The message has a delivery.");
-  const status = await waitFor(`"${text}" to end`, () => {
-    const value = mailbox.getDelivery(deliveryId)?.delivery.status;
-    return value === "completed" || value === "failed" || value === "interrupted" ? value : null;
-  });
-  return { deliveryId, status, error: mailbox.getDelivery(deliveryId)?.delivery.error ?? null };
-}
-
-/** The name the service lists for a model, which the switch notes show. */
-function modelName(model: string): string {
-  return service.listModels().find((option) => option.provider === "claude" && option.id === model)?.name ?? model;
-}
-
-async function markers(agentId: string, itemType: string) {
-  const snapshot = await runCauseEffect(service.readConversation(agentId));
-  return snapshot.messages.filter((message) => message.itemType === itemType).map((message) => message.text);
-}
-
-/** Calls an OpenBot tool from the thread of the last turn, as its provider would, and returns the answer. */
-let toolCalls = 0;
-async function callTool(tool: string, args: unknown) {
-  const client = clients.at(-1);
-  assert.ok(client, "The service made a Claude client.");
-  const thread = client.lastThread;
-  assert.ok(thread, "A turn ran.");
-  const id = `e2e-tool-${++toolCalls}`;
-  client.emit("request", {
-    id,
-    method: "item/tool/call",
-    params: { threadId: thread, turnId: "e2e-turn", callId: id, namespace: "openbot", tool, arguments: args },
-  });
-  const answer = await waitFor(`${tool} to answer`, () => client.toolAnswers.get(id));
-  assert.ok(isDynamicRecord(answer) && Array.isArray(answer.contentItems), `${tool} answers with content.`);
-  const item = answer.contentItems[0];
-  assert.ok(isDynamicRecord(item) && typeof item.text === "string", `${tool} answers with text.`);
-  return { success: answer.success === true, text: item.text };
-}
-
-async function check(name: string, run: () => Promise<unknown>) {
-  const detail = await run();
-  report.checks.push({ name, passed: true, detail });
-}
-
-async function restart(keepHold = false) {
-  await runCauseEffect(service.stop());
-  if (!keepHold) database.connection.prepare("DELETE FROM unknown_usage_holds").run();
-  ({ store, mailbox, service } = startService());
-  await runCauseEffect(service.initialize());
-}
-
-async function createCodex(name: string, backupModels?: AgentBackupModels) {
-  const agent = await runCauseEffect(
-    service.createAgent({
-      name,
-      description: "Checks usage-limit continuation.",
-      avatarSeed: randomUUID(),
-      avatarHue: null,
-      provider: "codex",
-      model: CODEX_MODEL,
-      initialMessage: "Hello.",
-    }),
-  );
-  await waitFor("the initial Codex turn to end", () =>
-    service.listQueue(agent.id).deliveries.every((delivery) => delivery.status === "completed"),
-  );
-  if (backupModels) await runCauseEffect(service.updateAgent({ agentId: agent.id, backupModels }));
-  return agentOf(agent.id);
-}
-
-async function createClaude(name: string, backupModels?: AgentBackupModels, model: AgentModelId = PRIMARY) {
-  const agent = await runCauseEffect(
-    service.createAgent({
-      name,
-      description: "Checks known-family usage-limit continuation.",
-      avatarSeed: randomUUID(),
-      avatarHue: null,
-      provider: "claude",
-      model,
-      initialMessage: "Hello.",
-    }),
-  );
-  await waitFor("the initial Claude turn to end", () =>
-    service.listQueue(agent.id).deliveries.every((delivery) => delivery.status === "completed"),
-  );
-  if (backupModels) await runCauseEffect(service.updateAgent({ agentId: agent.id, backupModels }));
-  return agentOf(agent.id);
-}
-
-const automaticBackups: AgentBackupModels = {
-  automatic: true,
-  order: [
-    { provider: "claude", model: PRIMARY },
-    { provider: "claude", model: BACKUP },
-  ],
-};
-
-async function verifyHistoryKeepsRequests(agentId: string) {
-  const snapshot = await runCauseEffect(service.readConversation(agentId));
-  const threadId = snapshot.threadId;
-  assert.ok(threadId);
-  const users = () =>
-    database
-      .readConversation(agentId, threadId)
-      .messages.filter((message) => message.author === "user")
-      .map((message) => ({ id: message.id, text: message.text }))
-      .sort((left, right) => left.id.localeCompare(right.id));
-  const before = users();
-  const client = clients.at(-1);
-  const session = database.listProviderSessions(threadId).find((session) => session.state === "active");
-  assert.ok(client && session);
-  const imported = await runCauseEffect(
-    importProviderHistory({
-      database,
-      readHistory: client.readHistory.bind(client),
-      sessionId: session.id,
-      provider: "claude",
-      externalSessionId: session.externalSessionId,
-      agentId,
-      publicThreadId: threadId,
-      cwd: agentOf(agentId).workspacePath,
-      findDelivery: (id) => mailbox.deliveryForProviderMessage(agentId, id),
-      findMessageDelivery: (id) => mailbox.deliveryForMessage(id, agentId),
-      quietRoutineDelivery: () => false,
-    }),
-  );
-  assert.ok(imported.turns > 0, "The provider's saved transcript was read and imported.");
-  assert.deepEqual(users(), before, "History import keeps one user request after independent continuation turn IDs.");
-}
-
-try {
-  await runCauseEffect(service.initialize());
-  const create = (name: string) =>
-    runCauseEffect(
-      service.createAgent({
-        name,
-        description: "Checks backup models.",
-        avatarSeed: name.toLowerCase(),
-        avatarHue: null,
-        initialMessage: "Hello.",
-        provider: "claude",
-        model: PRIMARY,
-      }),
+  /** Sends a message and waits for its delivery to end. */
+  async function send(agentId: string, text: string, sourcePaths?: string[]) {
+    const attachments = await runCauseEffect(mailbox.prepareAttachments(sourcePaths ?? []));
+    const receipt = await runCauseEffect(
+      service.sendMessage({ agentId, text, attachmentDraftIds: attachments.map((attachment) => attachment.id) }),
     );
-  const mover = await create("Mover");
-  const stayer = await create("Stayer");
-  await waitFor(
-    "the first turns to end",
-    () =>
-      turns().length >= 2 &&
-      !service
-        .listQueue(mover.id)
-        .deliveries.some((delivery) => ["queued", "starting", "running"].includes(delivery.status)) &&
-      !service
-        .listQueue(stayer.id)
-        .deliveries.some((delivery) => ["queued", "starting", "running"].includes(delivery.status)),
-  );
-  await runCauseEffect(
-    service.updateAgent({
-      agentId: mover.id,
-      backupModels: { automatic: true, order: [{ provider: "claude", model: BACKUP }] },
-    }),
-  );
-  failing([PRIMARY]);
+    const deliveryId = receipt.deliveries[0]?.id;
+    assert.ok(deliveryId, "The message has a delivery.");
+    const status = await waitFor(`"${text}" to end`, () => {
+      const value = mailbox.getDelivery(deliveryId)?.delivery.status;
+      return value === "completed" || value === "failed" || value === "interrupted" ? value : null;
+    });
+    return { deliveryId, status, error: mailbox.getDelivery(deliveryId)?.delivery.error ?? null };
+  }
 
-  await check("a turn that wrote text does not move", async () => {
-    const since = events.length;
-    const outcome = await send(mover.id, "act-then-fail");
-    assert.equal(outcome.status, "failed", "The turn fails.");
-    assert.equal(agentOf(mover.id).model, PRIMARY, "The agent stays on its own model.");
-    assert.ok(errorsFor(mover.id, since).length > 0, "The error shows.");
-    return outcome;
-  });
+  /** The name the service lists for a model, which the switch notes show. */
+  function modelName(model: string): string {
+    return service.listModels().find((option) => option.provider === "claude" && option.id === model)?.name ?? model;
+  }
 
-  await check("an agent with no backup models fails as before", async () => {
-    const since = events.length;
-    const outcome = await send(stayer.id, "work");
-    assert.equal(outcome.status, "failed", "The turn fails.");
-    assert.equal(agentOf(stayer.id).model, PRIMARY, "The agent stays on its own model.");
-    assert.ok(errorsFor(stayer.id, since).length > 0, "The error shows.");
-    return outcome;
-  });
+  async function markers(agentId: string, itemType: string) {
+    const snapshot = await runCauseEffect(service.readConversation(agentId));
+    return snapshot.messages.filter((message) => message.itemType === itemType).map((message) => message.text);
+  }
 
-  await check("a provider error moves the agent to its backup model", async () => {
-    const since = events.length;
-    const before = turns().length;
-    const outcome = await send(mover.id, "work");
-    assert.equal(outcome.status, "completed", `The message completes: ${outcome.error}`);
-    const ran = turns().slice(before);
-    assert.deepEqual(
-      ran.map((turn) => turn.model),
-      [PRIMARY, BACKUP],
-      "The message ran on the own model, then on the backup.",
-    );
-    const agent = agentOf(mover.id);
-    assert.equal(agent.model, BACKUP, "The agent is on the backup model.");
-    assert.equal(agent.usageLimitReturn?.model, PRIMARY, "The agent keeps its own model to go back to.");
-    assert.equal(agent.usageLimitReturn?.cause, "provider-error", "The return names the provider error.");
-    assert.deepEqual(errorsFor(mover.id, since), [], "No error shows for the moved turn.");
-    const notes = await markers(mover.id, MODEL_SWITCH_ITEM_TYPES["provider-error"]);
-    assert.deepEqual(notes, [sourceText("status.agent.modelSwitchedForError", { model: modelName(BACKUP) })]);
-    return { ran, notes };
-  });
+  /** Calls an OpenBot tool from the thread of the last turn, as its provider would, and returns the answer. */
+  let toolCalls = 0;
+  async function callTool(tool: string, args: unknown) {
+    const client = clients.at(-1);
+    assert.ok(client, "The service made a Claude client.");
+    const thread = client.lastThread;
+    assert.ok(thread, "A turn ran.");
+    const id = `e2e-tool-${++toolCalls}`;
+    client.emit("request", {
+      id,
+      method: "item/tool/call",
+      params: { threadId: thread, turnId: "e2e-turn", callId: id, namespace: "openbot", tool, arguments: args },
+    });
+    const answer = await waitFor(`${tool} to answer`, () => client.toolAnswers.get(id));
+    assert.ok(isDynamicRecord(answer) && Array.isArray(answer.contentItems), `${tool} answers with content.`);
+    const item = answer.contentItems[0];
+    assert.ok(isDynamicRecord(item) && typeof item.text === "string", `${tool} answers with text.`);
+    return { success: answer.success === true, text: item.text };
+  }
 
-  // `agent-profile-accounts-e2e.ts` checks that update_profile sets and clears the order.
-  await check("read_agent shows that a provider error moved the agent", async () => {
-    const read = await callTool("read_agent", { agentId: mover.id });
-    assert.ok(read.success, read.text);
-    const setup = JSON.parse(read.text);
-    assert.equal(setup.model, BACKUP, "read_agent shows the backup model.");
-    assert.equal(setup.usageLimitReturn?.model, PRIMARY, "read_agent names the model to go back to.");
-    assert.equal(setup.usageLimitReturn?.cause, "provider-error", "read_agent names the provider error.");
-    return { model: setup.model, usageLimitReturn: setup.usageLimitReturn };
-  });
+  async function check(name: string, run: () => Promise<unknown>) {
+    const detail = await run();
+    report.checks.push({ name, passed: true, detail });
+  }
 
-  await check("after a restart the agent goes back to its own model", async () => {
+  async function restart(keepHold = false) {
     await runCauseEffect(service.stop());
-    failing([]);
+    if (!keepHold) database.connection.prepare("DELETE FROM unknown_usage_holds").run();
     ({ store, mailbox, service } = startService());
     await runCauseEffect(service.initialize());
-    const before = turns().length;
-    const outcome = await send(mover.id, "again");
-    assert.equal(outcome.status, "completed", `The message completes: ${outcome.error}`);
-    assert.deepEqual(
-      turns()
-        .slice(before)
-        .map((turn) => turn.model),
-      [PRIMARY],
-      "The message runs on the own model.",
-    );
-    const agent = agentOf(mover.id);
-    assert.equal(agent.model, PRIMARY, "The agent is back on its own model.");
-    assert.equal(agent.usageLimitReturn, undefined, "Nothing is left to go back to.");
-    const notes = await markers(mover.id, MODEL_SWITCH_ITEM_TYPES["provider-error-ended"]);
-    assert.deepEqual(notes, [sourceText("status.agent.modelReturnedAfterError", { model: modelName(PRIMARY) })]);
-    return { notes };
-  });
+  }
 
-  await check("a usage limit after partial work continues on the backup", async () => {
-    const attachment = join(root, "requirements.txt");
-    await writeFile(attachment, "Finish the last step after the checkpoint.\n");
-    const since = events.length;
-    const before = turns().length;
-    const notificationsBefore = claudeNotifications.length;
-    const reportsBefore = clients.reduce((count, client) => count + client.limitReports.length, 0);
-    const outcome = await send(mover.id, "usage-work: save a checkpoint, then finish the last step.", [attachment]);
-    const reports = clients.flatMap((client) => client.limitReports).slice(reportsBefore);
-    report.usageWorkTrace = {
-      agentId: mover.id,
-      deliveryId: outcome.deliveryId,
-      finalTurnId: mailbox.getDelivery(outcome.deliveryId)?.delivery.turnId ?? null,
-      status: outcome.status,
-      notifications: claudeNotifications.slice(notificationsBefore).map((notification) => {
-        const turnId = notification.turnId;
-        return {
-          ...notification,
-          deliveries: turnId
-            ? [mover.id, stayer.id].flatMap((agentId) =>
-                mailbox.findDeliveriesByTurn(agentId, turnId).map(({ delivery }) => ({
-                  agentId,
-                  deliveryId: delivery.id,
-                })),
-              )
-            : [],
-        };
+  async function createCodex(name: string, backupModels?: AgentBackupModels) {
+    const agent = await runCauseEffect(
+      service.createAgent({
+        name,
+        description: "Checks usage-limit continuation.",
+        avatarSeed: randomUUID(),
+        avatarHue: null,
+        provider: "codex",
+        model: CODEX_MODEL,
+        initialMessage: "Hello.",
       }),
-      providerTurns: turns()
-        .slice(before)
-        .map(({ model, failed }) => ({ model, failed })),
-      reports,
-    };
-    assert.equal(reports.length, 1, "Claude reports the refused limit to the lifecycle.");
-    assert.equal(reports[0]?.family, PRIMARY.includes("opus") ? "opus" : "sonnet", "The limit keeps its family.");
-    assert.equal(outcome.status, "completed", `The interrupted task completes: ${outcome.error}`);
-    const ran = turns().slice(before);
-    assert.deepEqual(
-      ran.map((turn) => turn.model),
-      [PRIMARY, BACKUP],
     );
-    assert.ok(ran[1]?.input.includes("Continue the unfinished task"), "The backup gets a continuation request.");
-    assert.ok(ran[1]?.input.includes("requirements.txt"), "The original attachment still reaches the backup.");
-    const snapshot = await runCauseEffect(service.readConversation(mover.id));
-    assert.equal(snapshot.messages.filter((message) => message.id === outcome.deliveryId).length, 1);
-    assert.ok(snapshot.messages.some((message) => message.text.includes("Checkpoint saved.")));
-    assert.deepEqual(errorsFor(mover.id, since), [], "A recovered usage limit shows no failure.");
-    assert.ok(snapshot.threadId);
-    await verifyHistoryKeepsRequests(mover.id);
-    const finalTurnId = mailbox.getDelivery(outcome.deliveryId)?.delivery.turnId;
-    assert.ok(finalTurnId);
-    assert.equal(
-      mailbox.deliveryForProviderMessage(stayer.id, finalTurnId),
-      null,
-      "History lookup never borrows another agent's delivery.",
+    await waitFor("the initial Codex turn to end", () =>
+      service.listQueue(agent.id).deliveries.every((delivery) => delivery.status === "completed"),
     );
-    return { outcome, models: ran.map((turn) => turn.model) };
-  });
+    if (backupModels) await runCauseEffect(service.updateAgent({ agentId: agent.id, backupModels }));
+    return agentOf(agent.id);
+  }
 
-  for (const mode of ["partial", "tool-only"]) {
-    await check(`unknown-scope ${mode} work pauses without cross-provider fallback`, async () => {
-      await restart();
-      const agent = await createCodex(`Codex ${mode}`, automaticBackups);
-      const beforeCodex = readLog<CodexTurn>(codexLog).length;
-      const beforeClaude = turns().length;
-      const beforeWork = readLog<{ caseId: string; step: string }>(workLog).length;
-      const attachment = join(root, `${mode}.txt`);
-      await writeFile(attachment, "Only the remaining step is needed.\n");
-      const outcome = await send(agent.id, `usage-${mode} case:${mode}`, [attachment]);
-      assert.equal(outcome.status, "interrupted", `Partial work pauses: ${outcome.error}`);
-      assert.equal(readLog<CodexTurn>(codexLog).length, beforeCodex + 1, "Codex runs once.");
-      assert.equal(turns().length, beforeClaude, "No cross-provider backup runs.");
-      assert.deepEqual(readLog<{ caseId: string; step: string }>(workLog).slice(beforeWork), [
-        { caseId: mode, step: "checkpoint" },
-      ]);
-      assert.equal(agentOf(agent.id).provider, "codex");
-      assert.ok(
-        service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
-        "The agent stays held until reset or attention.",
+  async function createClaude(name: string, backupModels?: AgentBackupModels, model: AgentModelId = PRIMARY) {
+    const agent = await runCauseEffect(
+      service.createAgent({
+        name,
+        description: "Checks known-family usage-limit continuation.",
+        avatarSeed: randomUUID(),
+        avatarHue: null,
+        provider: "claude",
+        model,
+        initialMessage: "Hello.",
+      }),
+    );
+    await waitFor("the initial Claude turn to end", () =>
+      service.listQueue(agent.id).deliveries.every((delivery) => delivery.status === "completed"),
+    );
+    if (backupModels) await runCauseEffect(service.updateAgent({ agentId: agent.id, backupModels }));
+    return agentOf(agent.id);
+  }
+
+  const automaticBackups: AgentBackupModels = {
+    automatic: true,
+    order: [
+      { provider: "claude", model: PRIMARY },
+      { provider: "claude", model: BACKUP },
+    ],
+  };
+
+  async function verifyHistoryKeepsRequests(agentId: string) {
+    const snapshot = await runCauseEffect(service.readConversation(agentId));
+    const threadId = snapshot.threadId;
+    assert.ok(threadId);
+    const users = () =>
+      database
+        .readConversation(agentId, threadId)
+        .messages.filter((message) => message.author === "user")
+        .map((message) => ({ id: message.id, text: message.text }))
+        .sort((left, right) => left.id.localeCompare(right.id));
+    const before = users();
+    const client = clients.at(-1);
+    const session = database.listProviderSessions(threadId).find((session) => session.state === "active");
+    assert.ok(client && session);
+    const imported = await runCauseEffect(
+      importProviderHistory({
+        database,
+        readHistory: client.readHistory.bind(client),
+        sessionId: session.id,
+        provider: "claude",
+        externalSessionId: session.externalSessionId,
+        agentId,
+        publicThreadId: threadId,
+        cwd: agentOf(agentId).workspacePath,
+        findDelivery: (id) => mailbox.deliveryForProviderMessage(agentId, id),
+        findMessageDelivery: (id) => mailbox.deliveryForMessage(id, agentId),
+        quietRoutineDelivery: () => false,
+      }),
+    );
+    assert.ok(imported.turns > 0, "The provider's saved transcript was read and imported.");
+    assert.deepEqual(users(), before, "History import keeps one user request after independent continuation turn IDs.");
+  }
+
+  try {
+    await runCauseEffect(service.initialize());
+    const create = (name: string) =>
+      runCauseEffect(
+        service.createAgent({
+          name,
+          description: "Checks backup models.",
+          avatarSeed: name.toLowerCase(),
+          avatarHue: null,
+          initialMessage: "Hello.",
+          provider: "claude",
+          model: PRIMARY,
+        }),
       );
+    const mover = await create("Mover");
+    const stayer = await create("Stayer");
+    await waitFor(
+      "the first turns to end",
+      () =>
+        turns().length >= 2 &&
+        !service
+          .listQueue(mover.id)
+          .deliveries.some((delivery) => ["queued", "starting", "running"].includes(delivery.status)) &&
+        !service
+          .listQueue(stayer.id)
+          .deliveries.some((delivery) => ["queued", "starting", "running"].includes(delivery.status)),
+    );
+    await runCauseEffect(
+      service.updateAgent({
+        agentId: mover.id,
+        backupModels: { automatic: true, order: [{ provider: "claude", model: BACKUP }] },
+      }),
+    );
+    failing([PRIMARY]);
+
+    await check("a turn that wrote text does not move", async () => {
+      const since = events.length;
+      const outcome = await send(mover.id, "act-then-fail");
+      assert.equal(outcome.status, "failed", "The turn fails.");
+      assert.equal(agentOf(mover.id).model, PRIMARY, "The agent stays on its own model.");
+      assert.ok(errorsFor(mover.id, since).length > 0, "The error shows.");
       return outcome;
     });
-  }
 
-  for (const automatic of [false, true]) {
-    await check(
-      automatic
-        ? "without a backup, partial work fails without replay"
-        : "automatic fallback off leaves partial work stopped",
-      async () => {
-        await restart();
-        const agent = await createCodex(`No fallback ${automatic}`, {
-          automatic,
-          order: automatic ? [] : automaticBackups.order,
-        });
-        const before = turns().length;
-        const beforeCodex = readLog<CodexTurn>(codexLog).length;
-        const outcome = await send(agent.id, "usage-partial case:stopped");
-        assert.equal(outcome.status, "interrupted", "Unknown-scope partial work pauses without replay.");
-        assert.equal(turns().length, before, "No backup runs.");
-        assert.equal(readLog<CodexTurn>(codexLog).length, beforeCodex + 1, "The original action is not replayed.");
-        assert.equal(agentOf(agent.id).provider, "codex");
-        return outcome;
-      },
-    );
-  }
+    await check("an agent with no backup models fails as before", async () => {
+      const since = events.length;
+      const outcome = await send(stayer.id, "work");
+      assert.equal(outcome.status, "failed", "The turn fails.");
+      assert.equal(agentOf(stayer.id).model, PRIMARY, "The agent stays on its own model.");
+      assert.ok(errorsFor(stayer.id, since).length > 0, "The error shows.");
+      return outcome;
+    });
 
-  for (const { mode, expectsContinuation } of [
-    { mode: "chain", expectsContinuation: true },
-    { mode: "chain-empty", expectsContinuation: false },
-  ] as const) {
-    await check(`known-family Claude ${mode} work continues on its backup`, async () => {
-      await restart();
-      const agent = await createClaude(`Claude ${mode}`, {
-        automatic: true,
-        order: [{ provider: "claude", model: BACKUP }],
-      });
+    await check("a provider error moves the agent to its backup model", async () => {
       const since = events.length;
       const before = turns().length;
-      const attachment = join(root, `${mode}.txt`);
-      await writeFile(attachment, "Only the remaining step is needed.\n");
-      const outcome = await send(agent.id, `usage-${mode} case:${mode}`, [attachment]);
-      assert.equal(outcome.status, "completed", `Known family completes on backup: ${outcome.error}`);
+      const outcome = await send(mover.id, "work");
+      assert.equal(outcome.status, "completed", `The message completes: ${outcome.error}`);
       const ran = turns().slice(before);
       assert.deepEqual(
         ran.map((turn) => turn.model),
         [PRIMARY, BACKUP],
+        "The message ran on the own model, then on the backup.",
       );
-      const last = ran.at(-1)?.input ?? "";
-      assert.equal(last.includes("Continue the unfinished task"), expectsContinuation);
-      assert.ok(last.includes(`${mode}.txt`));
-      if (expectsContinuation) {
-        const snapshot = await runCauseEffect(service.readConversation(agent.id));
-        assert.ok(snapshot.messages.some((message) => message.text.includes("Checkpoint saved.")));
-        assert.ok(mailbox.getDelivery(outcome.deliveryId)?.resumeAfterUsageLimit);
-      }
-      assert.deepEqual(errorsFor(agent.id, since), []);
-      await verifyHistoryKeepsRequests(agent.id);
-      if (expectsContinuation) {
-        const continuation = mailbox.getDelivery(outcome.deliveryId)?.resumeAfterUsageLimit;
-        await restart();
-        assert.deepEqual(
-          mailbox.getDelivery(outcome.deliveryId)?.resumeAfterUsageLimit,
-          continuation,
-          "The continuation survives a process restart.",
-        );
-        assert.equal(
-          "resumeAfterUsageLimit" in (mailbox.getDelivery(outcome.deliveryId)?.delivery ?? {}),
-          false,
-          "Internal continuation state is not added to the queue contract.",
-        );
-      }
-      return { outcome, models: ran.map((turn) => turn.model), expectsContinuation };
+      const agent = agentOf(mover.id);
+      assert.equal(agent.model, BACKUP, "The agent is on the backup model.");
+      assert.equal(agent.usageLimitReturn?.model, PRIMARY, "The agent keeps its own model to go back to.");
+      assert.equal(agent.usageLimitReturn?.cause, "provider-error", "The return names the provider error.");
+      assert.deepEqual(errorsFor(mover.id, since), [], "No error shows for the moved turn.");
+      const notes = await markers(mover.id, MODEL_SWITCH_ITEM_TYPES["provider-error"]);
+      assert.deepEqual(notes, [sourceText("status.agent.modelSwitchedForError", { model: modelName(BACKUP) })]);
+      return { ran, notes };
     });
-  }
 
-  await check("a known-family exhausted backup chain ends without cycling", async () => {
-    await restart();
-    const agent = await createClaude("Exhausted", automaticBackups);
-    const before = turns().length;
-    const outcome = await send(agent.id, "usage-exhausted case:exhausted");
-    assert.equal(outcome.status, "failed");
-    assert.deepEqual(
-      turns()
-        .slice(before)
-        .map((turn) => turn.model),
-      [PRIMARY, BACKUP],
-    );
-    return outcome;
-  });
+    // `agent-profile-accounts-e2e.ts` checks that update_profile sets and clears the order.
+    await check("read_agent shows that a provider error moved the agent", async () => {
+      const read = await callTool("read_agent", { agentId: mover.id });
+      assert.ok(read.success, read.text);
+      const setup = JSON.parse(read.text);
+      assert.equal(setup.model, BACKUP, "read_agent shows the backup model.");
+      assert.equal(setup.usageLimitReturn?.model, PRIMARY, "read_agent names the model to go back to.");
+      assert.equal(setup.usageLimitReturn?.cause, "provider-error", "read_agent names the provider error.");
+      return { model: setup.model, usageLimitReturn: setup.usageLimitReturn };
+    });
 
-  await check("unknown scope schedules one same-model probe after ten minutes", async () => {
-    const saved = process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS;
-    delete process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS;
-    try {
-      const probeAgents = [
-        { id: "probe-agent", provider: "claude" as const, providerAccountId: "default", model: PRIMARY },
-      ];
-      const clock: { scheduled: (() => void) | null; delay: number | null } = { scheduled: null, delay: null };
-      const wakes: string[] = [];
-      let now = Date.now();
-      const gate = new UsageLimitGate({
-        store: { list: () => probeAgents },
-        timers: {
-          now: () => now,
-          set: (callback, delay) => {
-            clock.scheduled = callback;
-            clock.delay = delay;
-            const timer = setTimeout(() => {}, delay);
-            timer.unref();
-            return timer;
-          },
-          clear: () => {
-            clock.scheduled = null;
-          },
-        },
-        hooks: {
-          emit: () => {},
-          emitRuntimeSnapshot: () => {},
-          scheduleDrain: (agentId) => wakes.push(agentId),
-          readUsage: () => Effect.succeed(null),
-          held: () => Effect.void,
-          released: () => Effect.void,
-        },
-      });
-      await runCauseEffect(gate.reached("probe-agent", null, PRIMARY));
-      assert.equal(clock.delay, 600_000);
-      assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-1"), false);
-      clock.scheduled?.();
-      assert.deepEqual(wakes, [], "An early timer cannot release the hold.");
-      now += 600_000;
-      clock.scheduled?.();
-      assert.deepEqual(wakes, ["probe-agent"]);
-      assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-1"), true);
-      assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-2"), false);
-      gate.bindUnknownProbe("probe-agent", "delivery-1", "turn-1");
-      gate.finishUnknownProbe("probe-agent", { turnId: "turn-1" });
-      assert.equal(gate.limitedAgents().find((item) => item.agentId === "probe-agent")?.attention, true);
-      await runCauseEffect(gate.dispose());
-      return { delayMs: clock.delay, attention: true };
-    } finally {
-      if (saved === undefined) delete process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS;
-      else process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS = saved;
-    }
-  });
-
-  await check("reserved probes restore to attention and early completion releases only the matching turn", async () => {
-    const db = new DatabaseSync(":memory:");
-    migrateOpenBotDatabase(db);
-    let now = Date.now();
-    let wake: (() => void) | undefined;
-    const agents = [{ id: "race-agent", provider: "codex" as const, model: CODEX_MODEL }];
-    const makeGate = () =>
-      new UsageLimitGate({
-        store: { list: () => agents },
-        database: () => db,
-        timers: {
-          now: () => now,
-          set: (callback, delay) => {
-            wake = callback;
-            const timer = setTimeout(() => {}, delay);
-            timer.unref();
-            return timer;
-          },
-          clear: (timer) => clearTimeout(timer),
-        },
-        hooks: {
-          emit: () => {},
-          emitRuntimeSnapshot: () => {},
-          scheduleDrain: () => {},
-          readUsage: () => Effect.succeed(null),
-          held: () => Effect.void,
-          released: () => Effect.void,
-        },
-      });
-    try {
-      const first = makeGate();
-      await runCauseEffect(first.reached("race-agent", null));
-      now += 600_000;
-      wake?.();
-      assert.equal(first.reserveUnknownProbe("race-agent", "uncertain"), true);
-      await runCauseEffect(first.dispose());
-      const restored = makeGate();
-      restored.restore();
-      assert.equal(restored.limitedAgents()[0]?.attention, true);
-      assert.equal(restored.reserveUnknownProbe("race-agent", "second"), false);
-      await runCauseEffect(restored.accountReset("codex", null));
-      await runCauseEffect(restored.reached("race-agent", null));
-      now += 600_000;
-      wake?.();
-      assert.equal(restored.reserveUnknownProbe("race-agent", "race"), true);
-      restored.noteUnknownProbeEnd("race-agent", "other", "completed");
-      restored.noteUnknownProbeEnd("race-agent", "matched", "completed");
-      assert.equal(restored.bindUnknownProbe("race-agent", "race", "matched"), "completed");
-      await runCauseEffect(restored.completed("race-agent", CODEX_MODEL, "matched"));
-      assert.equal(restored.hasUnknownLimit("race-agent"), false);
-      await runCauseEffect(restored.reached("race-agent", null));
-      now += 600_000;
-      wake?.();
-      assert.equal(restored.reserveUnknownProbe("race-agent", "failed-race"), true);
-      restored.noteUnknownProbeEnd("race-agent", "failed-turn", "failed");
-      assert.equal(restored.bindUnknownProbe("race-agent", "failed-race", "failed-turn"), "failed");
-      assert.equal(restored.limitedAgents()[0]?.attention, true);
-      await runCauseEffect(restored.dispose());
-      return { reservedRestart: "attention", earlyCompletion: "released", earlyFailure: "attention" };
-    } finally {
-      db.close();
-    }
-  });
-
-  await check("Stop ends an active task without starting a backup", async () => {
-    await restart();
-    const agent = await createCodex("Stopped", automaticBackups);
-    const before = turns().length;
-    const beforeCodex = readLog<CodexTurn>(codexLog).length;
-    const receipt = await runCauseEffect(service.sendMessage({ agentId: agent.id, text: "usage-wait case:cancelled" }));
-    const deliveryId = receipt.deliveries[0]?.id;
-    assert.ok(deliveryId);
-    const active = await waitFor("the task to start", () => readLog<CodexTurn>(codexLog).slice(beforeCodex)[0]);
-    await waitFor("the first action to finish", () =>
-      readLog<{ caseId: string; step: string }>(workLog).some((step) => step.caseId === "cancelled"),
-    );
-    await runCauseEffect(service.interrupt(agent.id, active.turnId));
-    await waitFor(
-      "Stop to settle the delivery",
-      () => mailbox.getDelivery(deliveryId)?.delivery.status === "interrupted",
-    );
-    assert.equal(turns().length, before, "Stop does not fall back.");
-    return { status: mailbox.getDelivery(deliveryId)?.delivery.status };
-  });
-
-  await check("unknown-scope channel partial work pauses its task", async () => {
-    await restart();
-    const agent = await createCodex("Channel partial", automaticBackups);
-    const channelId = randomUUID();
-    const actor = { id: "local", name: "Alex" };
-    await runCauseEffect(
-      service.channels.command(
-        {
-          type: "save",
-          operationId: randomUUID(),
-          channelId,
-          draft: {
-            name: "Continuation",
-            title: "",
-            instructions: "Finish the assigned work.",
-            members: [{ agentId: agent.id }],
-            leadAgentId: agent.id,
-          },
-        },
-        actor,
-      ),
-    );
-    const beforeClaude = turns().length;
-    const beforeCodex = readLog<CodexTurn>(codexLog).length;
-    await runCauseEffect(
-      service.channels.command(
-        {
-          type: "send",
-          operationId: randomUUID(),
-          channelId,
-          text: "usage-partial case:channel-partial",
-          recipientAgentId: agent.id,
-          replyToMessageId: null,
-          attachmentDraftIds: [],
-        },
-        actor,
-      ),
-    );
-    await waitFor("Codex to refuse channel partial work", () => readLog<CodexTurn>(codexLog).length > beforeCodex);
-    assert.equal(turns().length, beforeClaude, "No cross-provider backup runs.");
-    const tasks = service.channels.store.tasks(channelId);
-    assert.equal(tasks.length, 1);
-    assert.ok(
-      tasks[0]?.state === "queued" || tasks[0]?.state === "failed",
-      "The task stops without cross-provider fallback.",
-    );
-    return { taskId: tasks[0]?.id, state: tasks[0]?.state };
-  });
-
-  await check("known-family channel chain-empty continues on its backup", async () => {
-    await restart();
-    const agent = await createClaude("Channel chain", automaticBackups);
-    const channelId = randomUUID();
-    const actor = { id: "local", name: "Alex" };
-    await runCauseEffect(
-      service.channels.command(
-        {
-          type: "save",
-          operationId: randomUUID(),
-          channelId,
-          draft: {
-            name: "Continuation",
-            title: "",
-            instructions: "Finish the assigned work.",
-            members: [{ agentId: agent.id }],
-            leadAgentId: agent.id,
-          },
-        },
-        actor,
-      ),
-    );
-    const before = turns().length;
-    await runCauseEffect(
-      service.channels.command(
-        {
-          type: "send",
-          operationId: randomUUID(),
-          channelId,
-          text: "usage-chain-empty case:channel-chain",
-          recipientAgentId: agent.id,
-          replyToMessageId: null,
-          attachmentDraftIds: [],
-        },
-        actor,
-      ),
-    );
-    const task = await waitFor("the channel task to end", () =>
-      service.channels.store.tasks(channelId).find((task) => task.state === "completed"),
-    );
-    const backups = turns().slice(before);
-    assert.deepEqual(
-      backups.map((turn) => turn.model),
-      [PRIMARY, BACKUP],
-    );
-    const last = backups.at(-1)?.input ?? "";
-    assert.ok(last.includes("usage-chain-empty case:channel-chain"));
-    assert.ok(!last.includes("Continue the unfinished task"), "Refusal before work retries normally on the backup.");
-    return { taskId: task.id, state: task.state };
-  });
-
-  for (const mode of ["unreadable", "slow-history"] as const) {
-    await check(`unavailable ${mode} Claude history still continues on its backup`, async () => {
-      await restart();
-      const agent = await createClaude(`History ${mode}`, {
-        automatic: true,
-        order: [{ provider: "claude", model: BACKUP }],
-      });
+    await check("after a restart the agent goes back to its own model", async () => {
+      await runCauseEffect(service.stop());
+      failing([]);
+      ({ store, mailbox, service } = startService());
+      await runCauseEffect(service.initialize());
       const before = turns().length;
-      const beforeWork = readLog<{ caseId: string; step: string }>(workLog).length;
-      const sendPromise = send(agent.id, `usage-${mode} case:${mode}`);
-      await waitFor("the limited turn to start", () => turns().length > before);
-      const client = clients.at(-1);
-      const thread = client?.lastThread;
-      assert.ok(client && thread);
-      if (mode === "unreadable") client.unreadableThreads.add(thread);
-      else client.slowThreads.add(thread);
-      const outcome = await sendPromise;
-      assert.equal(outcome.status, "completed", outcome.error ?? "The backup can inspect the saved work.");
+      const outcome = await send(mover.id, "again");
+      assert.equal(outcome.status, "completed", `The message completes: ${outcome.error}`);
+      assert.deepEqual(
+        turns()
+          .slice(before)
+          .map((turn) => turn.model),
+        [PRIMARY],
+        "The message runs on the own model.",
+      );
+      const agent = agentOf(mover.id);
+      assert.equal(agent.model, PRIMARY, "The agent is back on its own model.");
+      assert.equal(agent.usageLimitReturn, undefined, "Nothing is left to go back to.");
+      const notes = await markers(mover.id, MODEL_SWITCH_ITEM_TYPES["provider-error-ended"]);
+      assert.deepEqual(notes, [sourceText("status.agent.modelReturnedAfterError", { model: modelName(PRIMARY) })]);
+      return { notes };
+    });
+
+    await check("a usage limit after partial work continues on the backup", async () => {
+      const attachment = join(root, "requirements.txt");
+      await writeFile(attachment, "Finish the last step after the checkpoint.\n");
+      const since = events.length;
+      const before = turns().length;
+      const notificationsBefore = claudeNotifications.length;
+      const reportsBefore = clients.reduce((count, client) => count + client.limitReports.length, 0);
+      const outcome = await send(mover.id, "usage-work: save a checkpoint, then finish the last step.", [attachment]);
+      const reports = clients.flatMap((client) => client.limitReports).slice(reportsBefore);
+      report.usageWorkTrace = {
+        agentId: mover.id,
+        deliveryId: outcome.deliveryId,
+        finalTurnId: mailbox.getDelivery(outcome.deliveryId)?.delivery.turnId ?? null,
+        status: outcome.status,
+        notifications: claudeNotifications.slice(notificationsBefore).map((notification) => {
+          const turnId = notification.turnId;
+          return {
+            ...notification,
+            deliveries: turnId
+              ? [mover.id, stayer.id].flatMap((agentId) =>
+                  mailbox.findDeliveriesByTurn(agentId, turnId).map(({ delivery }) => ({
+                    agentId,
+                    deliveryId: delivery.id,
+                  })),
+                )
+              : [],
+          };
+        }),
+        providerTurns: turns()
+          .slice(before)
+          .map(({ model, failed }) => ({ model, failed })),
+        reports,
+      };
+      assert.equal(reports.length, 1, "Claude reports the refused limit to the lifecycle.");
+      assert.equal(reports[0]?.family, PRIMARY.includes("opus") ? "opus" : "sonnet", "The limit keeps its family.");
+      assert.equal(outcome.status, "completed", `The interrupted task completes: ${outcome.error}`);
       const ran = turns().slice(before);
       assert.deepEqual(
         ran.map((turn) => turn.model),
         [PRIMARY, BACKUP],
       );
-      const last = ran.at(-1)?.input ?? "";
-      assert.ok(last.includes("Continue the unfinished task"), "The backup receives a continuation request.");
-      assert.ok(
-        last.includes("Full tool results are unavailable") || last.includes("Checkpoint saved."),
-        "Missing history is stated, or the checkpoint note still reaches the backup.",
+      assert.ok(ran[1]?.input.includes("Continue the unfinished task"), "The backup gets a continuation request.");
+      assert.ok(ran[1]?.input.includes("requirements.txt"), "The original attachment still reaches the backup.");
+      const snapshot = await runCauseEffect(service.readConversation(mover.id));
+      assert.equal(snapshot.messages.filter((message) => message.id === outcome.deliveryId).length, 1);
+      assert.ok(snapshot.messages.some((message) => message.text.includes("Checkpoint saved.")));
+      assert.deepEqual(errorsFor(mover.id, since), [], "A recovered usage limit shows no failure.");
+      assert.ok(snapshot.threadId);
+      await verifyHistoryKeepsRequests(mover.id);
+      const finalTurnId = mailbox.getDelivery(outcome.deliveryId)?.delivery.turnId;
+      assert.ok(finalTurnId);
+      assert.equal(
+        mailbox.deliveryForProviderMessage(stayer.id, finalTurnId),
+        null,
+        "History lookup never borrows another agent's delivery.",
       );
-      assert.deepEqual(readLog<{ caseId: string; step: string }>(workLog).slice(beforeWork), [
-        { caseId: mode, step: "checkpoint" },
-        { caseId: mode, step: "final" },
-      ]);
+      return { outcome, models: ran.map((turn) => turn.model) };
+    });
+
+    for (const mode of ["partial", "tool-only"]) {
+      await check(`unknown-scope ${mode} work pauses without cross-provider fallback`, async () => {
+        await restart();
+        const agent = await createCodex(`Codex ${mode}`, automaticBackups);
+        const beforeCodex = readLog<CodexTurn>(codexLog).length;
+        const beforeClaude = turns().length;
+        const beforeWork = readLog<{ caseId: string; step: string }>(workLog).length;
+        const attachment = join(root, `${mode}.txt`);
+        await writeFile(attachment, "Only the remaining step is needed.\n");
+        const outcome = await send(agent.id, `usage-${mode} case:${mode}`, [attachment]);
+        assert.equal(outcome.status, "interrupted", `Partial work pauses: ${outcome.error}`);
+        assert.equal(readLog<CodexTurn>(codexLog).length, beforeCodex + 1, "Codex runs once.");
+        assert.equal(turns().length, beforeClaude, "No cross-provider backup runs.");
+        assert.deepEqual(readLog<{ caseId: string; step: string }>(workLog).slice(beforeWork), [
+          { caseId: mode, step: "checkpoint" },
+        ]);
+        assert.equal(agentOf(agent.id).provider, "codex");
+        assert.ok(
+          service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
+          "The agent stays held until reset or attention.",
+        );
+        return outcome;
+      });
+    }
+
+    for (const automatic of [false, true]) {
+      await check(
+        automatic
+          ? "without a backup, partial work fails without replay"
+          : "automatic fallback off leaves partial work stopped",
+        async () => {
+          await restart();
+          const agent = await createCodex(`No fallback ${automatic}`, {
+            automatic,
+            order: automatic ? [] : automaticBackups.order,
+          });
+          const before = turns().length;
+          const beforeCodex = readLog<CodexTurn>(codexLog).length;
+          const outcome = await send(agent.id, "usage-partial case:stopped");
+          assert.equal(outcome.status, "interrupted", "Unknown-scope partial work pauses without replay.");
+          assert.equal(turns().length, before, "No backup runs.");
+          assert.equal(readLog<CodexTurn>(codexLog).length, beforeCodex + 1, "The original action is not replayed.");
+          assert.equal(agentOf(agent.id).provider, "codex");
+          return outcome;
+        },
+      );
+    }
+
+    for (const { mode, expectsContinuation } of [
+      { mode: "chain", expectsContinuation: true },
+      { mode: "chain-empty", expectsContinuation: false },
+    ] as const) {
+      await check(`known-family Claude ${mode} work continues on its backup`, async () => {
+        await restart();
+        const agent = await createClaude(`Claude ${mode}`, {
+          automatic: true,
+          order: [{ provider: "claude", model: BACKUP }],
+        });
+        const since = events.length;
+        const before = turns().length;
+        const attachment = join(root, `${mode}.txt`);
+        await writeFile(attachment, "Only the remaining step is needed.\n");
+        const outcome = await send(agent.id, `usage-${mode} case:${mode}`, [attachment]);
+        assert.equal(outcome.status, "completed", `Known family completes on backup: ${outcome.error}`);
+        const ran = turns().slice(before);
+        assert.deepEqual(
+          ran.map((turn) => turn.model),
+          [PRIMARY, BACKUP],
+        );
+        const last = ran.at(-1)?.input ?? "";
+        assert.equal(last.includes("Continue the unfinished task"), expectsContinuation);
+        assert.ok(last.includes(`${mode}.txt`));
+        if (expectsContinuation) {
+          const snapshot = await runCauseEffect(service.readConversation(agent.id));
+          assert.ok(snapshot.messages.some((message) => message.text.includes("Checkpoint saved.")));
+          assert.ok(mailbox.getDelivery(outcome.deliveryId)?.resumeAfterUsageLimit);
+        }
+        assert.deepEqual(errorsFor(agent.id, since), []);
+        await verifyHistoryKeepsRequests(agent.id);
+        if (expectsContinuation) {
+          const continuation = mailbox.getDelivery(outcome.deliveryId)?.resumeAfterUsageLimit;
+          await restart();
+          assert.deepEqual(
+            mailbox.getDelivery(outcome.deliveryId)?.resumeAfterUsageLimit,
+            continuation,
+            "The continuation survives a process restart.",
+          );
+          assert.equal(
+            "resumeAfterUsageLimit" in (mailbox.getDelivery(outcome.deliveryId)?.delivery ?? {}),
+            false,
+            "Internal continuation state is not added to the queue contract.",
+          );
+        }
+        return { outcome, models: ran.map((turn) => turn.model), expectsContinuation };
+      });
+    }
+
+    await check("a known-family exhausted backup chain ends without cycling", async () => {
+      await restart();
+      const agent = await createClaude("Exhausted", automaticBackups);
+      const before = turns().length;
+      const outcome = await send(agent.id, "usage-exhausted case:exhausted");
+      assert.equal(outcome.status, "failed");
+      assert.deepEqual(
+        turns()
+          .slice(before)
+          .map((turn) => turn.model),
+        [PRIMARY, BACKUP],
+      );
       return outcome;
     });
-  }
 
-  await check("a known-family task keeps its conversation through fallback", async () => {
-    await restart();
-    const agent = await createClaude("Task fallback", automaticBackups);
-    const before = turns().length;
-    const task = await runCauseEffect(service.startTask({ agentId: agent.id, text: "usage-work case:task" }));
-    await waitFor(
-      "the task to complete on its backup",
-      () =>
-        turns().length > before + 1 &&
-        service.readTask(agent.id, task.id).messages.some((message) => message.text === "Done."),
-    );
-    const snapshot = service.readTask(agent.id, task.id);
-    assert.equal(snapshot.threadId, task.threadId);
-    const last = turns().at(-1)?.input ?? "";
-    assert.ok(last.includes("Continue the unfinished task"));
-    assert.ok(snapshot.messages.some((message) => message.text.includes("Checkpoint saved.")));
-    assert.equal(service.listTasks(agent.id).tasks.length, 1);
-    return { taskId: task.id, threadId: snapshot.threadId };
-  });
+    await check("unknown scope schedules one same-model probe after ten minutes", async () => {
+      const saved = process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS;
+      delete process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS;
+      try {
+        const probeAgents = [
+          { id: "probe-agent", provider: "claude" as const, providerAccountId: "default", model: PRIMARY },
+        ];
+        const clock: { scheduled: (() => void) | null; delay: number | null } = { scheduled: null, delay: null };
+        const wakes: string[] = [];
+        let now = Date.now();
+        const gate = new UsageLimitGate({
+          store: { list: () => probeAgents },
+          timers: {
+            now: () => now,
+            set: (callback, delay) => {
+              clock.scheduled = callback;
+              clock.delay = delay;
+              const timer = setTimeout(() => {}, delay);
+              timer.unref();
+              return timer;
+            },
+            clear: () => {
+              clock.scheduled = null;
+            },
+          },
+          hooks: {
+            emit: () => {},
+            emitRuntimeSnapshot: () => {},
+            scheduleDrain: (agentId) => wakes.push(agentId),
+            readUsage: () => Effect.succeed(null),
+            held: () => Effect.void,
+            released: () => Effect.void,
+          },
+        });
+        await runCauseEffect(gate.reached("probe-agent", null, PRIMARY));
+        assert.equal(clock.delay, 600_000);
+        assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-1"), false);
+        clock.scheduled?.();
+        assert.deepEqual(wakes, [], "An early timer cannot release the hold.");
+        now += 600_000;
+        clock.scheduled?.();
+        assert.deepEqual(wakes, ["probe-agent"]);
+        assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-1"), true);
+        assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-2"), false);
+        gate.bindUnknownProbe("probe-agent", "delivery-1", "turn-1");
+        gate.finishUnknownProbe("probe-agent", { turnId: "turn-1" });
+        assert.equal(gate.limitedAgents().find((item) => item.agentId === "probe-agent")?.attention, true);
+        await runCauseEffect(gate.dispose());
+        return { delayMs: clock.delay, attention: true };
+      } finally {
+        if (saved === undefined) delete process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS;
+        else process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS = saved;
+      }
+    });
 
-  await check("unknown scope remains held across a service restart", async () => {
-    await restart();
-    const agent = await createCodex("Restart hold", automaticBackups);
-    const before = readLog<CodexTurn>(codexLog).length;
-    const receipt = await runCauseEffect(service.sendMessage({ agentId: agent.id, text: "usage-empty" }));
-    const deliveryId = receipt.deliveries[0]?.id;
-    assert.ok(deliveryId);
-    await waitFor(
-      "the refusal to hold the queued delivery",
-      () =>
-        mailbox.getDelivery(deliveryId)?.delivery.status === "queued" &&
-        service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
+    await check(
+      "reserved probes restore to attention and early completion releases only the matching turn",
+      async () => {
+        const db = new DatabaseSync(":memory:");
+        migrateOpenBotDatabase(db);
+        let now = Date.now();
+        let wake: (() => void) | undefined;
+        const agents = [{ id: "race-agent", provider: "codex" as const, model: CODEX_MODEL }];
+        const makeGate = () =>
+          new UsageLimitGate({
+            store: { list: () => agents },
+            database: () => db,
+            timers: {
+              now: () => now,
+              set: (callback, delay) => {
+                wake = callback;
+                const timer = setTimeout(() => {}, delay);
+                timer.unref();
+                return timer;
+              },
+              clear: (timer) => clearTimeout(timer),
+            },
+            hooks: {
+              emit: () => {},
+              emitRuntimeSnapshot: () => {},
+              scheduleDrain: () => {},
+              readUsage: () => Effect.succeed(null),
+              held: () => Effect.void,
+              released: () => Effect.void,
+            },
+          });
+        try {
+          const first = makeGate();
+          await runCauseEffect(first.reached("race-agent", null));
+          now += 600_000;
+          wake?.();
+          assert.equal(first.reserveUnknownProbe("race-agent", "uncertain"), true);
+          await runCauseEffect(first.dispose());
+          const restored = makeGate();
+          restored.restore();
+          assert.equal(restored.limitedAgents()[0]?.attention, true);
+          assert.equal(restored.reserveUnknownProbe("race-agent", "second"), false);
+          await runCauseEffect(restored.accountReset("codex", null));
+          await runCauseEffect(restored.reached("race-agent", null));
+          now += 600_000;
+          wake?.();
+          assert.equal(restored.reserveUnknownProbe("race-agent", "race"), true);
+          restored.noteUnknownProbeEnd("race-agent", "other", "completed");
+          restored.noteUnknownProbeEnd("race-agent", "matched", "completed");
+          assert.equal(restored.bindUnknownProbe("race-agent", "race", "matched"), "completed");
+          await runCauseEffect(restored.completed("race-agent", CODEX_MODEL, "matched"));
+          assert.equal(restored.hasUnknownLimit("race-agent"), false);
+          await runCauseEffect(restored.reached("race-agent", null));
+          now += 600_000;
+          wake?.();
+          assert.equal(restored.reserveUnknownProbe("race-agent", "failed-race"), true);
+          restored.noteUnknownProbeEnd("race-agent", "failed-turn", "failed");
+          assert.equal(restored.bindUnknownProbe("race-agent", "failed-race", "failed-turn"), "failed");
+          assert.equal(restored.limitedAgents()[0]?.attention, true);
+          await runCauseEffect(restored.dispose());
+          return { reservedRestart: "attention", earlyCompletion: "released", earlyFailure: "attention" };
+        } finally {
+          db.close();
+        }
+      },
     );
-    assert.equal(readLog<CodexTurn>(codexLog).length, before + 1);
-    await restart(true);
-    assert.ok(
-      service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
-      "The unknown-scope hold survives restart before queued work drains.",
-    );
-    assert.equal(mailbox.getDelivery(deliveryId)?.delivery.status, "queued");
-    assert.equal(readLog<CodexTurn>(codexLog).length, before + 1, "Restart does not start another turn.");
-    await runCauseEffect(service.cancelQueuedMessage(agent.id, deliveryId));
-    await runCauseEffect(service.deleteAgent(agent.id));
-    return { deliveryId };
-  });
 
-  for (const mode of ["success", "failure", "uncertain"] as const) {
-    await check(`early ${mode} probe settles only after its start response`, async () => {
+    await check("Stop ends an active task without starting a backup", async () => {
       await restart();
-      const agent = await createCodex(`Early probe ${mode}`, automaticBackups);
+      const agent = await createCodex("Stopped", automaticBackups);
+      const before = turns().length;
+      const beforeCodex = readLog<CodexTurn>(codexLog).length;
       const receipt = await runCauseEffect(
-        service.sendMessage({ agentId: agent.id, text: `usage-empty-probe-${mode}` }),
+        service.sendMessage({ agentId: agent.id, text: "usage-wait case:cancelled" }),
       );
       const deliveryId = receipt.deliveries[0]?.id;
       assert.ok(deliveryId);
+      const active = await waitFor("the task to start", () => readLog<CodexTurn>(codexLog).slice(beforeCodex)[0]);
+      await waitFor("the first action to finish", () =>
+        readLog<{ caseId: string; step: string }>(workLog).some((step) => step.caseId === "cancelled"),
+      );
+      await runCauseEffect(service.interrupt(agent.id, active.turnId));
       await waitFor(
-        "the refusal to hold the delivery",
+        "Stop to settle the delivery",
+        () => mailbox.getDelivery(deliveryId)?.delivery.status === "interrupted",
+      );
+      assert.equal(turns().length, before, "Stop does not fall back.");
+      return { status: mailbox.getDelivery(deliveryId)?.delivery.status };
+    });
+
+    await check("unknown-scope channel partial work pauses its task", async () => {
+      await restart();
+      const agent = await createCodex("Channel partial", automaticBackups);
+      const channelId = randomUUID();
+      const actor = { id: "local", name: "Alex" };
+      await runCauseEffect(
+        service.channels.command(
+          {
+            type: "save",
+            operationId: randomUUID(),
+            channelId,
+            draft: {
+              name: "Continuation",
+              title: "",
+              instructions: "Finish the assigned work.",
+              members: [{ agentId: agent.id }],
+              leadAgentId: agent.id,
+            },
+          },
+          actor,
+        ),
+      );
+      const beforeClaude = turns().length;
+      const beforeCodex = readLog<CodexTurn>(codexLog).length;
+      await runCauseEffect(
+        service.channels.command(
+          {
+            type: "send",
+            operationId: randomUUID(),
+            channelId,
+            text: "usage-partial case:channel-partial",
+            recipientAgentId: agent.id,
+            replyToMessageId: null,
+            attachmentDraftIds: [],
+          },
+          actor,
+        ),
+      );
+      await waitFor("Codex to refuse channel partial work", () => readLog<CodexTurn>(codexLog).length > beforeCodex);
+      assert.equal(turns().length, beforeClaude, "No cross-provider backup runs.");
+      const tasks = service.channels.store.tasks(channelId);
+      assert.equal(tasks.length, 1);
+      assert.ok(
+        tasks[0]?.state === "queued" || tasks[0]?.state === "failed",
+        "The task stops without cross-provider fallback.",
+      );
+      return { taskId: tasks[0]?.id, state: tasks[0]?.state };
+    });
+
+    await check("known-family channel chain-empty continues on its backup", async () => {
+      await restart();
+      const agent = await createClaude("Channel chain", automaticBackups);
+      const channelId = randomUUID();
+      const actor = { id: "local", name: "Alex" };
+      await runCauseEffect(
+        service.channels.command(
+          {
+            type: "save",
+            operationId: randomUUID(),
+            channelId,
+            draft: {
+              name: "Continuation",
+              title: "",
+              instructions: "Finish the assigned work.",
+              members: [{ agentId: agent.id }],
+              leadAgentId: agent.id,
+            },
+          },
+          actor,
+        ),
+      );
+      const before = turns().length;
+      await runCauseEffect(
+        service.channels.command(
+          {
+            type: "send",
+            operationId: randomUUID(),
+            channelId,
+            text: "usage-chain-empty case:channel-chain",
+            recipientAgentId: agent.id,
+            replyToMessageId: null,
+            attachmentDraftIds: [],
+          },
+          actor,
+        ),
+      );
+      const task = await waitFor("the channel task to end", () =>
+        service.channels.store.tasks(channelId).find((task) => task.state === "completed"),
+      );
+      const backups = turns().slice(before);
+      assert.deepEqual(
+        backups.map((turn) => turn.model),
+        [PRIMARY, BACKUP],
+      );
+      const last = backups.at(-1)?.input ?? "";
+      assert.ok(last.includes("usage-chain-empty case:channel-chain"));
+      assert.ok(!last.includes("Continue the unfinished task"), "Refusal before work retries normally on the backup.");
+      return { taskId: task.id, state: task.state };
+    });
+
+    for (const mode of ["unreadable", "slow-history"] as const) {
+      await check(`unavailable ${mode} Claude history still continues on its backup`, async () => {
+        await restart();
+        const agent = await createClaude(`History ${mode}`, {
+          automatic: true,
+          order: [{ provider: "claude", model: BACKUP }],
+        });
+        const before = turns().length;
+        const beforeWork = readLog<{ caseId: string; step: string }>(workLog).length;
+        const sendPromise = send(agent.id, `usage-${mode} case:${mode}`);
+        await waitFor("the limited turn to start", () => turns().length > before);
+        const client = clients.at(-1);
+        const thread = client?.lastThread;
+        assert.ok(client && thread);
+        if (mode === "unreadable") client.unreadableThreads.add(thread);
+        else client.slowThreads.add(thread);
+        const outcome = await sendPromise;
+        assert.equal(outcome.status, "completed", outcome.error ?? "The backup can inspect the saved work.");
+        const ran = turns().slice(before);
+        assert.deepEqual(
+          ran.map((turn) => turn.model),
+          [PRIMARY, BACKUP],
+        );
+        const last = ran.at(-1)?.input ?? "";
+        assert.ok(last.includes("Continue the unfinished task"), "The backup receives a continuation request.");
+        assert.ok(
+          last.includes("Full tool results are unavailable") || last.includes("Checkpoint saved."),
+          "Missing history is stated, or the checkpoint note still reaches the backup.",
+        );
+        assert.deepEqual(readLog<{ caseId: string; step: string }>(workLog).slice(beforeWork), [
+          { caseId: mode, step: "checkpoint" },
+          { caseId: mode, step: "final" },
+        ]);
+        return outcome;
+      });
+    }
+
+    await check("a known-family task keeps its conversation through fallback", async () => {
+      await restart();
+      const agent = await createClaude("Task fallback", automaticBackups);
+      const before = turns().length;
+      const task = await runCauseEffect(service.startTask({ agentId: agent.id, text: "usage-work case:task" }));
+      await waitFor(
+        "the task to complete on its backup",
+        () =>
+          turns().length > before + 1 &&
+          service.readTask(agent.id, task.id).messages.some((message) => message.text === "Done."),
+      );
+      const snapshot = service.readTask(agent.id, task.id);
+      assert.equal(snapshot.threadId, task.threadId);
+      const last = turns().at(-1)?.input ?? "";
+      assert.ok(last.includes("Continue the unfinished task"));
+      assert.ok(snapshot.messages.some((message) => message.text.includes("Checkpoint saved.")));
+      assert.equal(service.listTasks(agent.id).tasks.length, 1);
+      return { taskId: task.id, threadId: snapshot.threadId };
+    });
+
+    await check("unknown scope remains held across a service restart", async () => {
+      await restart();
+      const agent = await createCodex("Restart hold", automaticBackups);
+      const before = readLog<CodexTurn>(codexLog).length;
+      const receipt = await runCauseEffect(service.sendMessage({ agentId: agent.id, text: "usage-empty" }));
+      const deliveryId = receipt.deliveries[0]?.id;
+      assert.ok(deliveryId);
+      await waitFor(
+        "the refusal to hold the queued delivery",
         () =>
           mailbox.getDelivery(deliveryId)?.delivery.status === "queued" &&
           service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
       );
-      const before = events.length;
+      assert.equal(readLog<CodexTurn>(codexLog).length, before + 1);
+      await restart(true);
+      assert.ok(
+        service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
+        "The unknown-scope hold survives restart before queued work drains.",
+      );
+      assert.equal(mailbox.getDelivery(deliveryId)?.delivery.status, "queued");
+      assert.equal(readLog<CodexTurn>(codexLog).length, before + 1, "Restart does not start another turn.");
+      await runCauseEffect(service.cancelQueuedMessage(agent.id, deliveryId));
+      await runCauseEffect(service.deleteAgent(agent.id));
+      return { deliveryId };
+    });
+
+    for (const mode of ["success", "failure", "uncertain"] as const) {
+      await check(`early ${mode} probe settles only after its start response`, async () => {
+        await restart();
+        const agent = await createCodex(`Early probe ${mode}`, automaticBackups);
+        const receipt = await runCauseEffect(
+          service.sendMessage({ agentId: agent.id, text: `usage-empty-probe-${mode}` }),
+        );
+        const deliveryId = receipt.deliveries[0]?.id;
+        assert.ok(deliveryId);
+        await waitFor(
+          "the refusal to hold the delivery",
+          () =>
+            mailbox.getDelivery(deliveryId)?.delivery.status === "queued" &&
+            service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
+        );
+        const before = events.length;
+        probeNow += 600_000;
+        for (const [timer, callback] of probeTimers) {
+          clearTimeout(timer);
+          probeTimers.delete(timer);
+          callback();
+        }
+        const terminal = await waitFor("the probe terminal event before the response", () =>
+          events.slice(before).find((event) => event.type === "turn-completed" && event.agentId === agent.id),
+        );
+        assert.equal(terminal.type, "turn-completed");
+        assert.equal(terminal.status, mode === "failure" ? "failed" : "completed");
+        const hold = database.connection.prepare("SELECT phase, probe_turn_id FROM unknown_usage_holds").get();
+        assert.equal(hold?.phase, "reserved");
+        assert.equal(hold?.probe_turn_id, null);
+        writeFileSync(`${probeRelease}-${mode}`, "release");
+        await waitFor("the probe response to settle the hold", () => {
+          const row = database.connection.prepare("SELECT phase FROM unknown_usage_holds").get();
+          return mode === "success" ? !row : row?.phase === "attention";
+        });
+        if (mode !== "success") {
+          const starts = readLog<CodexTurn>(codexLog).length;
+          await restart(true);
+          assert.equal(database.connection.prepare("SELECT phase FROM unknown_usage_holds").get()?.phase, "attention");
+          assert.equal(readLog<CodexTurn>(codexLog).length, starts);
+        }
+        return { deliveryId, terminalTurnId: terminal.turnId, outcome: mode };
+      });
+    }
+
+    await check("unknown scope probes one same-model delivery and attention blocks a second probe", async () => {
+      await restart();
+      const first = await createCodex("Probe one", automaticBackups);
+      const second = await createCodex("Probe two", automaticBackups);
+      const beforeCodex = readLog<CodexTurn>(codexLog).length;
+      const beforeClaude = turns().length;
+      const receipt1 = await runCauseEffect(service.sendMessage({ agentId: first.id, text: "usage-empty" }));
+      const receipt2 = await runCauseEffect(service.sendMessage({ agentId: second.id, text: "usage-empty" }));
+      const delivery1 = receipt1.deliveries[0]?.id;
+      const delivery2 = receipt2.deliveries[0]?.id;
+      assert.ok(delivery1 && delivery2);
+      await waitFor(
+        "both refusals to requeue",
+        () =>
+          readLog<CodexTurn>(codexLog).length >= beforeCodex + 2 &&
+          mailbox.getDelivery(delivery1)?.delivery.status === "queued" &&
+          mailbox.getDelivery(delivery2)?.delivery.status === "queued",
+      );
+      assert.equal(mailbox.getDelivery(delivery1)?.resumeAfterUsageLimit, undefined);
+      assert.equal(mailbox.getDelivery(delivery2)?.resumeAfterUsageLimit, undefined);
+      assert.equal(turns().length, beforeClaude, "No cross-provider backup runs.");
       probeNow += 600_000;
       for (const [timer, callback] of probeTimers) {
         clearTimeout(timer);
         probeTimers.delete(timer);
         callback();
       }
-      const terminal = await waitFor("the probe terminal event before the response", () =>
-        events.slice(before).find((event) => event.type === "turn-completed" && event.agentId === agent.id),
+      await waitFor("one probe turn", () => readLog<CodexTurn>(codexLog).length >= beforeCodex + 3, 10_000);
+      assert.equal(readLog<CodexTurn>(codexLog).length, beforeCodex + 3, "Only one probe runs for the model.");
+      assert.equal(turns().length, beforeClaude, "The probe stays on the same provider.");
+      await waitFor(
+        "attention after the failed probe",
+        () =>
+          (service.getRuntimeSnapshot().usageLimits ?? []).some(
+            (limit) => (limit.agentId === first.id || limit.agentId === second.id) && limit.attention,
+          ),
+        10_000,
       );
-      assert.equal(terminal.type, "turn-completed");
-      assert.equal(terminal.status, mode === "failure" ? "failed" : "completed");
-      const hold = database.connection.prepare("SELECT phase, probe_turn_id FROM unknown_usage_holds").get();
-      assert.equal(hold?.phase, "reserved");
-      assert.equal(hold?.probe_turn_id, null);
-      writeFileSync(`${probeRelease}-${mode}`, "release");
-      await waitFor("the probe response to settle the hold", () => {
-        const row = database.connection.prepare("SELECT phase FROM unknown_usage_holds").get();
-        return mode === "success" ? !row : row?.phase === "attention";
-      });
-      if (mode !== "success") {
-        const starts = readLog<CodexTurn>(codexLog).length;
-        await restart(true);
-        assert.equal(database.connection.prepare("SELECT phase FROM unknown_usage_holds").get()?.phase, "attention");
-        assert.equal(readLog<CodexTurn>(codexLog).length, starts);
-      }
-      return { deliveryId, terminalTurnId: terminal.turnId, outcome: mode };
-    });
-  }
-
-  await check("unknown scope probes one same-model delivery and attention blocks a second probe", async () => {
-    await restart();
-    const first = await createCodex("Probe one", automaticBackups);
-    const second = await createCodex("Probe two", automaticBackups);
-    const beforeCodex = readLog<CodexTurn>(codexLog).length;
-    const beforeClaude = turns().length;
-    const receipt1 = await runCauseEffect(service.sendMessage({ agentId: first.id, text: "usage-empty" }));
-    const receipt2 = await runCauseEffect(service.sendMessage({ agentId: second.id, text: "usage-empty" }));
-    const delivery1 = receipt1.deliveries[0]?.id;
-    const delivery2 = receipt2.deliveries[0]?.id;
-    assert.ok(delivery1 && delivery2);
-    await waitFor(
-      "both refusals to requeue",
-      () =>
-        readLog<CodexTurn>(codexLog).length >= beforeCodex + 2 &&
-        mailbox.getDelivery(delivery1)?.delivery.status === "queued" &&
-        mailbox.getDelivery(delivery2)?.delivery.status === "queued",
-    );
-    assert.equal(mailbox.getDelivery(delivery1)?.resumeAfterUsageLimit, undefined);
-    assert.equal(mailbox.getDelivery(delivery2)?.resumeAfterUsageLimit, undefined);
-    assert.equal(turns().length, beforeClaude, "No cross-provider backup runs.");
-    probeNow += 600_000;
-    for (const [timer, callback] of probeTimers) {
-      clearTimeout(timer);
-      probeTimers.delete(timer);
-      callback();
-    }
-    await waitFor("one probe turn", () => readLog<CodexTurn>(codexLog).length >= beforeCodex + 3, 10_000);
-    assert.equal(readLog<CodexTurn>(codexLog).length, beforeCodex + 3, "Only one probe runs for the model.");
-    assert.equal(turns().length, beforeClaude, "The probe stays on the same provider.");
-    await waitFor(
-      "attention after the failed probe",
-      () =>
+      const afterProbe = readLog<CodexTurn>(codexLog).length;
+      await restart(true);
+      assert.ok(
         (service.getRuntimeSnapshot().usageLimits ?? []).some(
           (limit) => (limit.agentId === first.id || limit.agentId === second.id) && limit.attention,
         ),
-      10_000,
-    );
-    const afterProbe = readLog<CodexTurn>(codexLog).length;
-    await restart(true);
-    assert.ok(
-      (service.getRuntimeSnapshot().usageLimits ?? []).some(
-        (limit) => (limit.agentId === first.id || limit.agentId === second.id) && limit.attention,
-      ),
-      "Attention survives restart and keeps the model held.",
-    );
-    await new Promise((done) => setTimeout(done, 100));
-    assert.equal(readLog<CodexTurn>(codexLog).length, afterProbe, "No second probe runs.");
-    return { delivery1, delivery2, codexTurns: afterProbe - beforeCodex };
-  });
+        "Attention survives restart and keeps the model held.",
+      );
+      await new Promise((done) => setTimeout(done, 100));
+      assert.equal(readLog<CodexTurn>(codexLog).length, afterProbe, "No second probe runs.");
+      return { delivery1, delivery2, codexTurns: afterProbe - beforeCodex };
+    });
 
-  await check("a mismatched family window holds only the refused model", async () => {
-    await restart();
-    const sonnetModel: AgentModelId = BACKUP.includes("sonnet") ? BACKUP : "claude-sonnet-5-5";
-    const held = await createClaude("Held sonnet", { automatic: false, order: [] }, sonnetModel);
-    const peer = await createClaude("Peer sonnet", { automatic: false, order: [] }, sonnetModel);
-    const free = await createClaude("Free opus", { automatic: false, order: [] }, "claude-opus-5-5");
-    const heldReceipt = await runCauseEffect(
-      service.sendMessage({ agentId: held.id, text: "usage-family-mismatch case:mismatch" }),
-    );
-    const heldDeliveryId = heldReceipt.deliveries[0]?.id;
-    assert.ok(heldDeliveryId);
-    await waitFor("held refusal to requeue", () => mailbox.getDelivery(heldDeliveryId)?.delivery.status === "queued");
-    const peerReceipt = await runCauseEffect(service.sendMessage({ agentId: peer.id, text: "work" }));
-    const peerDeliveryId = peerReceipt.deliveries[0]?.id;
-    assert.ok(peerDeliveryId);
-    await new Promise((done) => setTimeout(done, 200));
-    assert.equal(mailbox.getDelivery(peerDeliveryId)?.delivery.status, "queued", "The same model stays held.");
-    const freeOutcome = await send(free.id, "work");
-    assert.equal(freeOutcome.status, "completed", "Another family keeps working.");
-    return {
-      heldStatus: mailbox.getDelivery(heldDeliveryId)?.delivery.status,
-      peerStatus: mailbox.getDelivery(peerDeliveryId)?.delivery.status,
-      freeStatus: freeOutcome.status,
-    };
-  });
+    await check("a mismatched family window holds only the refused model", async () => {
+      await restart();
+      const sonnetModel: AgentModelId = BACKUP.includes("sonnet") ? BACKUP : "claude-sonnet-5-5";
+      const held = await createClaude("Held sonnet", { automatic: false, order: [] }, sonnetModel);
+      const peer = await createClaude("Peer sonnet", { automatic: false, order: [] }, sonnetModel);
+      const free = await createClaude("Free opus", { automatic: false, order: [] }, "claude-opus-5-5");
+      const heldReceipt = await runCauseEffect(
+        service.sendMessage({ agentId: held.id, text: "usage-family-mismatch case:mismatch" }),
+      );
+      const heldDeliveryId = heldReceipt.deliveries[0]?.id;
+      assert.ok(heldDeliveryId);
+      await waitFor("held refusal to requeue", () => mailbox.getDelivery(heldDeliveryId)?.delivery.status === "queued");
+      const peerReceipt = await runCauseEffect(service.sendMessage({ agentId: peer.id, text: "work" }));
+      const peerDeliveryId = peerReceipt.deliveries[0]?.id;
+      assert.ok(peerDeliveryId);
+      await new Promise((done) => setTimeout(done, 200));
+      assert.equal(mailbox.getDelivery(peerDeliveryId)?.delivery.status, "queued", "The same model stays held.");
+      const freeOutcome = await send(free.id, "work");
+      assert.equal(freeOutcome.status, "completed", "Another family keeps working.");
+      return {
+        heldStatus: mailbox.getDelivery(heldDeliveryId)?.delivery.status,
+        peerStatus: mailbox.getDelivery(peerDeliveryId)?.delivery.status,
+        freeStatus: freeOutcome.status,
+      };
+    });
 
-  report.passed = true;
-} catch (error) {
-  report.error = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    report.passed = true;
+  } catch (error) {
+    report.error = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    process.exitCode = 1;
+  } finally {
+    await runCauseEffect(service.stop()).catch(() => {});
+    report.checkedAt = new Date().toISOString();
+    database.close();
+    mkdirSync(OUT, { recursive: true });
+    writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+    if (report.usageWorkTrace !== undefined)
+      writeFileSync(join(OUT, "trace.json"), `${JSON.stringify(report.usageWorkTrace, null, 2)}\n`);
+    for (const entry of report.checks) process.stdout.write(`PASS ${entry.name}\n`);
+    process.stdout.write(`${report.passed ? "PASS" : "FAIL"} ${join(OUT, "report.json")}\n`);
+    if (report.error) process.stdout.write(`${report.error}\n`);
+  }
+}
+
+await main().catch((error: unknown) => {
+  const report = { passed: false, error: error instanceof Error ? (error.stack ?? error.message) : String(error) };
   process.exitCode = 1;
-} finally {
-  await runCauseEffect(service.stop()).catch(() => {});
-  report.checkedAt = new Date().toISOString();
-  database.close();
   mkdirSync(OUT, { recursive: true });
   writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
-  if (report.usageWorkTrace !== undefined)
-    writeFileSync(join(OUT, "trace.json"), `${JSON.stringify(report.usageWorkTrace, null, 2)}\n`);
-  for (const entry of report.checks) process.stdout.write(`PASS ${entry.name}\n`);
-  process.stdout.write(`${report.passed ? "PASS" : "FAIL"} ${join(OUT, "report.json")}\n`);
-  if (report.error) process.stdout.write(`${report.error}\n`);
-}
+  process.stderr.write(`FAIL ${join(OUT, "report.json")}\n${report.error}\n`);
+});
