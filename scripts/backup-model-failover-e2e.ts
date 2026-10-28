@@ -269,12 +269,21 @@ class ClaudeStandIn extends EventEmitter<ClientEvents> implements AgentClient {
   /** The provider thread of the last turn that started. */
   lastThread: string | null = null;
   readonly toolAnswers = new Map<RequestId, unknown>();
+  readonly limitReports: { turnId: string; family: string | null | undefined }[] = [];
 
   constructor(cli: ClaudeCliInfo) {
     super();
     this.#real = new ClaudeAgentClient(cli);
     this.readHistory = this.#real.readHistory;
     this.#real.on("notification", (notification) => {
+      if (notification.method === "openbot/usageLimit" && isDynamicRecord(notification.params)) {
+        const { turnId, family } = notification.params;
+        if (typeof turnId === "string")
+          this.limitReports.push({
+            turnId,
+            family: typeof family === "string" || family === null ? family : undefined,
+          });
+      }
       if (notification.method === "turn/started" && isDynamicRecord(notification.params)) {
         const threadId = notification.params.threadId;
         if (typeof threadId === "string") this.lastThread = threadId;
@@ -693,7 +702,11 @@ try {
     await writeFile(attachment, "Finish the last step after the checkpoint.\n");
     const since = events.length;
     const before = turns().length;
+    const reportsBefore = clients.reduce((count, client) => count + client.limitReports.length, 0);
     const outcome = await send(mover.id, "usage-work: save a checkpoint, then finish the last step.", [attachment]);
+    const reports = clients.flatMap((client) => client.limitReports).slice(reportsBefore);
+    assert.equal(reports.length, 1, "Claude reports the refused limit to the lifecycle.");
+    assert.equal(reports[0]?.family, PRIMARY.includes("opus") ? "opus" : "sonnet", "The limit keeps its family.");
     assert.equal(outcome.status, "completed", `The interrupted task completes: ${outcome.error}`);
     const ran = turns().slice(before);
     assert.deepEqual(
