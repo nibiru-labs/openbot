@@ -98,6 +98,8 @@ export const messages = {
   "sidebar.state.routineFailed": { one: "自动化任务失败", other: "{count} 个自动化任务失败" },
   "sidebar.state.routineWaiting": { one: "自动化任务等待中", other: "{count} 个自动化任务等待中" },
   "sidebar.state.routineRunning": { one: "自动化任务运行中", other: "{count} 个自动化任务运行中" },
+  "sidebar.state.usageLimitAttention": "用量上限需要处理",
+  "sidebar.state.usageLimitAttentionChip": "查看",
   "sidebar.state.usageLimit": "等待额度恢复",
   "sidebar.state.usageLimitResets": "等待额度恢复 · {reset}",
   "sidebar.state.usageLimitChip": "额度",

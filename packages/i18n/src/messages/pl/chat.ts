@@ -213,6 +213,9 @@ export const messages = {
   "chat.marker.contextReset": "Rozpoczęto nowy czat",
   "chat.marker.pause.continue": "Kontynuuj",
   "chat.marker.pause.continued": "Wznowiono",
+  "chat.usageLimit.attention": "Wymaga uwagi",
+  "chat.usageLimit.attentionBody":
+    "Ponowiona próba nie potwierdziła odzyskania. Sprawdź konto dostawcy lub przełącz na inny model, aby kontynuować.",
   "chat.usageLimit.title": "Osiągnięto limit użycia dostawcy {provider}",
   "chat.usageLimit.onHold": "Wiadomość wstrzymana",
   "chat.usageLimit.bodyReset":
@@ -222,6 +225,7 @@ export const messages = {
   "chat.usageLimit.sendTo": "Wyślij do",
   "chat.usageLimit.remember": "Następnym razem przełącz bez pytania",
   "chat.usageLimit.wait": "Poczekaj na reset",
+  "chat.usageLimit.switch": "Przełącz na {model}",
   "chat.usageLimit.send": "Wyślij do {model}",
   "chat.usageLimit.failed": "Nie udało się zmienić modelu. Spróbuj ponownie.",
   "chat.marker.marketplaceSuggestion": "Zaproponowano aplikację z Marketplace",

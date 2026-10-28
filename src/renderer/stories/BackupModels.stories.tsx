@@ -75,3 +75,35 @@ export const AskCard: Story = {
     </div>
   ),
 };
+
+/** A failed probe needs the user to act; the card hides Wait and uses the attention copy. */
+export const AskCardAttention: Story = {
+  render: () => (
+    <div style={{ width: "640px" }}>
+      <UsageLimitAskCard
+        provider="claude"
+        resetsAt={RESETS_AT}
+        attention
+        options={usageLimitAskOptions(OWN, ORDER, SOURCE)}
+        onSend={fn(async () => undefined)}
+        onWait={fn()}
+      />
+    </div>
+  ),
+};
+
+/** Attention with no ready backup model: the card explains the hold and offers no send target. */
+export const AskCardAttentionNoBackup: Story = {
+  render: () => (
+    <div style={{ width: "640px" }}>
+      <UsageLimitAskCard
+        provider="claude"
+        resetsAt={RESETS_AT}
+        attention
+        options={[]}
+        onSend={fn(async () => undefined)}
+        onWait={fn()}
+      />
+    </div>
+  ),
+};

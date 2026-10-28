@@ -140,6 +140,9 @@ export const messages = {
   "chat.marker.openRoutine": "루틴 {name} 열기",
   "chat.marker.unavailable": "사용할 수 없음",
   "chat.marker.contextReset": "새 채팅이 시작됨",
+  "chat.usageLimit.attention": "확인 필요",
+  "chat.usageLimit.attentionBody":
+    "재시도에서 복구가 확인되지 않았어요. 제공자 계정을 확인하거나 다른 모델로 전환해 주세요.",
   "chat.usageLimit.title": "{provider} 사용 한도에 도달했어요",
   "chat.usageLimit.onHold": "메시지 보류 중",
   "chat.usageLimit.bodyReset": "메시지가 아직 시작되지 않았어요. 지금 다른 모델로 보내거나 {reset}까지 기다려 주세요.",
@@ -148,6 +151,7 @@ export const messages = {
   "chat.usageLimit.sendTo": "보낼 모델",
   "chat.usageLimit.remember": "다음부터는 묻지 않고 전환",
   "chat.usageLimit.wait": "초기화까지 대기",
+  "chat.usageLimit.switch": "{model}(으)로 전환",
   "chat.usageLimit.send": "{model}(으)로 보내기",
   "chat.usageLimit.failed": "모델을 변경할 수 없어요. 다시 시도해 주세요.",
   "chat.marker.marketplaceSuggestion": "마켓플레이스 앱을 추천함",

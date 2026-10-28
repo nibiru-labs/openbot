@@ -82,6 +82,7 @@ export function AgentEventBridge() {
     setTurnProgress,
     setTurnStepLines,
     setFailedTurns,
+    usageLimits,
     setUsageLimits,
     setUsageLimitedModels,
     setWaitedUsageLimits,
@@ -389,17 +390,23 @@ export function AgentEventBridge() {
     );
     setFailedTurns(Object.fromEntries(snapshot.failedTurns.map((turn) => [turn.agentId, turn.turnId])));
     setContextStates(Object.fromEntries((snapshot.contextStates ?? []).map((state) => [state.agentId, state])));
-    const usageLimits = Object.fromEntries(
+    const prevUsageLimits = usageLimits();
+    const nextUsageLimits = Object.fromEntries(
       (snapshot.usageLimits ?? []).map((limit) => [
         limit.agentId,
         { resetsAt: limit.resetsAt, attention: limit.attention },
       ]),
     );
-    setUsageLimits(usageLimits);
+    setUsageLimits(nextUsageLimits);
     // A hold that ended takes its "Wait" with it, so the next hold asks again.
-    setWaitedUsageLimits((current) =>
-      Object.fromEntries(Object.entries(current).filter(([agentId]) => agentId in usageLimits)),
-    );
+    setWaitedUsageLimits((current) => {
+      const kept = Object.fromEntries(Object.entries(current).filter(([agentId]) => agentId in nextUsageLimits));
+      for (const [agentId, limit] of Object.entries(nextUsageLimits)) {
+        // A probe that needed attention overrides a prior Wait dismissal, including after it clears.
+        if (limit.attention || prevUsageLimits[agentId]?.attention) delete kept[agentId];
+      }
+      return kept;
+    });
     setUsageLimitedModels(snapshot.usageLimitedModels ?? []);
     setQueues((current) => reconcileQueuesWithRuntimeWork(current, snapshot.work, runtimeTurns));
     setPendingPrompts((current) => reconcileAttentionPrompts(current, snapshot, submittedPromptRequests()));

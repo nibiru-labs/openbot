@@ -140,6 +140,9 @@ export const messages = {
   "chat.marker.openRoutine": "Routine {name} openen",
   "chat.marker.unavailable": "Niet beschikbaar",
   "chat.marker.contextReset": "Nieuwe chat gestart",
+  "chat.usageLimit.attention": "Actie vereist",
+  "chat.usageLimit.attentionBody":
+    "De nieuwe poging bevestigde geen herstel. Controleer je provideraccount of schakel over naar een ander model om door te gaan.",
   "chat.usageLimit.title": "Gebruikslimiet van {provider} bereikt",
   "chat.usageLimit.onHold": "Bericht in de wacht",
   "chat.usageLimit.bodyReset":
@@ -149,6 +152,7 @@ export const messages = {
   "chat.usageLimit.sendTo": "Sturen naar",
   "chat.usageLimit.remember": "Volgende keer wisselen zonder te vragen",
   "chat.usageLimit.wait": "Wachten op de reset",
+  "chat.usageLimit.switch": "Overschakelen naar {model}",
   "chat.usageLimit.send": "Sturen naar {model}",
   "chat.usageLimit.failed": "Het model kon niet worden gewijzigd. Probeer het opnieuw.",
   "chat.marker.marketplaceSuggestion": "Stelde een app uit de marktplaats voor",

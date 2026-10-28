@@ -148,6 +148,9 @@ export const messages = {
   "chat.marker.contextReset": "新しいチャットを開始しました",
   "chat.marker.pause.continue": "続行",
   "chat.marker.pause.continued": "再開済み",
+  "chat.usageLimit.attention": "要確認",
+  "chat.usageLimit.attentionBody":
+    "再試行で回復が確認できませんでした。プロバイダーのアカウントを確認するか、別のモデルに切り替えてください。",
   "chat.usageLimit.title": "{provider} の使用量の上限に達しました",
   "chat.usageLimit.onHold": "メッセージを保留中",
   "chat.usageLimit.bodyReset":
@@ -157,6 +160,7 @@ export const messages = {
   "chat.usageLimit.sendTo": "送信先",
   "chat.usageLimit.remember": "次回から確認せずに切り替える",
   "chat.usageLimit.wait": "リセットを待つ",
+  "chat.usageLimit.switch": "{model} に切り替え",
   "chat.usageLimit.send": "{model} に送信",
   "chat.usageLimit.failed": "モデルを変更できませんでした。もう一度お試しください。",
   "chat.marker.marketplaceSuggestion": "マーケットプレイスのアプリを提案しました",

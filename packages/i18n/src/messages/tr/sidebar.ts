@@ -98,6 +98,8 @@ export const messages = {
   "sidebar.state.routineFailed": { one: "Rutin başarısız oldu", other: "{count} rutin başarısız oldu" },
   "sidebar.state.routineWaiting": { one: "Rutin bekliyor", other: "{count} rutin bekliyor" },
   "sidebar.state.routineRunning": { one: "Rutin çalışıyor", other: "{count} rutin çalışıyor" },
+  "sidebar.state.usageLimitAttention": "Kullanım sınırı dikkatinizi gerektiriyor",
+  "sidebar.state.usageLimitAttentionChip": "İncele",
   "sidebar.state.usageLimit": "Sınırı bekliyor",
   "sidebar.state.usageLimitResets": "Sınırı bekliyor · {reset}",
   "sidebar.state.usageLimitChip": "Sınır",

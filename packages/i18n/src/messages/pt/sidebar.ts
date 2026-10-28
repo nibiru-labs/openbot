@@ -98,6 +98,8 @@ export const messages = {
   "sidebar.state.routineFailed": { one: "{count} rotina falhou", other: "{count} rotinas falharam" },
   "sidebar.state.routineWaiting": { one: "{count} rotina aguardando", other: "{count} rotinas aguardando" },
   "sidebar.state.routineRunning": { one: "{count} rotina em execução", other: "{count} rotinas em execução" },
+  "sidebar.state.usageLimitAttention": "O limite de uso precisa da sua atenção",
+  "sidebar.state.usageLimitAttentionChip": "Revisar",
   "sidebar.state.usageLimit": "Aguarda o limite",
   "sidebar.state.usageLimitResets": "Aguarda o limite · {reset}",
   "sidebar.state.usageLimitChip": "Limite",

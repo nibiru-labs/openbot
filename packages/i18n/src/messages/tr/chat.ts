@@ -151,6 +151,9 @@ export const messages = {
   "chat.marker.contextReset": "Yeni sohbet başlatıldı",
   "chat.marker.pause.continue": "Devam et",
   "chat.marker.pause.continued": "Sürdürüldü",
+  "chat.usageLimit.attention": "İlgi gerektirir",
+  "chat.usageLimit.attentionBody":
+    "Yeniden deneme kurtarmayı doğrulamadı. Devam etmek için sağlayıcı hesabınızı kontrol edin veya başka bir modele geçin.",
   "chat.usageLimit.title": "{provider} kullanım sınırına ulaşıldı",
   "chat.usageLimit.onHold": "Mesaj beklemede",
   "chat.usageLimit.bodyReset":
@@ -159,6 +162,7 @@ export const messages = {
   "chat.usageLimit.sendTo": "Şuraya gönder",
   "chat.usageLimit.remember": "Bir dahaki sefere sormadan değiştir",
   "chat.usageLimit.wait": "Sıfırlanmayı bekle",
+  "chat.usageLimit.switch": "{model} modeline geç",
   "chat.usageLimit.send": "{model} modeline gönder",
   "chat.usageLimit.failed": "Model değiştirilemedi. Tekrar deneyin.",
   "chat.marker.marketplaceSuggestion": "Bir Pazaryeri uygulaması önerildi",

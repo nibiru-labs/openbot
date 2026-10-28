@@ -138,6 +138,8 @@ export const messages = {
     many: "{count} регулярных задач выполняются",
     other: "{count} регулярной задачи выполняются",
   },
+  "sidebar.state.usageLimitAttention": "Лимит использования требует вашего внимания",
+  "sidebar.state.usageLimitAttentionChip": "Проверить",
   "sidebar.state.usageLimit": "Ждёт сброса лимита",
   "sidebar.state.usageLimitResets": "Ждёт сброса лимита · {reset}",
   "sidebar.state.usageLimitChip": "Лимит",

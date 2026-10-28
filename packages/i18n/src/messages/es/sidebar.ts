@@ -119,6 +119,8 @@ export const messages = {
     one: "Rutina en ejecución",
     other: "{count} rutinas en ejecución",
   },
+  "sidebar.state.usageLimitAttention": "El límite de uso requiere tu atención",
+  "sidebar.state.usageLimitAttentionChip": "Revisar",
   "sidebar.state.usageLimit": "En espera por el límite",
   "sidebar.state.usageLimitResets": "En espera por el límite · {reset}",
   "sidebar.state.usageLimitChip": "Límite",
