@@ -81,7 +81,8 @@ function AwaitingReplyList(props: AwaitingReplyListProps) {
   const active = () => {
     const waiting = props.items.find((entry) => entry.wait);
     if (waiting?.wait) {
-      const key = waiting.wait.kind === "waiting" ? "chat.awaiting.needsYou" : "chat.awaiting.limited";
+      const key =
+        waiting.wait.kind === "waiting" || waiting.wait.attention ? "chat.awaiting.needsYou" : "chat.awaiting.limited";
       return { id: waiting.id, label: t(key, { name: waiting.name }) };
     }
     const item = props.items.find((entry) => entry.state === "working");
@@ -92,6 +93,7 @@ function AwaitingReplyList(props: AwaitingReplyListProps) {
     const wait = item.wait;
     if (wait?.kind === "waiting") return t(SIDEBAR_WAIT_TITLE[wait.reason]);
     if (wait?.kind === "limited") {
+      if (wait.attention) return t("sidebar.state.usageLimitAttention");
       const reset = sidebarUsageResetTime(wait.resetsAt, format);
       return reset ? t("sidebar.state.usageLimitResets", { reset }) : t("sidebar.state.usageLimit");
     }
@@ -104,7 +106,11 @@ function AwaitingReplyList(props: AwaitingReplyListProps) {
     const wait = item.wait;
     const agentId = item.agent?.id;
     const open = props.onOpenAgent;
-    if (wait?.kind !== "waiting" || !agentId || !open) return undefined;
+    if (!wait || !agentId || !open) return undefined;
+    if (wait.kind === "limited")
+      return wait.attention
+        ? { label: t("sidebar.state.usageLimitAttentionChip"), run: () => open(agentId) }
+        : undefined;
     return { label: t(SIDEBAR_WAIT_ACTION[wait.reason]), run: () => open(agentId) };
   };
   const steerAction = (item: AwaitingReplyItem) => {

@@ -386,19 +386,23 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     if (!agent || activeServer()?.kind !== "local" || !isKnownAgentProvider(agent.provider)) return undefined;
     const provider = agent.provider;
     const limits = usageLimits();
-    if (!(agent.id in limits)) return undefined;
-    const resetsAt = limits[agent.id] ?? null;
-    if (waitedUsageLimits()[agent.id] === resetsAt && agent.id in waitedUsageLimits()) return undefined;
-    if (!queues()[agent.id]?.deliveries.some((delivery) => delivery.status === "queued")) return undefined;
+    const limit = limits[agent.id];
+    if (!limit) return undefined;
+    const resetsAt = limit.resetsAt;
+    if (!limit.attention && waitedUsageLimits()[agent.id] === resetsAt && agent.id in waitedUsageLimits())
+      return undefined;
+    const hasQueuedMessage = queues()[agent.id]?.deliveries.some((delivery) => delivery.status === "queued") ?? false;
+    if (!hasQueuedMessage && !limit.attention) return undefined;
     const source: BackupModelSource = {
       modelOptions: modelOptions(),
       providers: agentStatus().providers,
       limited: usageLimited,
     };
     const options = usageLimitAskOptions({ ...agent, provider }, agent.backupModels, source);
-    if (options.length === 0) return undefined;
+    if (options.length === 0 && !limit.attention) return undefined;
     const backupModels = agent.backupModels;
     if (
+      !limit.attention &&
       backupModels?.automatic &&
       backupModels.order.some((choice) => options.some((option) => sameAgentModelChoice(option.choice, choice)))
     )
@@ -409,6 +413,8 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     return {
       provider,
       resetsAt,
+      attention: limit.attention,
+      hasQueuedMessage,
       options,
       onSend: async (option, remember) => {
         // The agent keeps its reasoning effort where the other model has it.

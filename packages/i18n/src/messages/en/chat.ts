@@ -147,6 +147,9 @@ export const messages = defineMessages("chat", {
   "chat.marker.contextReset": "New chat started",
   "chat.marker.pause.continue": "Continue",
   "chat.marker.pause.continued": "Continued",
+  "chat.usageLimit.attention": "Needs attention",
+  "chat.usageLimit.attentionBody":
+    "The retry did not confirm recovery. Check your provider account or switch to another model to continue.",
   "chat.usageLimit.title": "{provider} usage limit reached",
   "chat.usageLimit.onHold": "Message on hold",
   "chat.usageLimit.bodyReset": "Your message has not started. Send it to another model now, or wait until {reset}.",
@@ -154,6 +157,7 @@ export const messages = defineMessages("chat", {
   "chat.usageLimit.sendTo": "Send to",
   "chat.usageLimit.remember": "Next time, switch without asking",
   "chat.usageLimit.wait": "Wait for the reset",
+  "chat.usageLimit.switch": "Switch to {model}",
   "chat.usageLimit.send": "Send to {model}",
   "chat.usageLimit.failed": "The model could not be changed. Try again.",
   "chat.marker.marketplaceSuggestion": "Suggested a Marketplace app",

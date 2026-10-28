@@ -390,7 +390,10 @@ export function AgentEventBridge() {
     setFailedTurns(Object.fromEntries(snapshot.failedTurns.map((turn) => [turn.agentId, turn.turnId])));
     setContextStates(Object.fromEntries((snapshot.contextStates ?? []).map((state) => [state.agentId, state])));
     const usageLimits = Object.fromEntries(
-      (snapshot.usageLimits ?? []).map((limit) => [limit.agentId, limit.resetsAt]),
+      (snapshot.usageLimits ?? []).map((limit) => [
+        limit.agentId,
+        { resetsAt: limit.resetsAt, attention: limit.attention },
+      ]),
     );
     setUsageLimits(usageLimits);
     // A hold that ended takes its "Wait" with it, so the next hold asks again.

@@ -26,7 +26,7 @@ export interface SidebarAgentStatesInput {
    * The agents whose queue waits for a plan limit, with the reset in epoch seconds or `null`. Absent
    * where the host does not report it, as on a remote server.
    */
-  usageLimits?: Record<string, number | null>;
+  usageLimits?: Record<string, { resetsAt: number | null; attention?: boolean }>;
 }
 
 /**
@@ -126,8 +126,8 @@ function limitedState(
   usageLimits: SidebarAgentStatesInput["usageLimits"],
   agentId: string,
 ): SidebarAgentWait | undefined {
-  const resetsAt = usageLimits?.[agentId];
-  return resetsAt === undefined ? undefined : { kind: "limited", resetsAt };
+  const limit = usageLimits?.[agentId];
+  return limit === undefined ? undefined : { kind: "limited", ...limit };
 }
 
 function routineState(phase: SidebarRoutinePhase, count: number): SidebarAgentState {

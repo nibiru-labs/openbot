@@ -97,6 +97,8 @@ export const messages = defineMessages("sidebar", {
   "sidebar.state.routineFailed": { one: "Routine failed", other: "{count} routines failed" },
   "sidebar.state.routineWaiting": { one: "Routine waiting", other: "{count} routines waiting" },
   "sidebar.state.routineRunning": { one: "Routine running", other: "{count} routines running" },
+  "sidebar.state.usageLimitAttention": "Usage limit needs your attention",
+  "sidebar.state.usageLimitAttentionChip": "Review",
   "sidebar.state.usageLimit": "Waits for limit",
   "sidebar.state.usageLimitResets": "Waits for limit · {reset}",
   "sidebar.state.usageLimitChip": "Limit",

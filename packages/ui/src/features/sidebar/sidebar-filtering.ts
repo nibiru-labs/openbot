@@ -32,6 +32,7 @@ export function sidebarAgentStateLabel(state: SidebarAgentState, t: AppTranslate
     return state.detail ? t("sidebar.state.waitingDetail", { state: title, detail: state.detail }) : title;
   }
   if (state.kind === "limited") {
+    if (state.attention) return t("sidebar.state.usageLimitAttention");
     const reset = sidebarUsageResetTime(state.resetsAt, format);
     return reset ? t("sidebar.state.usageLimitResets", { reset }) : t("sidebar.state.usageLimit");
   }

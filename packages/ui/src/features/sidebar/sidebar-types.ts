@@ -158,7 +158,7 @@ export type SidebarAgentState =
   | { kind: "unread"; count: number }
   | { kind: "routine"; phase: SidebarRoutinePhase; count: number }
   /** The provider plan is spent, so the queue waits. `resetsAt` is in epoch seconds, `null` when unknown. */
-  | { kind: "limited"; resetsAt: number | null };
+  | { kind: "limited"; resetsAt: number | null; attention?: boolean };
 
 /** What a channel waits for. Its row shows it in "Needs you" the same way an agent row does. */
 export type SidebarChannelWait = Extract<SidebarAgentState, { kind: "waiting" }>;

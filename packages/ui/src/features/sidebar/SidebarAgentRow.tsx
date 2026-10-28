@@ -139,7 +139,9 @@ export function SidebarAgentRow(rowProps: { agent: AgentProfile; waiting?: boole
                   {(current) => (
                     <span class="agent-row-wait-chip">
                       <Clock3 aria-hidden="true" />
-                      {sidebarUsageResetTime(current().resetsAt, format) ?? t("sidebar.state.usageLimitChip")}
+                      {current().attention
+                        ? t("sidebar.state.usageLimitAttentionChip")
+                        : (sidebarUsageResetTime(current().resetsAt, format) ?? t("sidebar.state.usageLimitChip"))}
                     </span>
                   )}
                 </Show>

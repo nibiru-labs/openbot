@@ -90,7 +90,9 @@ const Turns = createSimpleContext({
     const [failedTurns, setFailedTurns] = createSignal<Record<string, string | undefined>>(seed?.failedTurns ?? {});
     // The agents whose queue waits for a provider plan to reset, in epoch seconds. Only a runtime snapshot of the local host carries it.
     const [contextStates, setContextStates] = createSignal<Record<string, AgentContextState>>({});
-    const [usageLimits, setUsageLimits] = createSignal<Record<string, number | null>>({});
+    const [usageLimits, setUsageLimits] = createSignal<
+      Record<string, { resetsAt: number | null; attention?: boolean }>
+    >({});
     // Each provider account and model that a usage limit holds, also with no agent on it.
     const [usageLimitedModels, setUsageLimitedModels] = createSignal<AgentModelChoice[]>([]);
     // The holds whose ask card the user closed with "Wait", by agent, with the reset of that hold.
