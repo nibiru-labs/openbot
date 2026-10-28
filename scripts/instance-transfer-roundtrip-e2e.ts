@@ -456,12 +456,13 @@ async function checkRoundtrip(root: string): Promise<RoundtripResult> {
   const targetRoot = join(root, "target");
   const targetShared = join(targetRoot, "shared");
   await seedWorkspace(sourceWorkspace);
+  const path = join(sourceWorkspace, "transfer.zip");
+  await writeFile(`${path}.part`, "stale partial export\n");
   await seedShared(sourceShared);
   await seedTargetShared(targetShared);
   await mkdir(targetRoot, { recursive: true });
 
   const source = sourceService(sourceWorkspace, sourceShared);
-  const path = join(root, "source", "transfer.zip");
   const exported = await run(
     source.exportTo(path, {
       agentIds: [SOURCE_AGENT_ID, BROKEN_AGENT_ID],
@@ -473,11 +474,17 @@ async function checkRoundtrip(root: string): Promise<RoundtripResult> {
 
   // The file holds the agents, their files and the settings, and no secret.
   const bytes = new Uint8Array(await readFile(path));
+  assert.ok(bytes.byteLength < 1_000_000, "The export is not bounded in size.");
   assert.ok(
     !Buffer.from(bytes).includes(SECRET),
     "The file holds the secret of the MCP server, the provider or the custom agent.",
   );
   const entries = unzipSync(bytes);
+  assert.ok(!entries[`${agentPrefix(SOURCE_AGENT_ID)}workspace/transfer.zip`], "The archive holds its output file.");
+  assert.ok(
+    !entries[`${agentPrefix(SOURCE_AGENT_ID)}workspace/transfer.zip.part`],
+    "The archive holds its temporary output file.",
+  );
   const manifestBytes = entries[INSTANCE_TRANSFER_MANIFEST];
   assert.ok(manifestBytes, "The file holds no manifest.");
   const decoded = decodeTransferManifest(manifestBytes);

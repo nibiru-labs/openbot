@@ -11,7 +11,7 @@
 // here and never replace an MCP server, provider or custom agent that this computer has.
 
 import { randomUUID } from "node:crypto";
-import { type FileHandle, lstat, mkdir, open, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { type FileHandle, lstat, mkdir, open, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import type { AgentProviderId } from "@openbot/contracts/agent-providers";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
@@ -214,8 +214,9 @@ export class InstanceTransferService {
     for (const agent of this.options.agents.listAgents()) {
       // The counts are a preview: a folder that cannot be read stops the export, not this screen,
       // so an export without files stays possible.
-      const files = yield* workspaceFiles(agent.workspacePath).pipe(Effect.orElseSucceed(() => []));
-      const skills = yield* skillFolders(agent.workspacePath).pipe(Effect.orElseSucceed(() => []));
+      // No export file exists yet, so nothing is left out.
+      const files = yield* workspaceFiles(agent.workspacePath, new Set()).pipe(Effect.orElseSucceed(() => []));
+      const skills = yield* skillFolders(agent.workspacePath, new Set()).pipe(Effect.orElseSucceed(() => []));
       agents.push({
         id: agent.id,
         name: agent.name,
@@ -246,6 +247,12 @@ export class InstanceTransferService {
       return yield* archiveFailure(new Error(sourceText("error.import.agentNotInExport")));
     const agents = selected.filter((agent): agent is AgentSummary => agent !== undefined);
 
+    // The export and its temporary file can be inside a source workspace or shared folder.
+    const excludedPaths = new Set([
+      yield* archiveCall(() => resolvedPath(path)),
+      yield* archiveCall(() => resolvedPath(`${path}.part`)),
+    ]);
+
     const entries: ZipEntry[] = [];
     const warnings: string[] = [];
     const keys = new Map<string, string>();
@@ -265,7 +272,7 @@ export class InstanceTransferService {
 
       const skills: string[] = [];
       // An import refuses an agent with more skills than the limit, so the export keeps the first ones.
-      const folders = yield* skillFolders(agent.workspacePath);
+      const folders = yield* skillFolders(agent.workspacePath, excludedPaths);
       if (folders.length > INPUT_LIMITS.agentSkills)
         warnings.push(
           sourceText("error.import.transferSkillLimit", {
@@ -285,7 +292,7 @@ export class InstanceTransferService {
 
       let files: string | null = null;
       if (input.includeFiles) {
-        const workspace = yield* workspaceFiles(agent.workspacePath);
+        const workspace = yield* workspaceFiles(agent.workspacePath, excludedPaths);
         if (workspace.length > 0) {
           files = `${prefix}workspace`;
           for (const file of workspace) {
@@ -346,7 +353,7 @@ export class InstanceTransferService {
 
     let shared: typeof SHARED_FOLDER | null = null;
     if (input.includeFiles) {
-      const sharedFiles = yield* walk(this.options.sharedRoot, isSharedData);
+      const sharedFiles = yield* walk(this.options.sharedRoot, isSharedData, excludedPaths);
       if (sharedFiles.length > 0) shared = SHARED_FOLDER;
       for (const file of sharedFiles) {
         bytes += file.size;
@@ -969,8 +976,9 @@ export class InstanceTransferService {
  */
 const workspaceFiles = Effect.fn("InstanceTransfer.workspaceFiles")(function* (
   root: string,
+  excludedPaths: ReadonlySet<string>,
 ): Effect.fn.Return<FileEntry[], ArchiveOperationError> {
-  return yield* walk(root, isWorkspaceSkipped);
+  return yield* walk(root, isWorkspaceSkipped, excludedPaths);
 });
 
 /** OpenBot's own workspace folders: an export leaves them out, and an import never writes them. */
@@ -983,6 +991,7 @@ function isWorkspaceSkipped(name: string): boolean {
 const walk = Effect.fn("InstanceTransfer.walk")(function* (
   root: string,
   skip: (name: string) => boolean = () => false,
+  excludedPaths: ReadonlySet<string> = new Set(),
 ): Effect.fn.Return<FileEntry[], ArchiveOperationError> {
   const files: FileEntry[] = [];
   const pending = [root];
@@ -1003,18 +1012,37 @@ const walk = Effect.fn("InstanceTransfer.walk")(function* (
       else if (entry.isFile()) {
         // A running agent can delete a file between `readdir` and `lstat`; that file is not exported.
         const info = yield* Effect.result(archiveCall(() => lstat(path)));
-        if (Result.isSuccess(info))
+        if (Result.isFailure(info)) {
+          if (!isMissingFileError(info.failure.cause)) return yield* info.failure;
+          continue;
+        }
+        const canonical = yield* Effect.result(archiveCall(() => resolvedPath(path)));
+        if (Result.isFailure(canonical)) {
+          return yield* canonical.failure;
+        }
+        if (!excludedPaths.has(canonical.success))
           files.push({ name, path, size: info.success.size, executable: (info.success.mode & 0o111) !== 0 });
-        else if (!isMissingFileError(info.failure.cause)) return yield* info.failure;
       }
     }
   }
   return files.sort((a, b) => a.name.localeCompare(b.name));
 });
 
+/** Resolves an output path through symlinked folders, including when the file does not exist yet. */
+async function resolvedPath(path: string): Promise<string> {
+  const absolute = resolve(path);
+  try {
+    return await realpath(absolute);
+  } catch (cause) {
+    if (!isMissingFileError(cause)) throw cause;
+    return join(await realpath(dirname(absolute)), basename(absolute));
+  }
+}
+
 /** The skills a user or a marketplace installed. OpenBot's own skills are installed again on import. */
 const skillFolders = Effect.fn("InstanceTransfer.skillFolders")(function* (
   workspace: string,
+  excludedPaths: ReadonlySet<string>,
 ): Effect.fn.Return<Array<{ slug: string; files: FileEntry[] }>, ArchiveOperationError> {
   const skills = new Map<string, FileEntry[]>();
   for (const folder of MANAGED_SKILL_FOLDERS) {
@@ -1032,7 +1060,7 @@ const skillFolders = Effect.fn("InstanceTransfer.skillFolders")(function* (
       // A link to a skill that is gone is not a skill.
       if (Result.isFailure(info) && !isMissingFileError(info.failure.cause)) return yield* info.failure;
       if (Result.isFailure(info) || !info.success.isDirectory()) continue;
-      const files = yield* walk(directory);
+      const files = yield* walk(directory, () => false, excludedPaths);
       if (files.some((file) => file.name === OWNERSHIP_MARKER) || !files.some((file) => file.name === "SKILL.md"))
         continue;
       skills.set(slug, files);
