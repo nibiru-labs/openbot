@@ -394,6 +394,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun run test:token-budget
 
+      - name: Run the usage limit account E2E test
+        if: ${{ !cancelled() }}
+        run: bun scripts/usage-limit-account-e2e.ts
+
       - name: Run the provider update after an app upgrade E2E test
         if: ${{ !cancelled() }}
         run: bun run test:provider-update-after-app-upgrade
@@ -553,6 +557,7 @@ jobs:
             .openbot-build/provider-update-busy-e2e/
             .openbot-build/steer-interrupt-pause-e2e/
             .openbot-build/token-budget-e2e/
+            .openbot-build/usage-limit-account-e2e-*/
             .openbot-build/provider-update-after-app-upgrade-e2e/
             .openbot-build/provider-runtime-remove-e2e/
             .openbot-build/provider-exit-session-e2e/
@@ -569,7 +574,7 @@ jobs:
             .openbot-build/claude-usage-resume-e2e/
             .openbot-build/claude-late-steer-e2e/
             .openbot-build/provider-session-reuse-e2e/
-            .openbot-build/backup-model-failover-e2e/
+            .openbot-build/backup-model-failover-e2e-*/
             .openbot-build/zip-attachment-e2e/
             .openbot-build/mp4-attachment-e2e/
             .openbot-build/agent-mcp-tools-e2e/

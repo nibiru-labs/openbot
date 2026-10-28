@@ -38,7 +38,7 @@ const { OpenBotDatabase } = await import("../src/backend/openbot-database");
  * finishes a command, and an interrupt ends the turn at once. A turn whose input has PLAN-n runs one
  * step and then reports that the plan refused it, with a reset 2 seconds away.
  */
-const FAKE_CODEX = `#!/usr/bin/env node
+const FAKE_CODEX = `#!${process.execPath}
 const fs = require("node:fs");
 if (process.argv.includes("--version")) {
   process.stdout.write("codex-cli 0.160.1\\n");
