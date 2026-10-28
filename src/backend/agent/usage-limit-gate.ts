@@ -11,6 +11,8 @@ export const USAGE_LIMIT_METHOD = "openbot/usageLimit";
 /** How often a limit with no reported reset is read again. A usage read is one request, not a turn. */
 const USAGE_LIMIT_RECHECK_MS = 15 * 60_000;
 
+const UNKNOWN_PROBE_DELAY_MS = 10 * 60_000;
+
 /** Time after the reported reset before work starts again, so the provider's clock has passed it too. */
 const RESET_GRACE_MS = 30_000;
 
@@ -50,6 +52,10 @@ interface GateAgent {
 export interface UsageLimitGateOptions {
   store: { list(): readonly GateAgent[] };
   hooks: UsageLimitHooks;
+  timers?: {
+    set(callback: () => void, delay: number): ReturnType<typeof setTimeout>;
+    clear(timer: ReturnType<typeof setTimeout>): void;
+  };
 }
 
 export interface UsageLimitKey {
@@ -69,6 +75,7 @@ interface UsageLimit extends UsageLimitKey {
   /** Epoch seconds, or null while the provider has not said. */
   resetsAt: number | null;
   timer: ReturnType<typeof setTimeout> | null;
+  unknownPhase?: "waiting" | "ready" | "reserved" | "attention";
 }
 
 /**
@@ -91,6 +98,7 @@ interface UsageLimit extends UsageLimitKey {
 export class UsageLimitGate {
   readonly #store: UsageLimitGateOptions["store"];
   readonly #hooks: UsageLimitHooks;
+  readonly #timers: NonNullable<UsageLimitGateOptions["timers"]>;
   readonly #limits = new Map<string, UsageLimit>();
   /** Owns the usage reads and the timer runs, so `dispose` stops them. */
   #scope = Scope.makeUnsafe();
@@ -101,6 +109,7 @@ export class UsageLimitGate {
   constructor(options: UsageLimitGateOptions) {
     this.#store = options.store;
     this.#hooks = options.hooks;
+    this.#timers = options.timers ?? { set: setTimeout, clear: clearTimeout };
   }
 
   mayDrain(agentId: string): boolean {
@@ -144,6 +153,27 @@ export class UsageLimitGate {
       agent !== undefined &&
       this.#limits.has(limitKey(providerForAgent(agent), accountOf(agent), `unknown:${agent.model}`))
     );
+  }
+
+  /** Reserve the one probe after the timer. This operation is synchronous across all lanes. */
+  reserveUnknownProbe(agentId: string): boolean {
+    const agent = this.#agent(agentId);
+    if (!agent) return false;
+    const limit = this.#limits.get(limitKey(providerForAgent(agent), accountOf(agent), `unknown:${agent.model}`));
+    if (limit?.unknownPhase !== "ready") return false;
+    limit.unknownPhase = "reserved";
+    this.#hooks.emitRuntimeSnapshot();
+    return true;
+  }
+
+  /** An unconfirmed or failed probe needs human attention and must not be retried automatically. */
+  finishUnknownProbe(agentId: string): void {
+    const agent = this.#agent(agentId);
+    if (!agent) return;
+    const limit = this.#limits.get(limitKey(providerForAgent(agent), accountOf(agent), `unknown:${agent.model}`));
+    if (limit?.unknownPhase !== "reserved") return;
+    limit.unknownPhase = "attention";
+    this.#hooks.emitRuntimeSnapshot();
   }
 
   /** Whether a provider error passes over this provider account and model. */
@@ -234,6 +264,18 @@ export class UsageLimitGate {
     limit.resetsAt = future(resetsAt) ?? future(limit.resetsAt);
     this.#limits.set(key, limit);
     if (family !== undefined) this.#arm(key, limit);
+    else if (!limit.unknownPhase) {
+      limit.unknownPhase = "waiting";
+      limit.timer = this.#timers.set(() => {
+        if (this.#limits.get(key) !== limit || limit.unknownPhase !== "waiting") return;
+        limit.timer = null;
+        limit.unknownPhase = "ready";
+        this.#hooks.emitRuntimeSnapshot();
+        for (const held of this.#heldAgents(limit)) this.#hooks.scheduleDrain(held.id);
+      }, UNKNOWN_PROBE_DELAY_MS);
+    } else if (limit.unknownPhase === "reserved") {
+      limit.unknownPhase = "attention";
+    }
     yield* this.#hooks.held(this.#heldAgents(limit).map((held) => held.id));
     this.#hooks.emitRuntimeSnapshot();
     if (family === undefined || limit.resetsAt !== null) {
@@ -295,7 +337,7 @@ export class UsageLimitGate {
   }).bind(this);
 
   readonly dispose = Effect.fn("UsageLimitGate.dispose")(function* (this: UsageLimitGate) {
-    for (const limit of this.#limits.values()) if (limit.timer) clearTimeout(limit.timer);
+    for (const limit of this.#limits.values()) if (limit.timer) this.#timers.clear(limit.timer);
     this.#limits.clear();
     for (const failure of this.#failures.values()) clearTimeout(failure.timer);
     this.#failures.clear();
@@ -368,7 +410,7 @@ export class UsageLimitGate {
   readonly #release = Effect.fn("UsageLimitGate.release")(function* (this: UsageLimitGate, key: string, reset = false) {
     const limit = this.#limits.get(key);
     if (!limit) return;
-    if (limit.timer) clearTimeout(limit.timer);
+    if (limit.timer) this.#timers.clear(limit.timer);
     this.#limits.delete(key);
     if (reset && ![...this.#limits.values()].some((other) => other.provider === limit.provider))
       this.#announced.delete(limit.provider);

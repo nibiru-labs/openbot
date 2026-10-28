@@ -143,6 +143,55 @@ check("a successful same-model turn clears the unknown hold", () => {
   assert.equal(gate.hasUnknownLimit("c-opus"), false);
 });
 
+// The clock controls the ten-minute wait without making a provider request.
+const clock: { scheduled: (() => void) | null } = { scheduled: null };
+let cleared = 0;
+const wakes: string[] = [];
+const timedGate = new UsageLimitGate({
+  store,
+  timers: {
+    set: (callback, delay) => {
+      assert.equal(delay, 600_000);
+      clock.scheduled = callback;
+      const timer = setTimeout(() => {}, delay);
+      timer.unref();
+      return timer;
+    },
+    clear: (timer) => {
+      clearTimeout(timer);
+      cleared++;
+      clock.scheduled = null;
+    },
+  },
+  hooks: {
+    emit: () => {},
+    emitRuntimeSnapshot: () => {},
+    scheduleDrain: (id) => wakes.push(id),
+    readUsage: () => Effect.succeed(null),
+    held: () => Effect.void,
+    released: () => Effect.void,
+  },
+});
+await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
+await Effect.runPromise(timedGate.reached("c-opus-peer", null, "claude-opus-4-5"));
+check("unknown hold waits before reservation", () => assert.equal(timedGate.reserveUnknownProbe("c-opus"), false));
+const fire = clock.scheduled;
+if (fire) fire();
+check("timer wakes same-model agents once", () => assert.deepEqual(wakes, ["c-opus", "c-opus-peer"]));
+check("only one agent reserves the probe", () => {
+  assert.equal(timedGate.reserveUnknownProbe("c-opus"), true);
+  assert.equal(timedGate.reserveUnknownProbe("c-opus-peer"), false);
+});
+await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
+check("a second refusal does not reserve again", () =>
+  assert.equal(timedGate.reserveUnknownProbe("c-opus-peer"), false),
+);
+await Effect.runPromise(timedGate.completed("c-opus"));
+check("success releases the hold", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), false));
+await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
+await Effect.runPromise(timedGate.dispose());
+check("disposal cancels the pending timer", () => assert.equal(cleared, 1));
+
 await Effect.runPromise(gate.dispose());
 
 const passed = cases.every((item) => item.passed);
