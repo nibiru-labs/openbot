@@ -1,14 +1,22 @@
 // Run: bun scripts/transfer-upload-cleanup-e2e.ts
 // Report: .openbot-build/transfer-upload-cleanup-e2e.json
+//
+// The last check puts a fault into the file system: the write of the archive is short, and the file
+// system writes no byte at all. The old code wrote every chunk of the archive once and took the
+// count of the write for the truth, so a short write left a truncated ZIP that the export reported
+// as a saved file. The check holds that the export writes the whole archive when a write is short,
+// and that it fails when a write makes no progress.
 
+import { mock } from "bun:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect, Schema } from "effect";
-import { strToU8, unzipSync, zipSync } from "fflate";
+import { strToU8, unzipSync, Zip, ZipPassThrough, zipSync } from "fflate";
+import { runCauseEffect } from "../src/backend/effect-boundary";
 import {
   INSTANCE_TRANSFER_FORMAT,
   INSTANCE_TRANSFER_MANIFEST,
@@ -17,6 +25,38 @@ import {
 import { type InstanceTransferOptions, InstanceTransferService } from "../src/main/instance-transfer-service";
 import { LocalSkillFailure } from "../src/main/local-skill-library";
 import { SkillMarketplaceFailure } from "../src/main/skill-marketplace-service";
+
+// The file system of the check. It writes at most `writeLimit` bytes per call, like a file system
+// whose buffer is full. A limit of zero writes no byte at all. The built-ins of node have no seam
+// to inject a fault into, so the check takes the module apart and puts the fault into the open.
+// The limit is off until a check sets it, so the other checks write their files as they do.
+const realFs = await import("node:fs/promises");
+const realOpen = realFs.open;
+let writeLimit = Number.POSITIVE_INFINITY;
+
+mock.module("node:fs/promises", () => ({
+  ...realFs,
+  open: async (...args: Parameters<typeof realOpen>) => {
+    const handle = await realOpen(...args);
+    return {
+      write: async (
+        buffer: Uint8Array,
+        offset?: number,
+        length?: number,
+        position?: number | null,
+      ): Promise<{ bytesWritten: number; buffer: Uint8Array }> => {
+        const start = offset ?? 0;
+        const count = Math.min(length ?? buffer.length - start, writeLimit);
+        if (count <= 0) return { bytesWritten: 0, buffer };
+        const result = await handle.write(buffer, start, count, position ?? null);
+        return { bytesWritten: count, buffer: result.buffer };
+      },
+      read: (buffer: Uint8Array, offset?: number, length?: number, position?: number | null) =>
+        handle.read(buffer, offset, length, position),
+      close: () => handle.close(),
+    };
+  },
+}));
 
 const run = Effect.runPromise;
 const exportInput = { agentIds: [], includeFiles: false, includeSettings: false };
@@ -256,6 +296,72 @@ async function checkLocal(root: string): Promise<void> {
   assert.deepEqual(await readFile(path), Buffer.from(bytes));
 }
 
+async function checkArchiveWrite(root: string): Promise<void> {
+  const directory = join(root, "archive-write", "instance-transfer-uploads");
+  await mkdir(directory, { recursive: true });
+  const current = service(directory);
+
+  // The export without a fault is the reference: the archive holds the manifest of the instance.
+  const reference = await run(current.exportForMember(exportInput));
+  const referenceBytes = new Uint8Array(await readFile(reference));
+  const referenceEntries = unzipSync(referenceBytes);
+  const referenceManifest = referenceEntries[INSTANCE_TRANSFER_MANIFEST];
+  assert.ok(referenceManifest, "The reference archive holds no manifest.");
+
+  // The old code wrote every chunk of the archive once and took the count of the write for the
+  // truth. The file system wrote only the first bytes of the chunk, so the archive ended in the
+  // middle of the file, and the export reported it as a saved file.
+  writeLimit = 64;
+  const chunks: Uint8Array[] = [];
+  const zip = new Zip((error, chunk) => {
+    if (error) throw error;
+    chunks.push(chunk);
+  });
+  const entry = new ZipPassThrough(INSTANCE_TRANSFER_MANIFEST);
+  zip.add(entry);
+  entry.push(referenceManifest, true);
+  zip.end();
+  const old = join(root, "archive-write", "old.zip");
+  const handle = await open(old, "w");
+  try {
+    for (const chunk of chunks) await handle.write(chunk);
+  } finally {
+    await handle.close();
+  }
+  const oldBytes = new Uint8Array(await readFile(old));
+  assert.ok(
+    oldBytes.byteLength < referenceBytes.byteLength,
+    `The fault did not shorten the archive: ${oldBytes.byteLength} of ${referenceBytes.byteLength} bytes.`,
+  );
+  assert.throws(() => unzipSync(oldBytes), "A reader opened the truncated archive.");
+
+  // The same fault, now in the export. The archive must hold every byte of the manifest.
+  const exported = await run(current.exportForMember(exportInput));
+  const bytes = new Uint8Array(await readFile(exported));
+  assert.equal(bytes.byteLength, referenceBytes.byteLength, "The export wrote a shorter archive.");
+  const exportedManifest = unzipSync(bytes)[INSTANCE_TRANSFER_MANIFEST];
+  assert.ok(exportedManifest, "The archive holds no manifest.");
+  const decoded = decodeArchiveManifest(new TextDecoder("utf-8", { fatal: true }).decode(exportedManifest));
+  assert.equal(decoded.format, INSTANCE_TRANSFER_FORMAT, "The archive holds another format.");
+  assert.equal(decoded.version, INSTANCE_TRANSFER_VERSION, "The archive holds another version.");
+  assert.deepEqual(decoded.agents, [], "The archive holds another agent.");
+  await verifyArchives(directory, 2);
+
+  // A write that writes no byte never ends. The export must fail instead of reporting a saved
+  // file that holds nothing.
+  const stuckDirectory = join(root, "stuck-write", "instance-transfer-uploads");
+  await mkdir(stuckDirectory, { recursive: true });
+  const stuck = service(stuckDirectory);
+  writeLimit = 0;
+  await assert.rejects(
+    () => runCauseEffect(stuck.exportForMember(exportInput)),
+    /wrote no byte/,
+    "The export reported an archive that it did not write.",
+  );
+  assert.deepEqual(await names(stuckDirectory), [], "The failed export left a file behind.");
+  writeLimit = Number.POSITIVE_INFINITY;
+}
+
 interface Report {
   status: "running" | "passed" | "failed";
   checks: Array<{ name: string; status: "passed" | "failed" }>;
@@ -278,6 +384,7 @@ if (process.argv[2] === "--seed") {
       ["concurrent-writers", () => checkConcurrent(root)],
       ["preparation-retry", () => checkRetry(root)],
       ["local-file-and-invalid-upload", () => checkLocal(root)],
+      ["archive-write", () => checkArchiveWrite(root)],
     ];
     for (const [name, check] of checks) {
       activeCheck = name;
