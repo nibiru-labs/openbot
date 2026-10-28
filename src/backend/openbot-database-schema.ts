@@ -558,6 +558,20 @@ const ANALYTICS_DATE_INDEX_SQL = `
   CREATE INDEX IF NOT EXISTS agent_usage_activity_occurred ON agent_usage_activity(occurred_at);
 `;
 
+const UNKNOWN_USAGE_HOLDS_SQL = `
+  CREATE TABLE unknown_usage_holds (
+    provider TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    deadline INTEGER NOT NULL,
+    phase TEXT NOT NULL CHECK (phase IN ('waiting', 'ready', 'reserved', 'attention')),
+    probe_agent_id TEXT,
+    probe_delivery_id TEXT,
+    probe_turn_id TEXT,
+    PRIMARY KEY (provider, account_id, model)
+  );
+`;
+
 const LATEST_SCHEMA_SQL =
   substituteOnce(
     substituteOnce(
@@ -605,7 +619,8 @@ const LATEST_SCHEMA_SQL =
   BROWSER_PROFILE_SCHEMA_SQL +
   WORKFLOW_SCHEMA_SQL +
   AGENT_THREAD_SCHEMA_SQL +
-  ROUTINE_BACKOFF_SCHEMA_SQL;
+  ROUTINE_BACKOFF_SCHEMA_SQL +
+  UNKNOWN_USAGE_HOLDS_SQL;
 
 /** The end of the thread message table with the migration 40 columns before its PRIMARY KEY constraint. */
 function withThreadMessageOrderColumns(tableEnd: string): string {
@@ -887,6 +902,7 @@ const MIGRATIONS: readonly OpenBotMigration[] = [
       if (!hasTable(db, "routine_backoff")) db.exec(ROUTINE_BACKOFF_SCHEMA_SQL);
     },
   },
+  { version: 50, up: (db) => db.exec(UNKNOWN_USAGE_HOLDS_SQL) },
 ];
 
 const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? BASELINE_SCHEMA_VERSION;

@@ -65,7 +65,7 @@ describe("agent usage migration", () => {
     db.exec("DROP TABLE agent_usage_date");
     migrateOpenBotDatabase(db);
 
-    expect(db.prepare("SELECT MAX(version) AS latest FROM schema_migrations").get()).toEqual({ latest: 49 });
+    expect(db.prepare("SELECT MAX(version) AS latest FROM schema_migrations").get()).toEqual({ latest: 50 });
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'agent_usage_records'").get()).toBeDefined();
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'agent_usage_checkpoints'").get()).toBeDefined();
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'agent_usage_activity'").get()).toBeDefined();

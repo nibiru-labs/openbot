@@ -1172,6 +1172,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     });
     this.#usageLimits = new UsageLimitGate({
       store,
+      database: () => store.database.connection,
       ...(options.usageLimitTimers ? { timers: options.usageLimitTimers } : {}),
       hooks: {
         emit: (event) => this.#emit(event),
@@ -3428,6 +3429,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           (failure) => new AgentLifecycleFailed({ operation: "initialize mailbox", cause: failure.cause }),
         ),
       );
+    yield* lifecycleStep("restore usage holds", () => this.#usageLimits.restore());
     yield* lifecycleStep("restore channel links", () => {
       this.#mcp.migrateCatalogBridgesToHttp();
       this.channels.restoreDeliveryLinks();

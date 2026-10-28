@@ -1,7 +1,15 @@
+import type { DatabaseSync } from "node:sqlite";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type { AccountUsage, AgentEvent, AgentRuntimeSnapshot } from "@openbot/contracts/ipc";
+import { isAgentProvider } from "@openbot/contracts/ipc";
 import { Effect, Exit, Schema, Scope } from "effect";
 import type { AgentProvider } from "../agent-client";
+import {
+  databaseRows,
+  optionalStringColumn,
+  requiredNumberColumn,
+  requiredStringColumn,
+} from "../database/database-rows";
 import { causeHelpers } from "../effect-boundary";
 import { agentProviderAccount as accountOf, providerForAgent } from "./thread-items";
 
@@ -52,10 +60,12 @@ interface GateAgent {
 
 export interface UsageLimitGateOptions {
   store: { list(): readonly GateAgent[] };
+  database?: () => DatabaseSync;
   hooks: UsageLimitHooks;
   timers?: {
     set(callback: () => void, delay: number): ReturnType<typeof setTimeout>;
     clear(timer: ReturnType<typeof setTimeout>): void;
+    now?(): number;
   };
 }
 
@@ -80,6 +90,8 @@ interface UsageLimit extends UsageLimitKey {
   probeAgentId?: string;
   probeDeliveryId?: string;
   probeTurnId?: string;
+  deadline?: number;
+  earlyTurns?: Map<string, "completed" | "failed">;
 }
 
 /**
@@ -92,9 +104,7 @@ interface UsageLimit extends UsageLimitKey {
  * window, holds only that family, so the other families keep working and their completed turns do
  * not end the hold.
  *
- * The entry ends at the reported reset, after a usage read that finds no spent window, or when a
- * turn in its scope completes. It is kept in memory only: after a restart the first refused turn
- * closes the gate again.
+ * Known windows end at reset, a usage read, or a successful turn. Unknown holds persist across restarts.
  *
  * It also owns the models that failed a turn with a provider error. They hold no queue: they only
  * move agents set to switch without asking to a backup, and keep them there for a while.
@@ -102,6 +112,7 @@ interface UsageLimit extends UsageLimitKey {
 export class UsageLimitGate {
   readonly #store: UsageLimitGateOptions["store"];
   readonly #hooks: UsageLimitHooks;
+  readonly #database: UsageLimitGateOptions["database"];
   readonly #timers: NonNullable<UsageLimitGateOptions["timers"]>;
   readonly #limits = new Map<string, UsageLimit>();
   /** Owns the usage reads and the timer runs, so `dispose` stops them. */
@@ -112,8 +123,86 @@ export class UsageLimitGate {
 
   constructor(options: UsageLimitGateOptions) {
     this.#store = options.store;
+    this.#database = options.database;
     this.#hooks = options.hooks;
     this.#timers = options.timers ?? { set: setTimeout, clear: clearTimeout };
+  }
+
+  /** Restore before any queue can drain. A reserved probe may have reached the provider. */
+  restore(): void {
+    if (!this.#database) return;
+    for (const row of databaseRows(this.#database().prepare("SELECT * FROM unknown_usage_holds").all())) {
+      const provider = requiredStringColumn(row, "provider");
+      const account = requiredStringColumn(row, "account_id");
+      const model = requiredStringColumn(row, "model");
+      const phase = requiredStringColumn(row, "phase");
+      if (!isAgentProvider(provider) || !["waiting", "ready", "reserved", "attention"].includes(phase))
+        throw new Error("Invalid persisted usage hold.");
+      const limit: UsageLimit = {
+        provider,
+        accountId: account || null,
+        model,
+        family: `unknown:${model}`,
+        resetsAt: null,
+        timer: null,
+        deadline: requiredNumberColumn(row, "deadline"),
+        unknownPhase: phase === "waiting" ? "waiting" : phase === "ready" ? "ready" : "attention",
+        probeAgentId: optionalStringColumn(row, "probe_agent_id") ?? undefined,
+        probeDeliveryId: optionalStringColumn(row, "probe_delivery_id") ?? undefined,
+        probeTurnId: optionalStringColumn(row, "probe_turn_id") ?? undefined,
+      };
+      if (limit.unknownPhase === "ready" && (this.#timers.now?.() ?? Date.now()) < (limit.deadline ?? Infinity)) {
+        limit.unknownPhase = "waiting";
+        this.#persist(limit);
+      }
+      const key = limitKey(provider, limit.accountId, limit.family);
+      this.#limits.set(key, limit);
+      if (phase === "reserved") this.#persist(limit);
+      if (limit.unknownPhase === "waiting") this.#armUnknown(key, limit);
+    }
+  }
+
+  #persist(limit: UsageLimit): void {
+    if (!this.#database || !limit.unknownPhase || limit.deadline === undefined) return;
+    this.#database()
+      .prepare(`INSERT INTO unknown_usage_holds
+      (provider, account_id, model, deadline, phase, probe_agent_id, probe_delivery_id, probe_turn_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (provider, account_id, model) DO UPDATE SET deadline = excluded.deadline,
+      phase = excluded.phase, probe_agent_id = excluded.probe_agent_id,
+      probe_delivery_id = excluded.probe_delivery_id, probe_turn_id = excluded.probe_turn_id`)
+      .run(
+        limit.provider,
+        limit.accountId ?? "",
+        limit.model,
+        limit.deadline,
+        limit.unknownPhase,
+        limit.probeAgentId ?? null,
+        limit.probeDeliveryId ?? null,
+        limit.probeTurnId ?? null,
+      );
+  }
+
+  #armUnknown(key: string, limit: UsageLimit): void {
+    const now = this.#timers.now?.() ?? Date.now();
+    const delay = Math.max(0, (limit.deadline ?? now + UNKNOWN_PROBE_DELAY_MS) - now);
+    limit.timer = this.#timers.set(() => {
+      if (this.#limits.get(key) !== limit || limit.unknownPhase !== "waiting") return;
+      limit.timer = null;
+      if ((this.#timers.now?.() ?? Date.now()) < (limit.deadline ?? Infinity)) {
+        this.#armUnknown(key, limit);
+        return;
+      }
+      limit.unknownPhase = "ready";
+      try {
+        this.#persist(limit);
+      } catch (error) {
+        limit.unknownPhase = "attention";
+        throw error;
+      }
+      this.#hooks.emitRuntimeSnapshot();
+      for (const held of this.#heldAgents(limit)) this.#hooks.scheduleDrain(held.id);
+    }, delay);
   }
 
   mayDrain(agentId: string, allowUnknownProbe = false): boolean {
@@ -170,28 +259,52 @@ export class UsageLimitGate {
     limit.unknownPhase = "reserved";
     limit.probeAgentId = agentId;
     limit.probeDeliveryId = deliveryId;
+    this.#persist(limit);
     this.#hooks.emitRuntimeSnapshot();
     return true;
   }
 
   /** Bind the accepted provider turn to the delivery that reserved the probe. */
-  bindUnknownProbe(agentId: string, deliveryId: string, turnId: string): void {
+  bindUnknownProbe(agentId: string, deliveryId: string, turnId: string): "completed" | "failed" | undefined {
     const limit = this.#probe(agentId, { deliveryId });
     if (!limit) return;
     if (!turnId) {
       limit.unknownPhase = "attention";
+      this.#persist(limit);
       this.#hooks.emitRuntimeSnapshot();
       return;
     }
     limit.probeTurnId = turnId;
+    const early = limit.earlyTurns?.get(turnId);
+    limit.earlyTurns = undefined;
+    if (early === "failed") limit.unknownPhase = "attention";
+    this.#persist(limit);
+    if (early === "failed") this.#hooks.emitRuntimeSnapshot();
+    return early;
   }
 
   /** An unconfirmed or failed probe needs human attention and must not be retried automatically. */
   finishUnknownProbe(agentId: string, identity: { deliveryId: string } | { turnId: string }): void {
     const limit = this.#probe(agentId, identity);
-    if (!limit) return;
+    if (!limit) {
+      if ("turnId" in identity) this.#recordEarly(agentId, identity.turnId, "failed");
+      return;
+    }
     limit.unknownPhase = "attention";
+    this.#persist(limit);
     this.#hooks.emitRuntimeSnapshot();
+  }
+
+  noteUnknownProbeEnd(agentId: string, turnId: string, outcome: "completed" | "failed"): void {
+    this.#recordEarly(agentId, turnId, outcome);
+  }
+
+  #recordEarly(agentId: string, turnId: string, outcome: "completed" | "failed"): void {
+    for (const limit of this.#limits.values()) {
+      if (limit.unknownPhase !== "reserved" || limit.probeAgentId !== agentId || limit.probeTurnId) continue;
+      if (!limit.earlyTurns) limit.earlyTurns = new Map();
+      limit.earlyTurns.set(turnId, outcome);
+    }
   }
 
   #probe(agentId: string, identity: { deliveryId: string } | { turnId: string }): UsageLimit | undefined {
@@ -304,13 +417,9 @@ export class UsageLimitGate {
     if (family !== undefined) this.#arm(key, limit);
     else if (!limit.unknownPhase) {
       limit.unknownPhase = "waiting";
-      limit.timer = this.#timers.set(() => {
-        if (this.#limits.get(key) !== limit || limit.unknownPhase !== "waiting") return;
-        limit.timer = null;
-        limit.unknownPhase = "ready";
-        this.#hooks.emitRuntimeSnapshot();
-        for (const held of this.#heldAgents(limit)) this.#hooks.scheduleDrain(held.id);
-      }, UNKNOWN_PROBE_DELAY_MS);
+      limit.deadline = (this.#timers.now?.() ?? Date.now()) + UNKNOWN_PROBE_DELAY_MS;
+      this.#persist(limit);
+      this.#armUnknown(key, limit);
     }
     yield* this.#hooks.held(this.#heldAgents(limit).map((held) => held.id));
     this.#hooks.emitRuntimeSnapshot();
@@ -355,6 +464,8 @@ export class UsageLimitGate {
     if (this.#limits.has(modelKey)) yield* this.#release(modelKey);
     const unknownKey = limitKey(provider, accountId, `unknown:${model ?? agent.model}`);
     const unknown = this.#limits.get(unknownKey);
+    if (turnId !== null && unknown?.unknownPhase === "reserved" && !unknown.probeTurnId)
+      this.#recordEarly(agentId, turnId, "completed");
     if (
       unknown &&
       unknown.unknownPhase === "reserved" &&
@@ -455,6 +566,10 @@ export class UsageLimitGate {
   readonly #release = Effect.fn("UsageLimitGate.release")(function* (this: UsageLimitGate, key: string, reset = false) {
     const limit = this.#limits.get(key);
     if (!limit) return;
+    if (limit.unknownPhase && this.#database)
+      this.#database()
+        .prepare("DELETE FROM unknown_usage_holds WHERE provider = ? AND account_id = ? AND model = ?")
+        .run(limit.provider, limit.accountId ?? "", limit.model);
     if (limit.timer) this.#timers.clear(limit.timer);
     this.#limits.delete(key);
     if (reset && ![...this.#limits.values()].some((other) => other.provider === limit.provider))

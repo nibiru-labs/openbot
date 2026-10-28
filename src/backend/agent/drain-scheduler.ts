@@ -840,8 +840,9 @@ export class DrainScheduler {
       if (!this.#hooks.turnEnded(response.turn.id)) snapshot.activeTurnId = response.turn.id;
       confirmedTurnId = response.turn.id;
       if (probe) {
-        this.#usageLimits.bindUnknownProbe(agentId, delivery.id, response.turn.id);
-        if (this.#hooks.turnEnded(response.turn.id))
+        const outcome = this.#usageLimits.bindUnknownProbe(agentId, delivery.id, response.turn.id);
+        if (outcome === "completed") yield* this.#usageLimits.completed(agentId, agent.model, response.turn.id);
+        else if (this.#hooks.turnEnded(response.turn.id))
           this.#usageLimits.finishUnknownProbe(agentId, { deliveryId: delivery.id });
       }
       this.#turnModels.set(laneKey({ agentId: agent.id, taskId }), { turnId: response.turn.id, model: agent.model });

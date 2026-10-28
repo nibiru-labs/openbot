@@ -18,6 +18,7 @@ import { EventEmitter } from "node:events";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import {
   AGENT_PROVIDERS,
   type AgentBackupModels,
@@ -70,6 +71,7 @@ const { CodexAppServerClient } = await import("../src/backend/app-server-client"
 const { runCauseEffect } = await import("../src/backend/effect-boundary");
 const { MailboxStore } = await import("../src/backend/mailbox-store");
 const { OpenBotDatabase } = await import("../src/backend/openbot-database");
+const { migrateOpenBotDatabase } = await import("../src/backend/openbot-database-schema");
 const { importProviderHistory } = await import("../src/backend/provider-history-import");
 
 // The stand-in for the Claude CLI. It speaks enough of the stream-json protocol for a turn to end,
@@ -494,6 +496,7 @@ const database = new OpenBotDatabase(userData);
 const clients: ClaudeStandIn[] = [];
 const events: AgentEvent[] = [];
 const probeTimers = new Map<ReturnType<typeof setTimeout>, () => void>();
+let probeNow = Date.now();
 
 function startService() {
   const store = new AgentStore(userData, home, database);
@@ -503,8 +506,9 @@ function startService() {
     mailbox,
     browser,
     usageLimitTimers: {
+      now: () => probeNow,
       set: (callback, delay) => {
-        assert.equal(delay, 600_000);
+        assert.ok(delay >= 0 && delay <= 600_000);
         const timer = setTimeout(() => {}, delay);
         timer.unref();
         probeTimers.set(timer, callback);
@@ -590,8 +594,9 @@ async function check(name: string, run: () => Promise<unknown>) {
   report.checks.push({ name, passed: true, detail });
 }
 
-async function restart() {
+async function restart(keepHold = false) {
   await runCauseEffect(service.stop());
+  if (!keepHold) database.connection.prepare("DELETE FROM unknown_usage_holds").run();
   ({ store, mailbox, service } = startService());
   await runCauseEffect(service.initialize());
 }
@@ -963,9 +968,11 @@ try {
       ];
       const clock: { scheduled: (() => void) | null; delay: number | null } = { scheduled: null, delay: null };
       const wakes: string[] = [];
+      let now = Date.now();
       const gate = new UsageLimitGate({
         store: { list: () => probeAgents },
         timers: {
+          now: () => now,
           set: (callback, delay) => {
             clock.scheduled = callback;
             clock.delay = delay;
@@ -990,6 +997,9 @@ try {
       assert.equal(clock.delay, 600_000);
       assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-1"), false);
       clock.scheduled?.();
+      assert.deepEqual(wakes, [], "An early timer cannot release the hold.");
+      now += 600_000;
+      clock.scheduled?.();
       assert.deepEqual(wakes, ["probe-agent"]);
       assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-1"), true);
       assert.equal(gate.reserveUnknownProbe("probe-agent", "delivery-2"), false);
@@ -1001,6 +1011,70 @@ try {
     } finally {
       if (saved === undefined) delete process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS;
       else process.env.OPENBOT_UNKNOWN_PROBE_DELAY_MS = saved;
+    }
+  });
+
+  await check("reserved probes restore to attention and early completion releases only the matching turn", async () => {
+    const db = new DatabaseSync(":memory:");
+    migrateOpenBotDatabase(db);
+    let now = Date.now();
+    let wake: (() => void) | undefined;
+    const agents = [{ id: "race-agent", provider: "codex" as const, model: CODEX_MODEL }];
+    const makeGate = () =>
+      new UsageLimitGate({
+        store: { list: () => agents },
+        database: () => db,
+        timers: {
+          now: () => now,
+          set: (callback, delay) => {
+            wake = callback;
+            const timer = setTimeout(() => {}, delay);
+            timer.unref();
+            return timer;
+          },
+          clear: (timer) => clearTimeout(timer),
+        },
+        hooks: {
+          emit: () => {},
+          emitRuntimeSnapshot: () => {},
+          scheduleDrain: () => {},
+          readUsage: () => Effect.succeed(null),
+          held: () => Effect.void,
+          released: () => Effect.void,
+        },
+      });
+    try {
+      const first = makeGate();
+      await runCauseEffect(first.reached("race-agent", null));
+      now += 600_000;
+      wake?.();
+      assert.equal(first.reserveUnknownProbe("race-agent", "uncertain"), true);
+      await runCauseEffect(first.dispose());
+      const restored = makeGate();
+      restored.restore();
+      assert.equal(restored.limitedAgents()[0]?.attention, true);
+      assert.equal(restored.reserveUnknownProbe("race-agent", "second"), false);
+      await runCauseEffect(restored.accountReset("codex", null));
+      await runCauseEffect(restored.reached("race-agent", null));
+      now += 600_000;
+      wake?.();
+      assert.equal(restored.reserveUnknownProbe("race-agent", "race"), true);
+      restored.noteUnknownProbeEnd("race-agent", "other", "completed");
+      restored.noteUnknownProbeEnd("race-agent", "matched", "completed");
+      assert.equal(restored.bindUnknownProbe("race-agent", "race", "matched"), "completed");
+      await runCauseEffect(restored.completed("race-agent", CODEX_MODEL, "matched"));
+      assert.equal(restored.hasUnknownLimit("race-agent"), false);
+      await runCauseEffect(restored.reached("race-agent", null));
+      now += 600_000;
+      wake?.();
+      assert.equal(restored.reserveUnknownProbe("race-agent", "failed-race"), true);
+      restored.noteUnknownProbeEnd("race-agent", "failed-turn", "failed");
+      assert.equal(restored.bindUnknownProbe("race-agent", "failed-race", "failed-turn"), "failed");
+      assert.equal(restored.limitedAgents()[0]?.attention, true);
+      await runCauseEffect(restored.dispose());
+      return { reservedRestart: "attention", earlyCompletion: "released", earlyFailure: "attention" };
+    } finally {
+      db.close();
     }
   });
 
@@ -1196,13 +1270,15 @@ try {
         service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
     );
     assert.equal(readLog<CodexTurn>(codexLog).length, before + 1);
-    await restart();
+    await restart(true);
     assert.ok(
       service.getRuntimeSnapshot().usageLimits?.some((limit) => limit.agentId === agent.id),
       "The unknown-scope hold survives restart before queued work drains.",
     );
     assert.equal(mailbox.getDelivery(deliveryId)?.delivery.status, "queued");
     assert.equal(readLog<CodexTurn>(codexLog).length, before + 1, "Restart does not start another turn.");
+    await runCauseEffect(service.cancelQueuedMessage(agent.id, deliveryId));
+    await runCauseEffect(service.deleteAgent(agent.id));
     return { deliveryId };
   });
 
@@ -1227,6 +1303,7 @@ try {
     assert.equal(mailbox.getDelivery(delivery1)?.resumeAfterUsageLimit, undefined);
     assert.equal(mailbox.getDelivery(delivery2)?.resumeAfterUsageLimit, undefined);
     assert.equal(turns().length, beforeClaude, "No cross-provider backup runs.");
+    probeNow += 600_000;
     for (const [timer, callback] of probeTimers) {
       clearTimeout(timer);
       probeTimers.delete(timer);
@@ -1244,6 +1321,13 @@ try {
       10_000,
     );
     const afterProbe = readLog<CodexTurn>(codexLog).length;
+    await restart(true);
+    assert.ok(
+      (service.getRuntimeSnapshot().usageLimits ?? []).some(
+        (limit) => (limit.agentId === first.id || limit.agentId === second.id) && limit.attention,
+      ),
+      "Attention survives restart and keeps the model held.",
+    );
     await new Promise((done) => setTimeout(done, 100));
     assert.equal(readLog<CodexTurn>(codexLog).length, afterProbe, "No second probe runs.");
     return { delivery1, delivery2, codexTurns: afterProbe - beforeCodex };

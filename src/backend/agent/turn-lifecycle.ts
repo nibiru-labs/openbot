@@ -902,6 +902,7 @@ export class TurnLifecycle {
           ? refusedSessionFailure(running.client.provider, reportedError)
           : null;
       const refused = running !== undefined && refusedFailure !== null;
+      this.#usageLimits.noteUnknownProbeEnd(agentId, turnId, status === "completed" ? "completed" : "failed");
       if (status !== "completed") this.#usageLimits.finishUnknownProbe(agentId, { turnId });
       const limited = status === "failed" && this.#limitedTurns.has(turnId);
       const limitEntry = this.#limitedTurns.get(turnId);
