@@ -99,7 +99,7 @@ describe("migration guards", () => {
     },
   );
 
-  it.each(range(8, 48))("rejects a history that is missing version %i and changes nothing", (missing) => {
+  it.each(range(8, 49))("rejects a history that is missing version %i and changes nothing", (missing) => {
     const db = latestDatabase();
     db.prepare("DELETE FROM schema_migrations WHERE version = ?").run(missing);
     const schemaBefore = db.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY type, name").all();
