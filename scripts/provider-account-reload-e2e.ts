@@ -56,7 +56,12 @@ require("node:readline").createInterface({ input: process.stdin }).on("line", (l
   if (message.id === undefined) return;
   let result;
   switch (message.method) {
-    case "initialize": result = {}; break;
+    case "initialize":
+      if (fs.existsSync(${JSON.stringify(join(root, "delay-initialize"))})) {
+        setTimeout(() => write({ id: message.id, result: {} }), 1500);
+        return;
+      }
+      result = {}; break;
     case "account/read": {
       const value = account();
       result = { account: value.email === null ? null : { type: "chatgpt", email: value.email } };
@@ -87,7 +92,7 @@ require("node:readline").createInterface({ input: process.stdin }).on("line", (l
   const accountsPath = join(root, "accounts.json");
   const accountsRoot = join(root, "accounts");
 
-  function createRuntime(accounts: ProviderAccountStore): ProviderRuntime {
+  function createRuntime(accounts: ProviderAccountStore, requestTimeoutMs = 5_000, slowTest = false): ProviderRuntime {
     return new ProviderRuntime({
       offProviders: BUILT_IN_PROVIDER_DRIVERS.map((driver) => driver.id).filter(
         (id) => id !== "codex" && id !== "claude",
@@ -116,15 +121,16 @@ require("node:readline").createInterface({ input: process.stdin }).on("line", (l
         changes.emit("status");
       },
       emitError: () => undefined,
-      requestTimeoutMs: 5_000,
+      requestTimeoutMs,
+      slowStartsPath: join(root, slowTest ? "slow-test-starts" : "slow-starts"),
       preferredProvider: "codex",
       bundledExecutables: {},
       credentials: NO_PROVIDER_CREDENTIALS,
-      accounts,
+      ...(!slowTest ? { accounts } : {}),
       redactMcp: (text) => text,
       clientFactory: (provider, cli, _confinement, accountEnvironment) => {
         if (provider === "codex")
-          return new CodexAppServerClient(cli.executable, 5_000, {
+          return new CodexAppServerClient(cli.executable, requestTimeoutMs, {
             CODEX_HOME: defaultHome("codex"),
             ...accountEnvironment,
           });
@@ -254,6 +260,24 @@ require("node:readline").createInterface({ input: process.stdin }).on("line", (l
       await stop(runtime);
       runtime = undefined;
     }
+
+    // A timeout is saved, and a later multi-provider start uses the longer budget.
+    await writeFile(join(root, "delay-initialize"), "");
+    const slowAccounts = new ProviderAccountStore(accountsPath, accountsRoot);
+    await runCauseEffect(slowAccounts.load());
+    runtime = createRuntime(slowAccounts, 1_000, true);
+    await runCauseEffect(runtime.start());
+    assert.equal(runtime.status().providers?.find((row) => row.id === "codex")?.state, "error");
+    assert.equal(await readFile(join(root, "slow-test-starts", "codex"), "utf8"), "");
+    await stop(runtime);
+    runtime = createRuntime(slowAccounts, 1_000, true);
+    await runCauseEffect(runtime.start());
+    assert.equal(runtime.status().providers?.find((row) => row.id === "codex")?.state, "available");
+    assert.equal(runtime.status().providers?.find((row) => row.id === "claude")?.state, "available");
+    results.push({ name: "slow start survives a restart with multiple providers", passed: true });
+    await stop(runtime);
+    runtime = undefined;
+    await rm(join(root, "delay-initialize"));
 
     // A provider that reports no account must finish its check without removing the saved account.
     const signedOut = new ProviderAccountStore(accountsPath, accountsRoot);

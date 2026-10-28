@@ -91,7 +91,48 @@ async function main(): Promise<void> {
     await app.whenReady();
     phase("electron-ready");
 
-    browser = new BrowserHost(newWindow(), join(fixtureRoot, "downloads"), statePath, hostOptions);
+    // Capture the host timer so the fixture can deliver two ticks in the same sweep.
+    const originalSetInterval = globalThis.setInterval;
+    let sweepTick: (() => void) | undefined;
+    Object.defineProperty(globalThis, "setInterval", {
+      configurable: true,
+      writable: true,
+      value: (callback: () => void, delay: number) => {
+        if (delay === 60_000) sweepTick = callback;
+        return originalSetInterval(callback, delay);
+      },
+    });
+    let sweepRuns = 0;
+    let observedSweep: (() => void) | undefined;
+    try {
+      browser = new BrowserHost(newWindow(), join(fixtureRoot, "downloads"), statePath, {
+        ...hostOptions,
+        memoryLow: () => {
+          sweepRuns += 1;
+          if (sweepRuns === 1) sweepTick?.();
+          observedSweep?.();
+          return false;
+        },
+      });
+    } finally {
+      globalThis.setInterval = originalSetInterval;
+    }
+    assert(sweepTick, "The browser sweep timer was not registered.");
+    const firstSweep = new Promise<void>((resolve) => {
+      observedSweep = resolve;
+    });
+    sweepTick();
+    await firstSweep;
+    // Allow the first sweep's promise and its finalizer to complete.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(sweepRuns, 1, "The overlapping sweep ran.");
+    const laterSweep = new Promise<void>((resolve) => {
+      observedSweep = resolve;
+    });
+    sweepTick();
+    await laterSweep;
+    assert.equal(sweepRuns, 2, "The later sweep did not run.");
+    recordCases("idle-sweep-skips-overlap-and-runs-later");
     const first = browser;
     const a = await runCauseEffect(first.open(page("a"), "thread-a", "agent-a"));
     const b = await runCauseEffect(first.open(page("b"), "thread-b", "agent-b"));
@@ -221,6 +262,68 @@ async function main(): Promise<void> {
     assert.equal((await partitionCookies("agent-a")).length, 1);
     assert.deepEqual(await readValues(contentsFor(page("shared-restored"))), values("c"));
     recordCases("clear-profile-clears-only-that-profile");
+
+    phase("origin-eviction");
+    const originTab = await runCauseEffect(second.open(page("origin-seed"), "origin-thread", "origin-agent"));
+    const originContents = contentsFor(originTab.url);
+    await originContents.session.protocol.handle(
+      "https",
+      () => new Response('<input id="password" type="password">', { headers: { "Content-Type": "text/html" } }),
+    );
+    const originUrl = (index: number) => `https://origin-${index}.openbot.test/`;
+    const visit = async (index: number, evaluate: boolean) => {
+      await runCauseEffect(second.loadUrl(originTab.id, originUrl(index)));
+      if (evaluate) {
+        const result = await runCauseEffect(
+          second.handleDynamicTool({
+            namespace: "openbot_browser",
+            tool: "evaluate",
+            threadId: "origin-thread",
+            ownerAgentId: "origin-agent",
+            turnId: "origin-turn",
+            callId: `evaluate-${index}`,
+            arguments: { tabId: originTab.id, expression: "1" },
+          }),
+        );
+        assert(result.success);
+      }
+    };
+    try {
+      for (let i = 0; i < 1000; i++) {
+        if (i % 100 === 0) phase(`origin-${i}`);
+        await visit(i, true);
+      }
+      await visit(0, true);
+      await visit(1000, true);
+      const scripted = async (index: number) => {
+        await visit(index, false);
+        const handoff = await runCauseEffect(
+          second.prepareSecret({
+            namespace: "openbot_browser",
+            tool: "submit_secret",
+            threadId: "origin-thread",
+            ownerAgentId: "origin-agent",
+            turnId: "origin-turn",
+            callId: `secret-${index}`,
+            arguments: {
+              tabId: originTab.id,
+              method: "password",
+              targets: [{ kind: "css", selector: "#password" }],
+              submission: "enter",
+            },
+          }),
+        );
+        handoff.cancel();
+        return handoff.agentScriptedOrigin;
+      };
+      assert.equal(await scripted(1), false);
+      assert.equal(await scripted(0), true);
+      assert.equal(await scripted(1000), true);
+      recordCases("origin-eviction-keeps-recently-used");
+    } finally {
+      originContents.session.protocol.unhandle("https");
+      await runCauseEffect(second.close(originTab.id));
+    }
 
     const report = {
       status: "passed",

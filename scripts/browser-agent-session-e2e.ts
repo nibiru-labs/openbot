@@ -44,7 +44,7 @@ try {
   const report = z
     .object({
       status: z.literal("passed"),
-      cases: z.array(z.string()).length(16),
+      cases: z.array(z.string()).length(18),
       runId: z.literal(runId),
       sourceSha: z.literal(sourceSha),
     })
@@ -74,7 +74,7 @@ try {
           runId,
           sourceSha,
           cases: completedCases,
-          reason: "Owned fixture exceeded its 180-second process guard.",
+          reason: "Owned fixture exceeded its 600-second process guard.",
         },
         null,
         2,
@@ -114,7 +114,7 @@ async function run(command: string, args: string[], electron = false): Promise<v
       timedOut = true;
       child.kill("SIGTERM");
       force = setTimeout(() => child.kill("SIGKILL"), 3_000);
-    }, 180_000);
+    }, 600_000);
     child.once("error", (error) => {
       clearTimeout(timeout);
       clearTimeout(force);

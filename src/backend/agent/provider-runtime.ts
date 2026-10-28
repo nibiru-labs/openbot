@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { statSync } from "node:fs";
-import { basename } from "node:path";
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import type {
   AccountUsage,
   AgentEvent,
@@ -18,6 +18,7 @@ import type {
   ProviderUsageResets,
 } from "@openbot/contracts/ipc";
 import {
+  AGENT_PROVIDERS,
   accountUsageCoversModel,
   agentProviderDescriptor,
   CUSTOM_AGENT_DEFAULT_MODEL,
@@ -127,8 +128,7 @@ const USAGE_RESET_PROVIDERS: ReadonlySet<AgentProvider> = new Set(["codex"]);
  * did not finish a start in the request timeout. The Windows Gemini server unpacks about 310 MB at
  * every start, and an antivirus scan of the unpacked files can take minutes on a slow computer
  * (#1275, #2311). A start in the request timeout stopped it while it unpacked, and the next start
- * unpacked again. A launch keeps the request timeout: it waits for every provider, and one CLI that
- * hangs would hold chat back for all of them.
+ * unpacked again. A provider known to be slow gets this budget at launch too.
  */
 const LONG_START_TIMEOUT_MS = 180_000;
 /** How long a provider CLI stays running with nothing to do before its process is stopped. */
@@ -161,6 +161,8 @@ function signInFileVersion(path: string): string {
  * filled the disk.
  */
 const START_FAILURE_LIMIT = 3;
+/** Distinct configuration warnings kept in memory. Past the cap, the oldest goes. */
+const REPORTED_CONFIG_WARNING_LIMIT = 256;
 const STABLE_RUN_MS = 2 * 60_000;
 /** How often a restart the user asked for checks whether the provider's turns have ended. */
 const PROVIDER_RESTART_POLL_MS = 1_000;
@@ -469,6 +471,7 @@ export class ProviderRuntime implements ProviderPort {
   readonly #startFailures = new Map<AgentProvider, number>();
   /** Providers that did not answer `initialize` in the request timeout. Their starts get `LONG_START_TIMEOUT_MS`. */
   readonly #slowStarts = new Set<AgentProvider>();
+  readonly #slowStartsPath: string | undefined;
   /** When each provider's current client became its client. */
   readonly #activatedAt = new Map<AgentProvider, number>();
   readonly #restartTimers = new Map<AgentProvider, NodeJS.Timeout>();
@@ -479,7 +482,8 @@ export class ProviderRuntime implements ProviderPort {
   readonly #exitRecovery = new Set<AgentProvider>();
   /**
    * Ignored-settings warnings already shown. Codex repeats one at each start, and a reconnect does
-   * not change the file it reads, so the user sees each one once per app run.
+   * not change the file it reads, so the user sees each one once per app run. Past the cap, the
+   * oldest goes.
    */
   readonly #reportedConfigWarnings = new Set<string>();
   /** Counts `dispose()` calls, so a start from before one cannot add its client after it. */
@@ -489,6 +493,17 @@ export class ProviderRuntime implements ProviderPort {
   readonly #saveProviderUse: (provider: AgentProvider, on: boolean) => Effect.Effect<void, ProviderOperationFailed>;
   /** Null without a store, as in tests: each provider then holds its own sign-in only. */
   readonly #providerAccounts: ProviderAccounts | null;
+
+  #markSlowStart(provider: AgentProvider): void {
+    this.#slowStarts.add(provider);
+    if (!this.#slowStartsPath) return;
+    try {
+      mkdirSync(this.#slowStartsPath, { recursive: true });
+      writeFileSync(join(this.#slowStartsPath, provider), "");
+    } catch {
+      logger.warn("Could not save the slow provider start.", { provider });
+    }
+  }
 
   constructor(options: {
     offProviders?: readonly AgentProvider[];
@@ -506,7 +521,14 @@ export class ProviderRuntime implements ProviderPort {
     mcpHandoff?: McpHandoffLog;
     redactMcp: (text: string) => string;
     accounts?: ProviderAccountStore;
+    slowStartsPath?: string;
   }) {
+    this.#slowStartsPath = options.slowStartsPath;
+    if (this.#slowStartsPath) {
+      for (const provider of AGENT_PROVIDERS) {
+        if (existsSync(join(this.#slowStartsPath, provider))) this.#slowStarts.add(provider);
+      }
+    }
     this.#off = new Set(options.offProviders);
     this.#saveProviderUse = options.saveProviderUse ?? (() => Effect.void);
     this.#conversation = options.conversation;
@@ -2569,7 +2591,12 @@ export class ProviderRuntime implements ProviderPort {
     const result = yield* Effect.result(
       Effect.gen({ self: this }, function* () {
         const account = yield* client
-          .request("account/read", { refreshToken: true }, decodeAccountReadResult, 5_000)
+          .request(
+            "account/read",
+            { refreshToken: true },
+            decodeAccountReadResult,
+            this.#slowStarts.has(provider) ? LONG_START_TIMEOUT_MS : this.#requestTimeoutMs,
+          )
           .pipe(toProviderOperationFailed);
         // An activation can replace this client while the account request is pending.
         if (this.#clients.get(provider) !== client) return;
@@ -2626,6 +2653,7 @@ export class ProviderRuntime implements ProviderPort {
   }
 
   readonly #initializeProviderClient = Effect.fn("ProviderRuntime.initializeProviderClient")(function* (
+    this: ProviderRuntime,
     client: AgentClient,
     startTimeoutMs?: number,
   ) {
@@ -2641,6 +2669,7 @@ export class ProviderRuntime implements ProviderPort {
       )
       .pipe(toProviderOperationFailed);
     yield* providerStep(() => client.notify("initialized"));
+    this.#slowStarts.delete(client.provider);
   });
 
   readonly #authenticateClient = Effect.fn("ProviderRuntime.authenticateClient")(
@@ -2684,7 +2713,7 @@ export class ProviderRuntime implements ProviderPort {
               Effect.tapError((failure) =>
                 Effect.sync(() => {
                   const error = this.#withExitDetail(failure.cause);
-                  if (isProviderTimeout(error)) this.#slowStarts.add(provider);
+                  if (isProviderTimeout(error)) this.#markSlowStart(provider);
                   logger.warn("A provider did not start.", {
                     provider,
                     stage: "initialize",
@@ -3146,17 +3175,19 @@ export class ProviderRuntime implements ProviderPort {
             this.#bindClient(candidate);
             candidate.start();
           });
-          yield* this.#initializeProviderClient(
-            candidate,
-            // A connect of several providers waits for all of them, as a launch does.
-            options.startTimeoutMs ??
-              (requestedProviders.length === 1 && this.#slowStarts.has(provider) ? LONG_START_TIMEOUT_MS : undefined),
-          );
+          const startTimeoutMs =
+            options.startTimeoutMs ?? (this.#slowStarts.has(provider) ? LONG_START_TIMEOUT_MS : undefined);
+          yield* this.#initializeProviderClient(candidate, startTimeoutMs);
           logger.info("A provider answered initialize.", { provider, durationMs: stageMs() });
           stage = "account";
           stageStartedAt = performance.now();
           const account = yield* candidate
-            .request("account/read", { refreshToken: false }, decodeAccountReadResult, 5_000)
+            .request(
+              "account/read",
+              { refreshToken: false },
+              decodeAccountReadResult,
+              startTimeoutMs ?? this.#requestTimeoutMs,
+            )
             .pipe(toProviderOperationFailed);
           if (!account.account) {
             const message = this.#signInRequiredMessage(provider);
@@ -3214,8 +3245,8 @@ export class ProviderRuntime implements ProviderPort {
               if (isProviderTimeout(error)) {
                 this.#recordProviderError(provider, error);
                 // The process may still be unpacking. The next start waits long enough to finish.
-                if (stage === "initialize") this.#slowStarts.add(provider);
-                if (this.#countStartFailure(provider)) return this.#showStartStopped(provider);
+                if (stage === "initialize") this.#markSlowStart(provider);
+                if (stage !== "account" && this.#countStartFailure(provider)) return this.#showStartStopped(provider);
                 // A busy computer, not a broken CLI: say so, keep the version, and try again later.
                 const message = this.#retryAfterTimeout(provider, !disposed());
                 this.#setStatus({
@@ -3471,12 +3502,19 @@ export class ProviderRuntime implements ProviderPort {
     const redacted = shortenDiagnostic(this.#redactMcp(summary));
     logger.warn("A provider ignored settings in its configuration.", { provider: client.provider, message: redacted });
     if (this.#reportedConfigWarnings.has(redacted)) return;
-    this.#reportedConfigWarnings.add(redacted);
+    this.#rememberConfigWarning(redacted);
     const message =
       ignored.keys.length > 0
         ? sourceText("error.provider.codexConfigIgnored", { count: ignored.count, settings: ignored.keys.join(", ") })
         : sourceText("error.provider.codexConfigIgnoredUnnamed", { count: ignored.count });
     this.#emitError(`${client.provider}_config_ignored`, message);
+  }
+
+  #rememberConfigWarning(redacted: string): void {
+    this.#reportedConfigWarnings.add(redacted);
+    if (this.#reportedConfigWarnings.size <= REPORTED_CONFIG_WARNING_LIMIT) return;
+    const oldest = this.#reportedConfigWarnings.values().next().value;
+    if (oldest !== undefined) this.#reportedConfigWarnings.delete(oldest);
   }
 
   #handleExit(client: AgentClient, error: Error): void {

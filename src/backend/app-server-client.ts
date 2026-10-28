@@ -40,6 +40,8 @@ interface ClientEvents {
   diagnostic: [message: string];
 }
 
+const MAX_INTERRUPTED_TURNS = 1000;
+
 export class AppServerError extends Error {
   constructor(
     message: string,
@@ -59,7 +61,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   #decoder = new JsonLineDecoder();
   readonly #pending = new Map<RequestId, PendingRequest>();
   readonly #toolRequests = new Map<RequestId, { threadId: string; turnId: string; controller: AbortController }>();
-  readonly #interruptedTurns = new Set<string>();
+  readonly #interruptedTurns = new Map<string, string>();
   #process: ChildProcessWithoutNullStreams | null = null;
   /** The end of a process that failed. `stop` waits for it, because `#process` no longer holds it. */
   #ending: Fiber.Fiber<void> | null = null;
@@ -159,6 +161,9 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   ) {
     if (!this.running) return;
     yield* this.request("thread/unsubscribe", { threadId }, decodeRecordResponse);
+    for (const [key, owner] of this.#interruptedTurns) {
+      if (owner === threadId) this.#interruptedTurns.delete(key);
+    }
   });
 
   /**
@@ -284,7 +289,13 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
       try {
         this.#write({ method, id, params: method === "thread/resume" ? metadataOnlyResumeParams(params) : params });
         if (method === "turn/interrupt" && isRecord(params) && isString(params.threadId) && isString(params.turnId)) {
-          this.#interruptedTurns.add(JSON.stringify([params.threadId, params.turnId]));
+          const key = JSON.stringify([params.threadId, params.turnId]);
+          this.#interruptedTurns.delete(key);
+          this.#interruptedTurns.set(key, params.threadId);
+          if (this.#interruptedTurns.size > MAX_INTERRUPTED_TURNS) {
+            const oldest = this.#interruptedTurns.keys().next().value;
+            if (oldest !== undefined) this.#interruptedTurns.delete(oldest);
+          }
           this.#cancelToolRequests(params.threadId, params.turnId);
         }
       } catch (cause) {

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { join } from "node:path";
 import { agentProviderDescriptor, customAgentIdOfModel } from "@openbot/contracts/agent-providers";
 import { sortConversationMessages } from "@openbot/contracts/conversation-order";
 import { developmentStartingModel } from "@openbot/contracts/development-defaults";
@@ -623,6 +624,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       isStopping: () => this.#stopping,
     });
     this.#providers = new ProviderRuntime({
+      slowStartsPath: join(store.database.userDataPath, "slow-provider-starts"),
       offProviders: options.offProviders ?? [],
       ...(options.providerAccounts ? { accounts: options.providerAccounts } : {}),
       saveProviderUse: (provider, on) =>
@@ -3947,7 +3949,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     yield* this.#turn.dispose();
     yield* this.#usageLimits.dispose();
     yield* this.#tokenBudget.dispose();
-    this.#drain.dispose();
+    yield* this.#drain.dispose();
     this.#browser.clearControls();
     yield* Effect.forEach(clients, (client) => client.stop().pipe(Effect.catch(() => Effect.void)), {
       concurrency: "unbounded",

@@ -26,6 +26,7 @@ const accountsRoot = join(root, "provider-accounts");
 const logPath = join(root, "protocol.jsonl");
 const controlPath = join(root, "control.json");
 const exitedPath = join(root, "exited");
+const delayedAccountPath = join(root, "delayed-account");
 /** The `.cjs` name keeps the fake a CommonJS script, also when the temp folder sits in a package
  * whose package.json sets "type": "module". */
 const fakeCodex = join(root, "codex.cjs");
@@ -77,7 +78,15 @@ const answer = (message) => {
   const params = message.params || {};
   switch (message.method) {
     case "initialize": return write({ id: message.id, result: {} });
-    case "account/read": return write({ id: message.id, result: { account: { type: "chatgpt", email: shared ? "codex@example.com" : "team-b@example.com" } } });
+    case "account/read": {
+      const reply = () => write({ id: message.id, result: { account: { type: "chatgpt", email: shared ? "codex@example.com" : "team-b@example.com" } } });
+      if (shared && !fs.existsSync(${JSON.stringify(delayedAccountPath)})) {
+        fs.writeFileSync(${JSON.stringify(delayedAccountPath)}, "delayed");
+        setTimeout(reply, 5500);
+        return;
+      }
+      return reply();
+    }
     case "account/rateLimits/read": return write({ id: message.id, result: { rateLimits: { limitId: "codex", primary: null, secondary: null }, rateLimitsByLimitId: null } });
     case "model/list": return write({ id: message.id, result: { data: [{ model: "gpt-5.5", displayName: "GPT-5.5" }] } });
     case "plugin/list": return write({ id: message.id, result: { marketplaces: [] } });
@@ -323,6 +332,10 @@ const idle = (agentId: string) =>
 
 try {
   await runCauseEffect(agents.initialize());
+  check(
+    "the provider starts after a slow account read",
+    agents.getStatus().providers?.find((row) => row.id === "codex")?.state === "available",
+  );
   await waitFor("the second account to connect", () =>
     agents
       .getStatus()
