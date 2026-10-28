@@ -256,6 +256,15 @@ interface ClientEvents {
   diagnostic: [message: string, origin?: DiagnosticOrigin];
 }
 
+const claudeNotifications: {
+  client: number;
+  method: string;
+  threadId: string | null;
+  turnId: string | null;
+  family?: string | null;
+}[] = [];
+let nextClaudeClient = 0;
+
 /**
  * The real Claude client. Only the account, usage and model reads are answered here: the real ones
  * run `claude auth status` or a probe query. It also records the provider thread of the last turn, and
@@ -265,6 +274,7 @@ class ClaudeStandIn extends EventEmitter<ClientEvents> implements AgentClient {
   readonly provider = "claude";
   readonly contextCompaction = "native";
   readonly #real: InstanceType<typeof ClaudeAgentClient>;
+  readonly #clientId = ++nextClaudeClient;
   readonly readHistory: ReadProviderHistory;
   /** The provider thread of the last turn that started. */
   lastThread: string | null = null;
@@ -276,6 +286,21 @@ class ClaudeStandIn extends EventEmitter<ClientEvents> implements AgentClient {
     this.#real = new ClaudeAgentClient(cli);
     this.readHistory = this.#real.readHistory;
     this.#real.on("notification", (notification) => {
+      if (
+        ["turn/started", "openbot/usageLimit", "turn/completed"].includes(notification.method) &&
+        isDynamicRecord(notification.params)
+      ) {
+        const { threadId, turnId, family } = notification.params;
+        const turn = notification.params.turn;
+        const nestedTurnId = isDynamicRecord(turn) && typeof turn.id === "string" ? turn.id : null;
+        claudeNotifications.push({
+          client: this.#clientId,
+          method: notification.method,
+          threadId: typeof threadId === "string" ? threadId : null,
+          turnId: typeof turnId === "string" ? turnId : nestedTurnId,
+          ...(typeof family === "string" || family === null ? { family } : {}),
+        });
+      }
       if (notification.method === "openbot/usageLimit" && isDynamicRecord(notification.params)) {
         const { turnId, family } = notification.params;
         if (typeof turnId === "string")
@@ -366,6 +391,7 @@ const report: {
   passed: boolean;
   checkedAt?: string;
   error?: string;
+  usageWorkTrace?: unknown;
 } = {
   primary: PRIMARY,
   backup: BACKUP,
@@ -702,9 +728,34 @@ try {
     await writeFile(attachment, "Finish the last step after the checkpoint.\n");
     const since = events.length;
     const before = turns().length;
+    const notificationsBefore = claudeNotifications.length;
     const reportsBefore = clients.reduce((count, client) => count + client.limitReports.length, 0);
     const outcome = await send(mover.id, "usage-work: save a checkpoint, then finish the last step.", [attachment]);
     const reports = clients.flatMap((client) => client.limitReports).slice(reportsBefore);
+    report.usageWorkTrace = {
+      agentId: mover.id,
+      deliveryId: outcome.deliveryId,
+      finalTurnId: mailbox.getDelivery(outcome.deliveryId)?.delivery.turnId ?? null,
+      status: outcome.status,
+      notifications: claudeNotifications.slice(notificationsBefore).map((notification) => {
+        const turnId = notification.turnId;
+        return {
+          ...notification,
+          deliveries: turnId
+            ? [mover.id, stayer.id].flatMap((agentId) =>
+                mailbox.findDeliveriesByTurn(agentId, turnId).map(({ delivery }) => ({
+                  agentId,
+                  deliveryId: delivery.id,
+                })),
+              )
+            : [],
+        };
+      }),
+      providerTurns: turns()
+        .slice(before)
+        .map(({ model, failed }) => ({ model, failed })),
+      reports,
+    };
     assert.equal(reports.length, 1, "Claude reports the refused limit to the lifecycle.");
     assert.equal(reports[0]?.family, PRIMARY.includes("opus") ? "opus" : "sonnet", "The limit keeps its family.");
     assert.equal(outcome.status, "completed", `The interrupted task completes: ${outcome.error}`);
