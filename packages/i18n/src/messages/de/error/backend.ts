@@ -117,6 +117,7 @@ export const messages = {
   "error.backend.memoryGone": "Diese Erinnerung existiert nicht mehr.",
   "error.backend.routineGone": "Diese Routine existiert nicht mehr.",
   "error.backend.turnNotStarted": "Der Anbieter hat diesen Durchlauf nicht gestartet.",
+  "error.backend.deliveryFailed": "This message did not run.",
   "error.backend.routineResultConnectionOff":
     "Diese Messaging-Verbindung ist aus oder entfernt. Wähle einen anderen Ort.",
   "error.backend.routineResultNoDelivery": "Diese Ausführung hat keine Antwort, die erneut gesendet werden kann.",

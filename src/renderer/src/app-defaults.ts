@@ -46,6 +46,7 @@ export const FALLBACK_UPDATE_STATUS: UpdateStatus = {
 
 export const FALLBACK_PROVIDER_RUNTIMES: ProviderRuntimeSnapshot = {
   revision: -1,
+  updateCheckError: null,
   providers: {
     codex: NO_PROVIDER_RUNTIME,
     claude: NO_PROVIDER_RUNTIME,

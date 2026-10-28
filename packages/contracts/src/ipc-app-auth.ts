@@ -155,6 +155,11 @@ export interface ProviderRuntimeStatus {
 export interface ProviderRuntimeSnapshot {
   revision: number;
   /**
+   * The last update check could not reach every release source. Cleared when a later check succeeds.
+   * Catalog text only, like a provider row's `message`.
+   */
+  updateCheckError?: string | null;
+  /**
    * Only the providers whose CLI OpenBot downloads and pins itself. A provider that ships without a
    * managed runtime is absent from `ManagedProviderId`, so it needs no fake entry here, and every
    * provider that is in the tuple has a real status.

@@ -19,8 +19,8 @@ import {
 } from "@openbot/contracts/team-protocol/agent-task-limit-v1";
 import { sourceText } from "@openbot/i18n/source";
 import { runCauseEffect } from "../../backend/effect-boundary";
-import { AgentNotFoundError } from "../agent-admin-settings";
 import type { TeamApiAdmin } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin, requireVisibleBodyAgent, stringField } from "./request-helpers";
@@ -57,8 +57,7 @@ export async function routeAgentAdmin(
     }
     return json(200, await runCauseEffect(settings.update(input)));
   } catch (error) {
-    if (error instanceof AgentNotFoundError) throw new HttpError(404, error.message);
-    throw error;
+    throwExpectedRouteError(error, 404);
   }
 }
 
@@ -94,8 +93,7 @@ export async function routeAgentHostSettings(
     }
     return json(200, await runCauseEffect(settings.update(input)));
   } catch (error) {
-    if (error instanceof AgentNotFoundError) throw new HttpError(404, error.message);
-    throw error;
+    throwExpectedRouteError(error, 404);
   }
 }
 
@@ -131,8 +129,7 @@ export async function routeAgentBackupModels(
     }
     return json(200, await runCauseEffect(settings.updateBackupModels(input)));
   } catch (error) {
-    if (error instanceof AgentNotFoundError) throw new HttpError(404, error.message);
-    throw error;
+    throwExpectedRouteError(error, 404);
   }
 }
 
@@ -167,7 +164,6 @@ export async function routeAgentTaskLimit(
     }
     return json(200, await runCauseEffect(settings.updateTaskLimit(input)));
   } catch (error) {
-    if (error instanceof AgentNotFoundError) throw new HttpError(404, error.message);
-    throw error;
+    throwExpectedRouteError(error, 404);
   }
 }

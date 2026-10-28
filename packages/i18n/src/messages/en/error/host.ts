@@ -35,4 +35,6 @@ export const messages = defineMessages("error.host", {
   "error.host.maintenanceConfigChanged": "Host configuration changed during maintenance.",
   "error.host.maintenanceMissingRelease": "Missing staged release.",
   "error.host.maintenanceVersionMismatch": "Installed version mismatch.",
+  "error.host.startRetryExhausted": "OpenBot could not start after several tries: {reason}",
+  "error.host.startRetryExhaustedUnknown": "OpenBot could not start after several tries.",
 });

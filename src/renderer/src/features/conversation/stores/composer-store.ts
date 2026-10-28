@@ -1,4 +1,5 @@
 import { attachmentReferenceIds } from "@openbot/contracts/attachment-references";
+import type { UserErrorDetails } from "@openbot/user-errors";
 import { createMemo } from "solid-js";
 import { appendVoiceTranscript } from "../../../voice-recording";
 import { EMPTY_DRAFT, type StoredQueueEdit } from "../composer-draft";
@@ -11,6 +12,10 @@ export interface ComposerStoreDeps {
   setDrafts: (update: (current: Record<string, ComposerDraft>) => Record<string, ComposerDraft>) => void;
   conversationErrors: () => Record<string, string>;
   setConversationErrors: (update: (current: Record<string, string>) => Record<string, string>) => void;
+  conversationErrorReferences: () => Record<string, UserErrorDetails>;
+  setConversationErrorReferences: (
+    update: (current: Record<string, UserErrorDetails>) => Record<string, UserErrorDetails>,
+  ) => void;
   composerErrors: () => Record<string, string>;
   setComposerErrors: (update: (current: Record<string, string>) => Record<string, string>) => void;
   editingAgentId: () => string | null;
@@ -73,6 +78,11 @@ export function createComposerStore(deps: ComposerStoreDeps) {
   function clearConversationError(target: ConversationTarget): void {
     const key = composerDraftKey(target);
     deps.setConversationErrors((current) => {
+      if (!(key in current)) return current;
+      const { [key]: _removed, ...next } = current;
+      return next;
+    });
+    deps.setConversationErrorReferences((current) => {
       if (!(key in current)) return current;
       const { [key]: _removed, ...next } = current;
       return next;

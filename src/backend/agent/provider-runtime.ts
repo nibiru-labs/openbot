@@ -3516,7 +3516,7 @@ export class ProviderRuntime implements ProviderPort {
               capabilities: { ...this.#status.capabilities, chat: "unavailable" },
               message: startStopped
                 ? this.#startStoppedMessage(client.provider)
-                : `${providerLabel(client.provider)} stopped repeatedly. Restart OpenBot after checking the CLI.`,
+                : sourceText("error.provider.stoppedRepeatedly", { provider: providerLabel(client.provider) }),
             },
       );
       return;
@@ -3536,7 +3536,10 @@ export class ProviderRuntime implements ProviderPort {
             phase: "restarting",
             providers,
             capabilities: { ...this.#status.capabilities, chat: "unavailable" },
-            message: `${providerLabel(client.provider)} stopped. Retrying (${attempts + 1}/3)…`,
+            message: sourceText("error.provider.restarting", {
+              provider: providerLabel(client.provider),
+              attempt: String(attempts + 1),
+            }),
           },
     );
     this.#scheduleRestart(client.provider, delayMs);

@@ -20,6 +20,7 @@ import type { AttachmentMediaSource } from "./AttachmentCards";
 import type { MessageImageFile } from "./MarkdownMessageText";
 import { conversationBubbleVariant, MessageBody } from "./MessageRendering";
 import { ResponseProcess } from "./ResponseProcess";
+import { TurnFailureNote } from "./TurnFailureNote";
 
 /**
  * Who wrote a message, as much as a row needs to draw it.
@@ -243,6 +244,9 @@ function ChatMessageContentRow(props: ChatMessageRowProps): JSX.Element {
                 loadImageFile={props.loadImageFile}
               />
               {props.children}
+              <Show when={props.message.author === "you" && props.message.status === "Failed"}>
+                <TurnFailureNote reason={props.message.failureReason} reference={props.message.failureReference} />
+              </Show>
             </BubbleContent>
             <Show when={(props.reactions?.length ?? 0) > 0}>
               <BubbleReactions

@@ -24,7 +24,9 @@ import {
   routineConversationEvent,
   routineRunConversationEvent,
 } from "@openbot/contracts/ipc";
+import { deliveryFailureMessage } from "@openbot/i18n";
 import type { MobileTextKey } from "@openbot/i18n/mobile";
+import { currentText } from "@/shared/lib/text";
 
 export type RoutineMarkerEvent = RoutineConversationEventAction | RoutineRunStatus;
 
@@ -489,9 +491,12 @@ const failedBubbles = new WeakMap<ChatMessage, ChatMessage>();
  * only the status; the reason comes with the queue. A user bubble has the ID of its delivery.
  */
 export function withFailureReasons(messages: ChatMessage[], deliveries: readonly QueueDelivery[]): ChatMessage[] {
+  const { sourceText } = currentText();
   const reasons = new Map<string, string>();
   for (const delivery of deliveries) {
-    if (delivery.status === "failed" && delivery.error) reasons.set(delivery.id, delivery.error);
+    if (delivery.status !== "failed") continue;
+    const reason = deliveryFailureMessage(delivery, sourceText);
+    if (reason) reasons.set(delivery.id, reason);
   }
   if (reasons.size === 0) return messages;
   return messages.map((message) => {

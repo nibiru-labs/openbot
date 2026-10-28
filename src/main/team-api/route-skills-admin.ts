@@ -3,6 +3,7 @@ import { sourceText } from "@openbot/i18n/source";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import { parseInstallSkill, parseSetEnabledSkill, parseUninstallSkill } from "../ipc/app-inputs";
 import type { TeamApiAdmin } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin, requireVisibleBodyAgent, stringField } from "./request-helpers";
@@ -39,9 +40,6 @@ export async function routeSkillsAdmin(
     }
     return json(200, await runCauseEffect(skills.setEnabled(parseSetEnabledSkill(body))));
   } catch (error) {
-    // The skill service throws only sentences written for the person who manages the agent, such
-    // as a missing marketplace sign-in or a skill with local changes, so the admin reads the reason.
-    if (error instanceof Error && !(error instanceof HttpError)) throw new HttpError(409, error.message);
-    throw error;
+    throwExpectedRouteError(error, 409);
   }
 }

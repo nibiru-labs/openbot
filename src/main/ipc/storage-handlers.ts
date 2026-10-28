@@ -125,7 +125,9 @@ export function storageIpcHandlers({
         const agent = agents().find((candidate) => candidate.id === agentId);
         if (!agent) throw new Error(sourceText("error.storage.agentMissing"));
         const error = await openPath(agent.workspacePath);
-        if (error) throw new Error(error);
+        // `shell.openPath` reports failure by resolving with the operating system's own sentence, so
+        // the user reads our sentence and the operating system keeps its text in the cause.
+        if (error) throw new Error(sourceText("error.storage.openFailed"), { cause: error });
       }),
       getOldRuntimeVersions: handler(() => runCauseEffect(providerRuntimes.oldVersions())),
       removeOldRuntimeVersions: handler(() => runCauseEffect(providerRuntimes.removeOldVersions())),

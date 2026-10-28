@@ -442,6 +442,7 @@ export interface HostProviderSettings {
   defaultProvider?: DefaultProviderSettings | undefined;
   agentStatus: AgentStatus;
   providerRuntimeStatuses?: Partial<Record<AgentProviderId, ProviderRuntimeStatus>> | undefined;
+  providerRuntimeUpdateCheckError?: string | null | undefined;
   providerAvailableVersions?: Partial<Record<AgentProviderId, string | null>> | undefined;
   onDownloadProvider?: ((provider: AgentProviderId) => void | Promise<void>) | undefined;
   onCancelProviderDownload?: ((provider: AgentProviderId) => void | Promise<void>) | undefined;
@@ -514,6 +515,9 @@ export function HostProviderSettingsPanel(
     },
     get providerRuntimeStatuses() {
       return props.providerRuntimeStatuses;
+    },
+    get providerRuntimeUpdateCheckError() {
+      return props.providerRuntimeUpdateCheckError;
     },
     get providerAvailableVersions() {
       return props.providerAvailableVersions;

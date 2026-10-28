@@ -61,7 +61,8 @@ export function AgentEventBridge() {
   const { applyAgentStatus, refreshAgentProviders } = useProviders();
   const { agentList, setModelOptions, explicitlyOpenedAgentChatId, applyStoredAgents, applyUserHiddenAgents } =
     useAgents();
-  const { setConversationErrors, setConversationErrorRuns } = useConversationController();
+  const { setConversationErrors, setConversationErrorReferences, setConversationErrorRuns } =
+    useConversationController();
   const { setUiErrors } = useUiErrors();
   const agentTasks = useAgentTasks();
   const {
@@ -340,6 +341,12 @@ export function AgentEventBridge() {
           const key = composerDraftKey({ agentId, serverId: activeServerId() });
           const message = readableAgentError(event.message);
           setConversationErrors((current) => ({ ...current, [key]: message }));
+          setConversationErrorReferences((current) => {
+            if (event.reference) return { ...current, [key]: { message, reference: event.reference } };
+            if (!(key in current)) return current;
+            const { [key]: _removed, ...next } = current;
+            return next;
+          });
           // The provider and model above the error let the user report which run failed (#2858).
           const provider = event.provider ? providerDisplayName(event.provider) : null;
           const run =

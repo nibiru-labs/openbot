@@ -8,6 +8,7 @@ import { runCauseEffect } from "../../backend/effect-boundary";
 import { parsePublishAgentTemplate } from "../ipc/agent-template-handlers";
 import { requireString } from "../ipc/validation";
 import type { TeamApiAdmin } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin, requireVisibleBodyAgent } from "./request-helpers";
@@ -38,10 +39,7 @@ export async function routeAgentPublish(
     await runCauseEffect(agentTemplates.unpublish(agentId(body)));
     return json(200, {});
   } catch (error) {
-    // A signed-out host, a secret in the instructions or a failed upload is a sentence for the admin,
-    // not a host fault. It can name a routine or skill, and a name can hold the secret it reports.
-    if (error instanceof Error && !(error instanceof HttpError)) throw new HttpError(409, redactText(error.message));
-    throw error;
+    throwExpectedRouteError(error, 409);
   }
 }
 

@@ -6,6 +6,7 @@ import { sourceText } from "@openbot/i18n/source";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import { parseHostIdentity } from "../ipc/server-inputs";
 import type { TeamApiAdmin } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin } from "./request-helpers";
@@ -29,9 +30,7 @@ export async function routeHostAdmin(
     await runCauseEffect(identity.updateIdentity(input));
     return json(200, {});
   } catch (error) {
-    // A signed-out host or a failed upload is a sentence for the admin, not a host fault.
-    if (error instanceof Error) throw new HttpError(409, error.message);
-    throw error;
+    throwExpectedRouteError(error, 409);
   }
 }
 

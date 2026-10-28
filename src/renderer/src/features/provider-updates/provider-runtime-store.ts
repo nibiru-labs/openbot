@@ -377,6 +377,7 @@ export function createProviderRuntimeStore(
   });
   return {
     providerRuntimeStatuses: () => providerRuntimeSnapshot().providers,
+    providerRuntimeUpdateCheckError: () => providerRuntimeSnapshot().updateCheckError ?? null,
     /**
      * The runtimes the MCP servers are started with, which no provider card shows. They belong to
      * the computer `api` reaches, so a reader that draws them for a server checks that it is that

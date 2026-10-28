@@ -15,6 +15,7 @@ import { sourceText } from "@openbot/i18n/source";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import { RequestedUpdateRefusal } from "../requested-update";
 import type { TeamApiAdmin } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin } from "./request-helpers";
@@ -80,7 +81,7 @@ export async function routeHostUpdate(
     return json(200, wireSnapshot(await runCauseEffect(update.start({ id: member.id, name }, mode))));
   } catch (error) {
     if (error instanceof RequestedUpdateRefusal)
-      throw new HttpError(error.reason === "disabled" ? 403 : 409, error.message);
+      throwExpectedRouteError(error, error.reason === "disabled" ? 403 : 409);
     throw error;
   }
 }

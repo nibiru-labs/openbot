@@ -161,6 +161,9 @@ export const messages = {
     "{provider} gaf de modellen niet binnen {seconds} s. De computer is misschien bezet.",
   "error.provider.startStopped":
     "{provider} is meerdere keren achter elkaar niet gestart, dus OpenBot probeert het niet meer. Vernieuw de aanbieders om het opnieuw te proberen.",
+  "error.provider.stoppedRepeatedly":
+    "{provider} stopte herhaaldelijk. Start OpenBot opnieuw nadat je de CLI hebt gecontroleerd.",
+  "error.provider.restarting": "{provider} stopte. Opnieuw proberen ({attempt}/3)…",
   "error.provider.tempDiskSpace":
     "{provider} heeft minstens 1 GB vrije schijfruimte nodig om te starten. Maak ruimte vrij en vernieuw daarna de aanbieders.",
   "error.provider.noCodeSignIn": "Bij {provider} kun je niet inloggen met een code.",

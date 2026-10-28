@@ -16,4 +16,5 @@ export const messages = {
   "error.attachment.mp4Unsupported":
     "Deze server ondersteunt geen MP4-bijlagen. Werk OpenBot bij op de host en probeer het opnieuw.",
   "error.attachment.previewTooLarge": "Het bestand is groter dan de limiet van 100 MB.",
+  "error.attachment.openFailed": "OpenBot kon het bestand niet openen.",
 } as const satisfies PartialTranslation<typeof source>;

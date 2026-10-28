@@ -19,4 +19,5 @@ export const messages = defineMessages("error.attachment", {
   "error.attachment.notPrepared": "The attachment was not prepared.",
   "error.attachment.namedFileTooLarge": '"{name}" exceeds the 100 MB limit.',
   "error.attachment.notAvailable": "The attachment is unavailable.",
+  "error.attachment.openFailed": "OpenBot could not open the file.",
 });

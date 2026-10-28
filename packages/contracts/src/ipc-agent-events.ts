@@ -137,7 +137,16 @@ export type AgentEvent =
    * `provider` and `model` name the run that failed, for the banner. Local only: the Team API event
    * projection drops them.
    */
-  | { type: "error"; agentId?: string; code: string; message: string; provider?: AgentProviderId; model?: string }
+  | {
+      type: "error";
+      agentId?: string;
+      code: string;
+      message: string;
+      /** The code of the failure behind the message. Local only: Team API event adapters do not carry it. */
+      reference?: string;
+      provider?: AgentProviderId;
+      model?: string;
+    }
   /**
    * A provider plan refused a turn, once per limit. The queues of its agents wait for the reset.
    * Local only: the released Team API event adapters do not carry it. `resetsAt` is in epoch seconds.
@@ -320,6 +329,7 @@ export function isAgentEvent(value: unknown): value is AgentEvent {
       return (
         isString(value.code) &&
         isString(value.message) &&
+        (value.reference === undefined || isString(value.reference)) &&
         (value.provider === undefined || isAgentProvider(value.provider)) &&
         (value.model === undefined || isString(value.model))
       );

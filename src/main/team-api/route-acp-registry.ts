@@ -1,9 +1,9 @@
 import { parseRegistryId, parseRegistryInstall, parseRegistryQuery } from "@openbot/contracts/ipc";
 import { ACP_REGISTRY_CAPABILITY, ACP_REGISTRY_ROUTES } from "@openbot/contracts/team-protocol/acp-registry-v1";
 import { sourceText } from "@openbot/i18n/source";
-import { redactText } from "@openbot/logging";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import type { TeamApiAdmin } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin } from "./request-helpers";
@@ -38,9 +38,6 @@ export async function routeAcpRegistry(
         return json(200, {});
     }
   } catch (error) {
-    throw new HttpError(
-      409,
-      redactText(error instanceof Error ? error.message : sourceText("error.provider.registryInstallFailed")),
-    );
+    throwExpectedRouteError(error, 409);
   }
 }

@@ -169,6 +169,14 @@ export function decodeProviderRuntimeSnapshot(value: unknown): ProviderRuntimeSn
   const { providers, toolRuntimes } = value;
   return {
     revision: value.revision,
+    updateCheckError:
+      value.updateCheckError === undefined || value.updateCheckError === null
+        ? null
+        : isString(value.updateCheckError)
+          ? value.updateCheckError
+          : (() => {
+              throw new Error("Invalid provider runtimes.");
+            })(),
     providers: {
       pi:
         providers.pi === undefined

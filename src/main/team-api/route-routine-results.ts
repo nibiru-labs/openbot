@@ -8,9 +8,9 @@ import {
 import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import { runCauseEffect } from "../../backend/effect-boundary";
-import { RoutineResultError } from "../../backend/routine-results/routine-results";
 import { parseRoutineResultRoutine, parseSetRoutineResultDestination } from "../ipc/routine-result-inputs";
 import type { TeamApiAdmin } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin, requireVisibleBodyAgent } from "./request-helpers";
@@ -51,8 +51,6 @@ export async function routeRoutineResults(
       destination: await runCauseEffect(results.setDestination(parseSetRoutineResultDestination(body))),
     });
   } catch (error) {
-    // A refusal is a sentence for the reader: the routine is gone or the connection is off.
-    if (error instanceof RoutineResultError) throw new HttpError(400, error.message);
-    throw error;
+    throwExpectedRouteError(error, 400);
   }
 }

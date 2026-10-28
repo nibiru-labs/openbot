@@ -2923,6 +2923,7 @@ export async function createApplicationServices({
           return yield* host.start();
         }),
       onError: (message, error) => logger.warn(message, toLogValue(error)),
+      onExhausted: (error) => host.reportAutomaticStartExhausted(error),
     });
     hostedServerStartRetry.start();
     teardown.push(TEARDOWN_ORDER.hostedServerStartRetry, "the hosted server start retry", () =>
@@ -2982,6 +2983,7 @@ export async function createApplicationServices({
           yield* serverMode.publish();
         }),
       onError: (message, error) => logger.warn(message, toLogValue(error)),
+      onExhausted: (error) => host.reportAutomaticStartExhausted(error),
     });
     serverStartRetry.start();
     teardown.push(TEARDOWN_ORDER.serverMode, "the server control socket", async () => {

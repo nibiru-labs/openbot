@@ -20,4 +20,5 @@ export const messages = {
   "error.attachment.notPrepared": "添付ファイルを準備できませんでした。",
   "error.attachment.namedFileTooLarge": '"{name}" は 100 MB の上限を超えています。',
   "error.attachment.notAvailable": "添付ファイルは利用できません。",
+  "error.attachment.openFailed": "OpenBot はファイルを開けませんでした。",
 } as const satisfies PartialTranslation<typeof source>;

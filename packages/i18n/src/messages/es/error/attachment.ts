@@ -19,4 +19,5 @@ export const messages = {
   "error.attachment.notPrepared": "El archivo adjunto no se preparó.",
   "error.attachment.namedFileTooLarge": '"{name}" supera el límite de 100 MB.',
   "error.attachment.notAvailable": "El archivo adjunto no está disponible.",
+  "error.attachment.openFailed": "OpenBot no pudo abrir el archivo.",
 } as const satisfies PartialTranslation<typeof source>;

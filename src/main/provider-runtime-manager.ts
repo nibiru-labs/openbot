@@ -239,6 +239,8 @@ export class ProviderRuntimeManager extends EventEmitter<ProviderRuntimeManagerE
   #checkTimer: NodeJS.Timeout | null = null;
   #checkIntervalMs = UPDATE_CHECK_INTERVAL_MS;
   #lastCheckAt: number | null = null;
+  /** Catalog text from the last update check that could not reach every release source. */
+  #updateCheckError: string | null = null;
   /** The first check after the start or after a sleep. */
   #awakeSince = 0;
   /** The window the last update check collected with. */
@@ -310,7 +312,7 @@ export class ProviderRuntimeManager extends EventEmitter<ProviderRuntimeManagerE
           offer && !configuredCliPath(provider) && !automatic && this.#isProviderOn(provider) ? version : null;
       }
     }
-    return { revision: this.#revision, providers, toolRuntimes: { bun } };
+    return { revision: this.#revision, updateCheckError: this.#updateCheckError, providers, toolRuntimes: { bun } };
   }
   checkForUpdates(): Effect.Effect<ProviderRuntimeSnapshot, ProviderRuntimeFailure> {
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<ProviderRuntimeSnapshot, ProviderRuntimeFailure> {
@@ -437,7 +439,11 @@ export class ProviderRuntimeManager extends EventEmitter<ProviderRuntimeManagerE
     if (this.#checkTimer || !this.#target || this.#stopping) return;
     this.#checkIntervalMs = options.intervalMs ?? UPDATE_CHECK_INTERVAL_MS;
     this.#updateInstalled = options.updateInstalled ?? false;
-    const check = () => void runCauseEffect(this.checkForUpdates()).catch(() => undefined);
+    const check = () =>
+      void runCauseEffect(this.checkForUpdates()).catch((error) => {
+        if (this.#updateCheckError !== null) return;
+        this.#recordUpdateCheckFailure(error);
+      });
     this.#checkTimer = setInterval(check, this.#checkIntervalMs);
     this.#checkTimer.unref();
     check();
@@ -465,6 +471,15 @@ export class ProviderRuntimeManager extends EventEmitter<ProviderRuntimeManagerE
         { concurrency: "unbounded" },
       );
       if (Result.isSuccess(blocked)) this.#blocked = blocked.success;
+      const releaseSourcesUnreachable = releases.every(Result.isFailure);
+      if (releaseSourcesUnreachable) {
+        const message = sourceText("error.provider.releaseSourcesUnreachable");
+        logger.warn("Provider runtime update check failed.", {
+          failure_code: "release_sources_unreachable",
+          cause: logCause(new Error(message)),
+        });
+        this.#updateCheckError = message;
+      } else this.#updateCheckError = null;
       if (this.#updateInstalled) {
         // Before offers show again, so the renderer sees these updates already downloading and
         // announces no offer for them. A download reports its own failure in its status.
@@ -488,11 +503,28 @@ export class ProviderRuntimeManager extends EventEmitter<ProviderRuntimeManagerE
       // Forked: the first collection after a long gap removes gigabytes, and a check the user asked
       // for answers without waiting for it.
       yield* Effect.forkIn(this.#collectVersionsEffect(target, this.#checkRetentionMs), this.#scope);
-      if (releases.every(Result.isFailure))
+      if (releaseSourcesUnreachable)
         return yield* new ProviderRuntimeFailure({
           cause: new Error(sourceText("error.provider.releaseSourcesUnreachable")),
         });
     });
+  }
+
+  /** Logs an update check the timer swallowed, keeps the reason on the snapshot, and tells the renderer. */
+  #recordUpdateCheckFailure(error: unknown): void {
+    const message = updateCheckFailureMessage(error);
+    const key = matchingSourceKeys(message)[0];
+    logger.warn("Provider runtime update check failed.", {
+      failure_code:
+        key === "error.provider.releaseSourcesUnreachable"
+          ? "release_sources_unreachable"
+          : (key ?? "update_check_failed"),
+      cause: logCause(error),
+    });
+    if (this.#updateCheckError === message) return;
+    this.#updateCheckError = message;
+    this.#revision += 1;
+    this.emit("status", this.getStatus());
   }
 
   /**
@@ -2004,6 +2036,13 @@ function logCause(error: unknown, depth = 0): LogValue {
 function withoutHome(text: string): string {
   const home = homedir();
   return home.length > 1 ? text.replaceAll(home, "~") : text;
+}
+
+/** Catalog text for a failed update check, or the generic release-source message. */
+function updateCheckFailureMessage(error: unknown): string {
+  const cause = error instanceof ProviderRuntimeFailure ? error.cause : error;
+  if (cause instanceof Error && matchingSourceKeys(cause.message).length > 0) return cause.message;
+  return sourceText("error.provider.releaseSourcesUnreachable");
 }
 
 /**

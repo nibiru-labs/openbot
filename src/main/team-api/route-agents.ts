@@ -36,10 +36,11 @@ import { WORKFLOWS_CAPABILITY } from "@openbot/contracts/team-protocol/workflows
 import { sourceText } from "@openbot/i18n/source";
 import type { Effect } from "effect";
 import type { AgentDuplicationFailed } from "../../backend/agent/duplication-gate";
-import { ForbiddenAttentionAnswer, InactiveAttentionRequest } from "../../backend/agent/inactive-attention-request";
+import { ForbiddenAttentionAnswer } from "../../backend/agent/inactive-attention-request";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import { parseSidebarLayoutAction } from "../ipc/agent-inputs";
 import type { TeamApiAgents, TeamApiOptions, TeamApiSidebarLayout } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import {
@@ -431,12 +432,11 @@ function agentWriteLevel(method: string, action: string): AgentWriteLevel | unde
  * client shows that the request is gone instead of offering a retry.
  */
 function inactiveAsConflict(error: unknown): never {
-  if (error instanceof InactiveAttentionRequest) throw new HttpError(409, error.message);
-  throw error;
+  throwExpectedRouteError(error, 409);
 }
 
 /** As `inactiveAsConflict`, and an answer that the member's role may not give is forbidden. */
 function refusedPromptAnswer(error: unknown): never {
-  if (error instanceof ForbiddenAttentionAnswer) throw new HttpError(403, error.message);
+  if (error instanceof ForbiddenAttentionAnswer) throwExpectedRouteError(error, 403);
   return inactiveAsConflict(error);
 }

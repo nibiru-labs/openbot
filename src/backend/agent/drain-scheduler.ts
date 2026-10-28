@@ -614,7 +614,9 @@ export class DrainScheduler {
         if (Result.isFailure(verified)) {
           const error = verified.failure.cause;
           const reason = this.#hooks.redactMcp(error instanceof Error ? error.message : String(error));
-          yield* this.#mailbox.markTerminal(companion.id, "failed", reason).pipe(toDeliveryStartFailed);
+          yield* this.#mailbox
+            .markTerminal(companion.id, "failed", reason, { cause: error })
+            .pipe(toDeliveryStartFailed);
           failedCompanions.add(companion.id);
         }
       }
@@ -950,7 +952,9 @@ export class DrainScheduler {
               return;
             }
           }
-          yield* this.#mailbox.markTerminal(delivery.id, "failed", reason).pipe(toDeliveryStartFailed);
+          yield* this.#mailbox
+            .markTerminal(delivery.id, "failed", reason, { cause: error })
+            .pipe(toDeliveryStartFailed);
           // The provider did not read the answers that were to start with it, so they wait for the next turn.
           for (const { delivery: companion } of batch) {
             if (companion.id !== delivery.id)

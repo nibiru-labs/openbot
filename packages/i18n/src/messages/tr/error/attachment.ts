@@ -20,4 +20,5 @@ export const messages = {
   "error.attachment.notPrepared": "Ek hazırlanmadı.",
   "error.attachment.namedFileTooLarge": '"{name}" 100 MB sınırını aşıyor.',
   "error.attachment.notAvailable": "Ek kullanılamıyor.",
+  "error.attachment.openFailed": "OpenBot dosyayı açamadı.",
 } as const satisfies PartialTranslation<typeof source>;

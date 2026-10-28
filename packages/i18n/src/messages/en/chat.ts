@@ -5,6 +5,7 @@ export const messages = defineMessages("chat", {
   "chat.process.completed": "Response process",
   "chat.process.stopped": "Process stopped",
   "chat.process.failed": "Process failed",
+  "chat.turnFailure.fallback": "The agent stopped before it could answer. Send the message again to try again.",
   "chat.process.waiting": "Waiting for process details…",
   "chat.process.unavailable": "No process details were provided.",
   "chat.activity.workingOnIt": "Working on it…",

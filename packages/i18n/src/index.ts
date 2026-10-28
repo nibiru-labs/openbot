@@ -4,6 +4,11 @@ import { createTranslate, type MessageParams, type Translate } from "./message";
 import { type AppMessages, en } from "./messages/en/index";
 
 export { APP_LANGUAGES, type AppLanguage, DEFAULT_APP_LANGUAGE } from "@openbot/contracts/app-language";
+export {
+  deliveryFailureMessage,
+  encodeDeliveryFailure,
+  type StoredDeliveryFailure,
+} from "./delivery-failure";
 export { type AppFormat, createFormat } from "./format";
 export { formatLocale, resolveLocale, TRANSLATED_LOCALES, type TranslatedLocale } from "./locale";
 export { loadLocale, localeLoaded } from "./locale-loading";

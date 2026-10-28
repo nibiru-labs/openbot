@@ -146,6 +146,10 @@ export function createStableConversationState(
   // A send in flight belongs to the server it was sent to, so it outlives a server switch.
   const pendingSends = createPendingSendStore();
   const [conversationErrors, setConversationErrors] = createSignal<Record<string, string>>({});
+  /** The code of each conversation error that came from a failure, keyed like `conversationErrors`. */
+  const [conversationErrorReferences, setConversationErrorReferences] = createSignal<Record<string, UserErrorDetails>>(
+    {},
+  );
   /** The provider and model of the run behind each conversation error, keyed like `conversationErrors`. */
   const [conversationErrorRuns, setConversationErrorRuns] = createSignal<
     Record<string, { message: string; run: string }>
@@ -327,6 +331,8 @@ export function createStableConversationState(
     pendingSends,
     conversationErrors,
     setConversationErrors,
+    conversationErrorReferences,
+    setConversationErrorReferences,
     conversationErrorRuns,
     setConversationErrorRuns,
     composerErrors,

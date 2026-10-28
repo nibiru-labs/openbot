@@ -58,6 +58,7 @@ const SERVER_ISSUE_CODES = [
   "protocol_error",
   "authentication_required",
   "network_unavailable",
+  "request_failed",
 ] as const;
 
 export function decodeServer(value: unknown): ServerSummary {

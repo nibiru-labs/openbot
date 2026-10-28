@@ -32,8 +32,10 @@ import {
 } from "@openbot/contracts/ipc";
 import { type DynamicRecord, isNumber, isOneOf, isString } from "@openbot/contracts/runtime-values";
 import { QueueEditRejectedError } from "@openbot/contracts/team-protocol/queue-edit-v1";
+import { encodeDeliveryFailure } from "@openbot/i18n/delivery-failure";
 import { sourceText } from "@openbot/i18n/source";
 import { redactText } from "@openbot/logging";
+import { errorReference } from "@openbot/user-errors";
 import { Effect, Result } from "effect";
 import {
   AttachmentFiles,
@@ -138,6 +140,8 @@ interface StoredDelivery {
   status: QueueDeliveryStatus;
   turnId: string | null;
   error: string | null;
+  errorDetail?: string | null;
+  reference?: string | null;
   createdAt: string;
   /** Time this delivery joined a running turn. The mailbox keeps the original send time. */
   steeredAt?: string;
@@ -1832,14 +1836,20 @@ export class MailboxStore {
     deliveryId: string,
     status: Extract<QueueDeliveryStatus, "completed" | "failed" | "interrupted">,
     error: string | null = null,
+    options: { cause?: unknown; reference?: string | null } = {},
   ): Effect.fn.Return<void, StoredStateFailure> {
     try {
-      // Redacted here, not at the call site: this text is written to the database and read back by
-      // the renderer through the queue. A provider CLI quotes what it was given, so a failure against
-      // a custom endpoint can carry that endpoint's API key or a header value.
+      // Redacted here, not at the call site: detail is written to the database and read back by
+      // clients. A provider CLI quotes what it was given, so a failure against a custom endpoint can
+      // carry that endpoint's API key or a header value.
+      const redacted = error === null ? null : redactText(error);
+      const reference = options.reference ?? (options.cause === undefined ? null : errorReference(options.cause));
+      const encoded = redacted === null ? null : encodeDeliveryFailure(redacted, reference);
       yield* this.#updateDeliveryEffect(deliveryId, ["starting", "running"], {
         status,
-        error: error === null ? null : redactText(error),
+        error: encoded?.error ?? null,
+        errorDetail: encoded?.errorDetail ?? null,
+        reference: encoded?.reference ?? null,
       });
     } catch (cause) {
       return yield* new StoredStateFailure({ cause });
@@ -2356,9 +2366,13 @@ export class MailboxStore {
     reason: string,
   ): Effect.fn.Return<void, StoredStateFailure> {
     try {
+      const redacted = redactText(reason);
+      const encoded = encodeDeliveryFailure(redacted);
       yield* this.#updateDeliveryEffect(deliveryId, ["starting", "running"], {
         status: "interrupted",
-        error: redactText(reason),
+        error: encoded?.error ?? null,
+        errorDetail: encoded?.errorDetail ?? null,
+        reference: encoded?.reference ?? null,
       });
     } catch (cause) {
       return yield* new StoredStateFailure({ cause });
@@ -3102,6 +3116,8 @@ function isStoredDelivery(value: unknown): value is StoredDelivery {
       value.status === "cancelled") &&
     (isString(value.turnId) || value.turnId === null) &&
     (isString(value.error) || value.error === null) &&
+    (value.errorDetail === undefined || value.errorDetail === null || isString(value.errorDetail)) &&
+    (value.reference === undefined || value.reference === null || isString(value.reference)) &&
     isString(value.createdAt) &&
     (value.steeredAt === undefined || (isString(value.steeredAt) && Number.isFinite(Date.parse(value.steeredAt)))) &&
     (value.steerFallback === undefined || isOneOf(QUEUE_STEER_FALLBACKS, value.steerFallback)) &&

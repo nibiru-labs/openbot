@@ -5,10 +5,11 @@ import {
   VAULT_WIRE_ITEM_LIMIT,
   VAULT_WIRE_NAME_LIMIT,
 } from "@openbot/contracts/team-protocol/vault-v1";
-import { isFixedSourceText, sourceText } from "@openbot/i18n/source";
+import { sourceText } from "@openbot/i18n/source";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import { decodeVaultSaveInput, decodeVaultSecretRequest } from "../vault-inputs";
 import type { TeamApiVault } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin, stringField } from "./request-helpers";
@@ -62,11 +63,7 @@ export async function routeVault(
         return json(200, wireState(vault.state()));
     }
   } catch (error) {
-    // A value typed wrong, a missing item or a Vault that cannot be read is catalog text for the
-    // admin. Any other failure stays private: the server answers it with its generic error.
-    if (error instanceof Error && !(error instanceof HttpError) && isFixedSourceText(error.message))
-      throw new HttpError(400, error.message);
-    throw error;
+    throwExpectedRouteError(error, 400);
   }
 }
 

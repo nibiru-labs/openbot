@@ -13,4 +13,5 @@ export const messages = {
   "error.attachment.zipUnsupported": "该服务器不支持 ZIP 附件。请更新主机上的 OpenBot 后重试。",
   "error.attachment.mp4Unsupported": "该服务器不支持 MP4 附件。请更新主机上的 OpenBot 后重试。",
   "error.attachment.previewTooLarge": "该文件超过了 100 MB 上限。",
+  "error.attachment.openFailed": "OpenBot 无法打开该文件。",
 } as const satisfies PartialTranslation<typeof source>;

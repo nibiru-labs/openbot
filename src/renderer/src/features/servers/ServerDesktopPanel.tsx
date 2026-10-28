@@ -24,6 +24,7 @@ const ISSUE_TITLES = {
   protocol_error: "server.desktop.connectionUnavailable",
   authentication_required: "server.desktop.connectionUnavailable",
   network_unavailable: "server.desktop.connectionUnavailable",
+  request_failed: "server.desktop.connectionUnavailable",
 } as const satisfies Record<ServerConnectionIssueCode, AppTextKey>;
 const REMOTE_HOST_GATEWAY_NAME = "OpenBot Remote Host Gateway";
 

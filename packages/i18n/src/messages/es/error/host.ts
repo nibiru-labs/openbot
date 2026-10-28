@@ -39,4 +39,6 @@ export const messages = {
   "error.host.maintenanceConfigChanged": "La configuración del host cambió durante el mantenimiento.",
   "error.host.maintenanceMissingRelease": "Falta la versión preparada.",
   "error.host.maintenanceVersionMismatch": "La versión instalada no coincide.",
+  "error.host.startRetryExhausted": "OpenBot no pudo iniciarse tras varios intentos: {reason}",
+  "error.host.startRetryExhaustedUnknown": "OpenBot no pudo iniciarse tras varios intentos.",
 } as const satisfies PartialTranslation<typeof source>;

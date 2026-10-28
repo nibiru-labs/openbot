@@ -166,6 +166,9 @@ export const messages = {
     "{provider} が {seconds} 秒以内にモデルを一覧表示しませんでした。コンピューターの負荷が高い可能性があります。",
   "error.provider.startStopped":
     "{provider} の起動に続けて何度も失敗したため、OpenBot は再試行を停止しました。プロバイダーを更新して再試行してください。",
+  "error.provider.stoppedRepeatedly":
+    "{provider} が繰り返し停止しました。CLI を確認してから OpenBot を再起動してください。",
+  "error.provider.restarting": "{provider} が停止しました。再試行中 ({attempt}/3)…",
   "error.provider.tempDiskSpace":
     "{provider} の起動には 1 GB 以上の空きディスク容量が必要です。空き容量を確保してから、プロバイダーを更新してください。",
   "error.provider.noCodeSignIn": "{provider} にはコードでサインインできません。",

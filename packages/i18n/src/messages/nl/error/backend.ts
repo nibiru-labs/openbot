@@ -93,6 +93,7 @@ export const messages = {
   "error.backend.memoryGone": "Deze herinnering bestaat niet meer.",
   "error.backend.routineGone": "Deze routine bestaat niet meer.",
   "error.backend.turnNotStarted": "De aanbieder heeft deze beurt niet gestart.",
+  "error.backend.deliveryFailed": "This message did not run.",
   "error.backend.routineResultConnectionOff":
     "Deze berichtenverbinding staat uit of is verwijderd. Kies een andere plek.",
   "error.backend.routineResultNoDelivery": "Deze run heeft geen antwoord om opnieuw te sturen.",

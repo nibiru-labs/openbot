@@ -23,7 +23,9 @@ export type ServerConnectionIssueCode =
   | "host_update_required"
   | "protocol_error"
   | "authentication_required"
-  | "network_unavailable";
+  | "network_unavailable"
+  /** The host answered and refused the request, so the connection is good and the request was not. */
+  | "request_failed";
 
 export interface ServerConnectionIssue {
   code: ServerConnectionIssueCode;

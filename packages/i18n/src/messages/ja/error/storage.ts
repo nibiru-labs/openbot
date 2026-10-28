@@ -6,4 +6,5 @@ export const messages = {
   "error.storage.unsupported": "このサーバーはストレージに対応していません。",
   "error.storage.agentMissing": "エージェントが存在しません。",
   "error.storage.unreadableFile": "OpenBot は {path} を読み取れません。ファイルが破損しています。",
+  "error.storage.openFailed": "OpenBot はワークスペースフォルダーを開けませんでした。",
 } as const satisfies PartialTranslation<typeof source>;

@@ -1,9 +1,6 @@
 import { TEAM_QUEUE_WINDOW_CAPABILITY } from "@openbot/contracts/team-protocol/current";
-import {
-  decodeQueueEditRequest,
-  QueueEditRejectedError,
-  TEAM_QUEUE_EDIT_CAPABILITY,
-} from "@openbot/contracts/team-protocol/queue-edit-v1";
+import { decodeQueueEditRequest, TEAM_QUEUE_EDIT_CAPABILITY } from "@openbot/contracts/team-protocol/queue-edit-v1";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 // One agent's outgoing queue, and the ways a member can change their mind about it.
 //
@@ -20,7 +17,6 @@ import type {
   UpdateQueuedMessageInput,
 } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
-import { SteerUnsupportedError } from "../../backend/agent/queue-controls";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import type { TeamApiAgents } from "./dependencies";
 import type { AgentRouteTarget, RouteOutcome, TeamApiRequestContext } from "./request-context";
@@ -70,8 +66,7 @@ export async function routeAgentQueue(
         ),
       );
     } catch (error) {
-      if (error instanceof QueueEditRejectedError) throw new HttpError(409, error.message);
-      throw error;
+      throwExpectedRouteError(error, 409);
     }
   }
   if (method === "GET" && action === "queue") {
@@ -99,9 +94,7 @@ export async function routeAgentQueue(
         } satisfies SteerQueuedMessageInput),
       );
     } catch (error) {
-      // A client shows a refusal's text, but only "Request failed" for a 500.
-      if (error instanceof SteerUnsupportedError) throw new HttpError(409, error.message);
-      throw error;
+      throwExpectedRouteError(error, 409);
     }
     return empty(204);
   }
