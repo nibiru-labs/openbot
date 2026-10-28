@@ -77,19 +77,18 @@ export const DISPATCH_TOOL_DEFINITIONS = [
   {
     name: "dispatch_work",
     description:
-      "Delegate a coding task card to an openswarm lane or detached executor. Returns runId and host after acceptance; the result wakes this chat later. Review its branch, commit, and verify evidence before reporting success. Code and the card go to the executor host and its model provider.",
+      "Delegate a coding card to an openswarm executor. Acceptance returns runId and host; the result wakes this chat. Review branch, commit, and verify evidence before reporting success. Code and card go to the host and model provider.",
     shape: dispatchWorkSchema.shape,
   },
   {
     name: "dispatch_status",
-    description:
-      "Read the status and result of a coding run dispatched from this chat. Include its host if the run ID is shared.",
+    description: "Read a coding run from this chat; include host if the run ID is shared.",
     shape: runSchema.shape,
   },
   {
     name: "dispatch_abort",
     description:
-      "Request cancellation of a coding run dispatched from this chat. Include its host if the run ID is shared. The final result arrives later; partial work can remain on its branch.",
+      "Cancel a coding run from this chat; include host if the run ID is shared. The result arrives later; partial work can remain on the branch.",
     shape: runSchema.shape,
   },
 ] as const;

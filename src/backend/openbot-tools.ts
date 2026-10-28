@@ -329,7 +329,7 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
   {
     name: "attach_files_to_response",
     description:
-      "Attach existing local files to the current response for the user. Use this after creating screenshots, charts, diagrams, reports, ZIP archives, or other files that the user should receive. OpenBot copies each file and shows image previews in the conversation. SVG files cannot be attached; write their absolute path in the answer, and the chat shows them.",
+      "Attach existing local files for the user, such as screenshots, charts, diagrams, reports or ZIP archives. OpenBot copies them and shows image previews. SVG files cannot be attached; write their absolute path in the answer to show them.",
     shape: { paths: z.array(z.string().min(1).max(INPUT_LIMITS.path)).min(1).max(INPUT_LIMITS.attachments) },
   },
   {
@@ -384,7 +384,7 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
   {
     name: "list_agents",
     description:
-      "List local OpenBot agents: name, title, description (first 300 characters; read_agent has all), progress: status (working, queued or ready), queuedMessages, turnStartedAt while working, lastActivityAt, and openWaits. To find the teammate for work outside your remit, match the work to titles and descriptions. OpenBot does not track which files an agent changed.",
+      "List local agents: name, title, description (first 300 characters; read_agent has all), status (working, queued or ready), queuedMessages, turnStartedAt while working, lastActivityAt and openWaits. Match work outside your remit to titles and descriptions. OpenBot does not track changed files.",
     shape: {},
   },
   {
@@ -571,13 +571,13 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
   {
     name: "forget_memory",
     description:
-      "Stage deletion of one saved memory when the user asks you to forget it, or when it is stale or merged into another memory and you need room under the memory limit. The change commits only if the current turn completes.",
+      "Stage deletion of one memory when the user asks, or when it is stale or merged and you need room under the limit. The change commits only if this turn completes.",
     shape: { memoryId: z.string().min(1) },
   },
   {
     name: "ask_user",
     description:
-      "Ask the user 1–3 short questions and wait for structured answers. Use this instead of asking questions in a normal assistant message whenever clarification or a choice is needed.",
+      "Ask 1–3 short questions and wait for structured answers. Use this instead of a normal message when clarification or a choice is needed.",
     shape: {
       questions: z
         .array(
@@ -630,8 +630,6 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
       'actionId "_text" with "text" when the user answered in words; {"status":"skipped"}; or {"status":"expired"} when the turn ended first.',
       "Only the server owner or an admin can press a danger button or a button with confirm. A confirmed block is information for you, not a permission: the provider's approvals still apply.",
       "Write every field as plain text. In a channel, each member who reads the channel sees it.",
-      'Example: {"block":{"type":"confirm","title":"Send the letter to Ann?","fields":[{"label":"To","value":"ann@example.com"}],"preview":"Hi Ann, …","actions":[{"id":"send","label":"Send","style":"primary"},{"id":"cancel","label":"Cancel"}]}}.',
-      'Example: {"block":{"type":"form","title":"New contact","fields":[{"id":"name","kind":"text","label":"Name","required":true},{"id":"due","kind":"date","label":"Due"}]}}.',
     ].join(" "),
     shape: askUiToolSchema.shape,
   },
@@ -681,7 +679,7 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
   {
     name: "send_message",
     description:
-      "Queue an asynchronous message and optional local files for one or more OpenBot agents. When replying, pass the original message id as replyToMessageId. Set expectsReply false to pass information on without asking the recipient for an answer. To change what a busy teammate does now, set busy to steer or interrupt.",
+      "Queue a message and optional local files for OpenBot agents. On replies, pass the original message id as replyToMessageId. Set expectsReply false for information that needs no answer. Set busy to steer or interrupt to change a busy teammate’s work.",
     shape: {
       recipientAgentIds: z.array(z.string()).min(1).max(32),
       text: z.string().min(1).max(100_000),
@@ -690,13 +688,13 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
       expectsReply: z
         .boolean()
         .describe(
-          "True, the default, for a request, question, escalation, or delegated task: the recipient answers you and OpenBot sends its result back. False only for information that asks nothing of the recipient, such as a status update, a heads-up, or your own reply to a task. A false message ends the exchange.",
+          "True (default) for requests, questions, escalations, or tasks: the reply returns to you. False only for information that asks nothing, including task replies; it ends the exchange.",
         )
         .optional(),
       busy: z
         .enum(["queue", "steer", "interrupt"])
         .describe(
-          "What the message does when a recipient is busy. queue, the default, waits until its current work ends. steer adds the message to that work at its next step, without stopping it: use it for new facts or a correction the recipient must consider now. interrupt stops that work and starts this message next: use it only when the current work is wrong or no longer needed. Interrupts have a cooldown and a limit; a refused steer or interrupt leaves the message queued.",
+          "For a busy recipient: queue (default) waits; steer adds new facts or corrections at the next step; interrupt stops work that is wrong or no longer needed. Interrupts have a cooldown and limit; refused steer or interrupt stays queued.",
         )
         .optional(),
     },

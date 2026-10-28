@@ -56,9 +56,7 @@ export const routineScheduleZodSchema = z
         time: routineTimeSchema,
       })
       .strict()
-      .describe(
-        "One run at this local date and time, such as a reminder. The routine then pauses and does not repeat.",
-      ),
+      .describe("Runs once at this local date and time, then pauses."),
   ])
   .describe("Routine schedule. Weekdays use 0 for Sunday through 6 for Saturday; clock values use HH:mm local time.");
 
@@ -67,7 +65,7 @@ export const routineScheduleZodSchema = z
  * that leans on the chat ("check the mail as before") leaves the run without the way to do it.
  */
 export const ROUTINE_INSTRUCTION_RULE =
-  "Each run starts a new session that sees only the newest chat messages, so write an instruction that a reader with no chat can follow. Name the service and the tool to use, such as openbot_browser for a website with the site and its signed-in tab, or the MCP tool or teammate. Also name the account, the steps, what to report and where, and when to report nothing. Do not write 'as before' or refer to the chat.";
+  "Each run sees only recent chat messages. Write a standalone instruction naming the service, tool (openbot_browser with site and signed-in tab, MCP tool, or teammate), account, steps, what and where to report, and when to report nothing. Do not refer to the chat or say 'as before'.";
 
 export const routineInstructionZodSchema = z
   .string()
@@ -78,13 +76,13 @@ export const routineInstructionZodSchema = z
 export const routineLimitPolicyZodSchema = z
   .enum(ROUTINE_LIMIT_POLICIES)
   .describe(
-    "What a run does while the agent's provider account is at its usage limit: wait runs it after the reset, skip drops it. New routines use wait. A one-time schedule always uses wait.",
+    "At the provider account usage limit, wait runs after reset; skip drops the run. New and one-time routines use wait.",
   );
 
 export const routineMissedPolicyZodSchema = z
   .enum(ROUTINE_MISSED_POLICIES)
   .describe(
-    "What the routine does with occurrences that came due while OpenBot or its server was off: skip records and drops them, run-once runs the newest one when OpenBot starts and records the others. When a routine is created with no value, a one-time schedule uses run-once and other schedules use skip. An update with no value keeps the saved policy.",
+    "For occurrences due while OpenBot or its server was off: skip records and drops them; run-once runs the newest at startup and records the rest. On creation, default is run-once for one-time schedules, else skip. Omitted updates keep the policy.",
   );
 
 export const webhookEventTypeZodSchema = z
