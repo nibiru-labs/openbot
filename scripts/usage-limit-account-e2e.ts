@@ -201,6 +201,20 @@ timedGate.finishUnknownProbe("c-opus", { turnId: "turn-1" });
 check("attention is visible", () =>
   assert.equal(timedGate.limitedAgents().find((item) => item.agentId === "c-opus")?.attention, true),
 );
+await Effect.runPromise(timedGate.reached("c-opus", resetInSeconds, "claude-opus-4-5", "opus"));
+check("family hold retains its reset and exposes overlapping unknown attention", () => {
+  const entry = timedGate.limitedAgents().find((item) => item.agentId === "c-opus");
+  assert.equal(entry?.resetsAt, resetInSeconds);
+  assert.equal(entry?.attention, true);
+  assert.equal(timedGate.mayDrain("c-opus", true), false);
+  assert.equal(timedGate.mayDrain("c-sonnet"), true);
+});
+await Effect.runPromise(timedGate.reached("c-sonnet", resetInSeconds, "claude-sonnet-4-5", null));
+check("account hold exposes attention only for the affected model", () => {
+  assert.equal(timedGate.limitedAgents().find((item) => item.agentId === "c-opus")?.attention, true);
+  assert.equal(timedGate.limitedAgents().find((item) => item.agentId === "c-sonnet")?.attention, undefined);
+  assert.equal(timedGate.mayDrain("c-sonnet"), false);
+});
 check("a second refusal does not reserve again", () =>
   assert.equal(timedGate.reserveUnknownProbe("c-opus-peer", "delivery-2"), false),
 );

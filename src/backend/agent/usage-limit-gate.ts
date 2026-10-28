@@ -355,17 +355,18 @@ export class UsageLimitGate {
       const provider = providerForAgent(agent);
       const accountId = accountOf(agent);
       const family = modelFamily(agent.model);
+      const unknown = this.#limits.get(limitKey(provider, accountId, `unknown:${agent.model}`));
       const limit =
         this.#limits.get(limitKey(provider, accountId, null)) ??
         (family ? this.#limits.get(limitKey(provider, accountId, family)) : undefined) ??
         this.#limits.get(limitKey(provider, accountId, `model:${agent.model}`)) ??
-        this.#limits.get(limitKey(provider, accountId, `unknown:${agent.model}`));
+        unknown;
       return limit
         ? [
             {
               agentId: agent.id,
               resetsAt: limit.resetsAt,
-              ...(limit.unknownPhase === "attention" ? { attention: true } : {}),
+              ...(unknown?.unknownPhase === "attention" ? { attention: true } : {}),
             },
           ]
         : [];
