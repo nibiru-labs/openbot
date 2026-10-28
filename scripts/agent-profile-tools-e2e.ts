@@ -23,7 +23,9 @@ const OUT = resolve(import.meta.dirname, "../.openbot-build/agent-profile-tools-
 const root = await mkdtemp(join(tmpdir(), "openbot-profile-tools-"));
 const userData = join(root, "user-data");
 const home = join(root, "home");
-const fakeCodex = join(root, "codex");
+// The `.cjs` name keeps the fake a CommonJS script when the temporary folder is inside a package
+// that names itself a module.
+const fakeCodex = join(root, "codex.cjs");
 const fakeLog = join(root, "codex.jsonl");
 
 // Before the service modules load: the Codex process and the stores read the home folder.
@@ -294,6 +296,18 @@ const storedAgent = (agentId: string) => {
   return agent;
 };
 
+/** The profile for the report. A field that the body does not have is left out. */
+function reportProfile(body: ProfileBody | null): ProfileBody {
+  return {
+    ...(body?.id === undefined ? {} : { id: body.id }),
+    ...(body?.name === undefined ? {} : { name: body.name }),
+    ...(body?.title === undefined ? {} : { title: body.title }),
+    ...(body?.description === undefined ? {} : { description: body.description }),
+    ...(body?.avatarSeed === undefined ? {} : { avatarSeed: body.avatarSeed }),
+    avatarHue: body?.avatarHue ?? null,
+  };
+}
+
 try {
   await runCauseEffect(agents.initialize());
   const coordinator = await runCauseEffect(
@@ -313,14 +327,7 @@ try {
     initialMessage: "Hello.",
   });
   pass("create_agent succeeds", created.success, created.text);
-  report.created = {
-    id: created.body?.id,
-    name: created.body?.name,
-    title: created.body?.title,
-    description: created.body?.description,
-    avatarSeed: created.body?.avatarSeed,
-    avatarHue: created.body?.avatarHue ?? null,
-  };
+  report.created = reportProfile(created.body);
   pass(
     "create_agent returns the profile it was asked for",
     created.body?.name === PROFILE.name &&
@@ -363,14 +370,7 @@ try {
     ...EDITED_PROFILE,
   });
   pass("update_profile succeeds", edited.success, edited.text);
-  report.edited = {
-    id: edited.body?.id,
-    name: edited.body?.name,
-    title: edited.body?.title,
-    description: edited.body?.description,
-    avatarSeed: edited.body?.avatarSeed,
-    avatarHue: edited.body?.avatarHue ?? null,
-  };
+  report.edited = reportProfile(edited.body);
   pass(
     "update_profile returns the profile it wrote",
     edited.body?.id === createdId &&

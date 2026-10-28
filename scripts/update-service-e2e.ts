@@ -135,7 +135,10 @@ class FakeUpdateAdapter implements UpdateAdapter {
 
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void {
     this.quitAndInstallCalls += 1;
-    this.lastQuitAndInstall = { isSilent, isForceRunAfter };
+    this.lastQuitAndInstall = {
+      ...(isSilent === undefined ? {} : { isSilent }),
+      ...(isForceRunAfter === undefined ? {} : { isForceRunAfter }),
+    };
   }
 }
 

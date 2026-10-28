@@ -162,7 +162,7 @@ function botApiResult(method: string, params: DynamicRecord): BotApiResult {
     case "sendMessage":
       return { message_id: nextMessageId++ };
     case "editMessageText":
-      return { message_id: isNumber(params.message_id) ? params.message_id : undefined };
+      return isNumber(params.message_id) ? { message_id: params.message_id } : {};
     case "getFile": {
       const fileId = isString(params.file_id) ? params.file_id : "";
       const file = botApiFiles.get(fileId);
@@ -270,13 +270,13 @@ function botApiCallResult(method: string, result: BotApiResult | undefined): Tel
       botId: isNumber(value.id) ? String(value.id) : "",
       username: isString(value.username) ? value.username : "",
     };
-  if (method === "sendMessage") return { messageId: isNumber(value.message_id) ? value.message_id : undefined };
+  if (method === "sendMessage") return isNumber(value.message_id) ? { messageId: value.message_id } : {};
   if (method === "getFile")
     return {
-      fileToken: isString(value.file_path) ? value.file_path : undefined,
-      fileSize: isNumber(value.file_size) ? value.file_size : undefined,
+      ...(isString(value.file_path) ? { fileToken: value.file_path } : {}),
+      ...(isNumber(value.file_size) ? { fileSize: value.file_size } : {}),
     };
-  if (method === "sendDocument") return { uploadToken: isString(value.file_id) ? value.file_id : undefined };
+  if (method === "sendDocument") return isString(value.file_id) ? { uploadToken: value.file_id } : {};
   return {};
 }
 
