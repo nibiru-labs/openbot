@@ -121,6 +121,7 @@ const turn = (message) => {
   fs.appendFileSync(${JSON.stringify(turnLog)}, JSON.stringify({ model, failed: fails, input }) + "\\n");
   if ((input.includes("usage-work") || input.includes("usage-chain") || input.includes("usage-exhausted")) &&
       (model === ${JSON.stringify(PRIMARY)} || input.includes("usage-exhausted"))) {
+    write({ type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: model.includes("opus") ? "seven_day_opus" : "seven_day_sonnet" } });
     if (!input.includes("usage-chain-empty")) assistant("Checkpoint saved. Only the final step remains.");
     result({ is_error: true, result: "You've hit your limit. Try again later." });
     return;

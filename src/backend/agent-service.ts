@@ -1388,7 +1388,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         redactMcp: (text) => this.#mcp.redact(text),
         emitToolUsage: (usage) => this.emit("toolUsage", usage),
         turnModel: (agentId, turnId) => this.#drain.modelForTurn(agentId, turnId),
-        mayFailOver: (agentId) => this.#usageLimitBackup(agentId) !== undefined,
+        mayFailOver: (agentId, unknownScope) => this.#usageLimitBackup(agentId, unknownScope) !== undefined,
         requeueChannelDelivery: (deliveryId, continueWork) => this.#requeueChannelDelivery(deliveryId, continueWork),
         quietRoutineDelivery: (deliveryId) => this.#routines.quietRunForDelivery(deliveryId),
         takeRoutinePreview: (deliveryId) => this.#routines.takePreviewBeforeRun(deliveryId),
@@ -2976,8 +2976,6 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     const agent = this.#store.list().find((candidate) => candidate.id === agentId);
     if (!agent || (!agent.usageLimitReturn && !agent.backupModels?.automatic)) return null;
     if (this.#runsTurn(agentId) || this.#mailbox.hasStartedDelivery(agentId)) return null;
-    // An unknown refusal does not authorize any automatic model or account change, including a return.
-    if (this.#usageLimits.hasUnknownLimit(agentId)) return null;
     // The agent keeps its reasoning effort where the other model has it. It goes back with the effort it left.
     const move = (choice: AgentModelChoice, reasoningEffort = agent.reasoningEffort) => {
       const model = this.#endpoints
@@ -2994,7 +2992,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
             : reasoningEffort,
       };
     };
-    if (agent.usageLimitReturn && this.#usageLimitReady(agent.usageLimitReturn))
+    if (
+      !this.#usageLimits.hasUnknownLimit(agentId) &&
+      agent.usageLimitReturn &&
+      this.#usageLimitReady(agent.usageLimitReturn)
+    )
       return { input: move(agent.usageLimitReturn, agent.usageLimitReturn.reasoningEffort), move: "return" };
     const limited = !this.#usageLimits.mayDrain(agentId);
     const failed = !limited && this.#usageLimits.isFailed(usageLimitOf(agentModelChoice(agent)));
@@ -3008,12 +3010,18 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   }
 
   /** The first ready backup model of an agent set to switch without asking, or undefined. */
-  #usageLimitBackup(agentId: string): AgentModelChoice | undefined {
+  #usageLimitBackup(agentId: string, unknownScope = false): AgentModelChoice | undefined {
     const agent = this.#store.list().find((candidate) => candidate.id === agentId);
-    if (!agent?.backupModels?.automatic || this.#usageLimits.hasUnknownLimit(agentId)) return undefined;
+    if (!agent?.backupModels?.automatic) return undefined;
     const current = agentModelChoice(agent);
+    const unknown = unknownScope || this.#usageLimits.hasUnknownLimit(agentId);
     return agent.backupModels.order.find(
-      (choice) => !sameAgentModelChoice(choice, current) && this.#usageLimitReady(choice),
+      (choice) =>
+        !sameAgentModelChoice(choice, current) &&
+        (!unknown ||
+          choice.provider !== current.provider ||
+          agentProviderAccount(choice) !== agentProviderAccount(current)) &&
+        this.#usageLimitReady(choice),
     );
   }
 

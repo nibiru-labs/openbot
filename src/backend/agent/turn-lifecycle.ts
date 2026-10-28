@@ -153,7 +153,7 @@ export interface TurnHooks {
   /** The model this turn was started with, or null when the drain no longer knows it. */
   turnModel(agentId: string, turnId: string): string | null;
   /** Whether a provider error moves this agent to a backup model: it switches without asking and has a ready one. */
-  mayFailOver(agentId: string): boolean;
+  mayFailOver(agentId: string, unknownScope?: boolean): boolean;
   /**
    * Gives a channel task back to its channel's queue after a spent plan refused its turn. False
    * when the delivery is not an active channel assignment that can go back.
@@ -950,7 +950,7 @@ export class TurnLifecycle {
         running !== undefined &&
         (running.acted || deliveries.some((context) => context.resumeAfterUsageLimit !== undefined));
       let continuing =
-        limited && family !== undefined && carriesWork && deliveries.length > 0 && this.#hooks.mayFailOver(agentId);
+        limited && carriesWork && deliveries.length > 0 && this.#hooks.mayFailOver(agentId, family === undefined);
       if (continuing) {
         for (const { delivery, channelId } of deliveries) {
           if (channelId && !(yield* this.#hooks.requeueChannelDelivery(delivery.id, true))) {

@@ -402,12 +402,7 @@ export class DrainScheduler {
       this.#heldBy(lane) ||
       (this.#heldByMachine(lane) && "machine");
     if (hold) this.#reportHold(lane, hold);
-    if (
-      followUsageLimit &&
-      !this.#usageLimits.hasUnknownLimit(lane.agentId) &&
-      (!hold || hold === "usage-limit") &&
-      this.#hooks.followUsageLimit(lane.agentId)
-    )
+    if (followUsageLimit && (!hold || hold === "usage-limit") && this.#hooks.followUsageLimit(lane.agentId))
       return true;
     if (hold) return false;
     this.#scheduledDrains.add(key);
