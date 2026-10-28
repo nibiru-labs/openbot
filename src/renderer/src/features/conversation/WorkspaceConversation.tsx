@@ -57,6 +57,7 @@ import { Conversation } from "./Conversation";
 import { useConversation } from "./conversation-context";
 import { messagePromptRequestKey, promptRequestKey } from "./conversation-keys";
 import type { ConversationThreads } from "./conversation-types";
+import { shouldShowUsageLimitAsk } from "./usage-limit-ask";
 
 /**
  * The transcript of the active Agent, with everything the composer needs to send
@@ -382,34 +383,42 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
    */
   const usageLimitAsk = createMemo((): UsageLimitAskCardProps | undefined => {
     const agent = activeAgent();
-    // Only this computer holds a message at a usage limit, and its agents use the providers it knows.
-    if (!agent || activeServer()?.kind !== "local" || !isKnownAgentProvider(agent.provider)) return undefined;
-    const provider = agent.provider;
     const limits = usageLimits();
-    const limit = limits[agent.id];
-    if (!limit) return undefined;
-    const resetsAt = limit.resetsAt;
-    if (!limit.attention && waitedUsageLimits()[agent.id] === resetsAt && agent.id in waitedUsageLimits())
-      return undefined;
-    const hasQueuedMessage = queues()[agent.id]?.deliveries.some((delivery) => delivery.status === "queued") ?? false;
-    if (!hasQueuedMessage && !limit.attention) return undefined;
+    const limit = agent ? limits[agent.id] : undefined;
+    const resetsAt = limit?.resetsAt ?? null;
+    const waited = agent ? waitedUsageLimits() : {};
+    const waitedDismissed = Boolean(
+      limit && !limit.attention && agent && agent.id in waited && waited[agent.id] === resetsAt,
+    );
+    const hasQueuedMessage = Boolean(
+      agent && queues()[agent.id]?.deliveries.some((delivery) => delivery.status === "queued"),
+    );
     const source: BackupModelSource = {
       modelOptions: modelOptions(),
       providers: agentStatus().providers,
       limited: usageLimited,
     };
-    const options = usageLimitAskOptions({ ...agent, provider }, agent.backupModels, source);
-    if (options.length === 0 && !limit.attention) return undefined;
-    const backupModels = agent.backupModels;
+    const provider = agent?.provider;
+    const options =
+      agent && provider && isKnownAgentProvider(provider)
+        ? usageLimitAskOptions({ ...agent, provider }, agent.backupModels, source)
+        : [];
     if (
-      !limit.attention &&
-      backupModels?.automatic &&
-      backupModels.order.some((choice) => options.some((option) => sameAgentModelChoice(option.choice, choice)))
+      !shouldShowUsageLimitAsk({
+        serverKind: activeServer()?.kind,
+        agent,
+        limit,
+        waitedDismissed,
+        hasQueuedMessage,
+        readyOptions: options,
+      })
     )
       return undefined;
+    if (!agent || !provider || !limit || !isKnownAgentProvider(provider)) return undefined;
+    const backupModels = agent.backupModels;
     const agentId = agent.id;
     const reasoningEffort = agent.reasoningEffort;
-    const fromProvider = agent.provider;
+    const fromProvider = provider;
     return {
       provider,
       resetsAt,

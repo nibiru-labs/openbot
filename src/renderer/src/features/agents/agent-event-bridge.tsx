@@ -38,6 +38,7 @@ import {
 } from "./agent-runtime-snapshot";
 import { useAgents } from "./agents-context";
 import { agentsPort } from "./agents-port";
+import { reconcileWaitedUsageLimits } from "./waited-usage-limits";
 
 /**
  * The one subscriber to `agent.onEvent`, and the only place a single event is
@@ -399,14 +400,7 @@ export function AgentEventBridge() {
     );
     setUsageLimits(nextUsageLimits);
     // A hold that ended takes its "Wait" with it, so the next hold asks again.
-    setWaitedUsageLimits((current) => {
-      const kept = Object.fromEntries(Object.entries(current).filter(([agentId]) => agentId in nextUsageLimits));
-      for (const [agentId, limit] of Object.entries(nextUsageLimits)) {
-        // A probe that needed attention overrides a prior Wait dismissal, including after it clears.
-        if (limit.attention || prevUsageLimits[agentId]?.attention) delete kept[agentId];
-      }
-      return kept;
-    });
+    setWaitedUsageLimits((current) => reconcileWaitedUsageLimits(current, prevUsageLimits, nextUsageLimits));
     setUsageLimitedModels(snapshot.usageLimitedModels ?? []);
     setQueues((current) => reconcileQueuesWithRuntimeWork(current, snapshot.work, runtimeTurns));
     setPendingPrompts((current) => reconcileAttentionPrompts(current, snapshot, submittedPromptRequests()));

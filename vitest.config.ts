@@ -1,7 +1,7 @@
 import solidPlugin from "@solidjs/vite-plugin";
 import { configDefaults, defineConfig } from "vitest/config";
-import { TEST_TIMEOUT_MS } from "./src/backend/test-deadlines";
-import BalancedSequencer from "./tools/vitest/balanced-sequencer";
+import { TEST_TIMEOUT_MS } from "./src/backend/test-deadlines.ts";
+import BalancedSequencer from "./tools/vitest/balanced-sequencer.ts";
 
 export default defineConfig({
   plugins: [solidPlugin()],
