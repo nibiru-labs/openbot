@@ -42,6 +42,7 @@ export const messages = defineMessages("error.agent", {
     "{provider} has no model available, and no other signed-in provider has one. Sign in to a provider, or change the default provider in Server settings → Providers.",
   "error.agent.noStartingModel":
     "{provider} has no model available, and no other signed-in provider has one. Sign in to a provider, or change the default provider in Providers & permissions.",
+  "error.agent.waitUntilIdle": "Wait until the agent is idle.",
   "error.agent.waitBeforeProviderChange": "Wait for the active turn and queue to finish before changing provider.",
   "error.agent.waitForTasksBeforeProviderChange":
     "Tasks of this agent are running. Wait for them to finish, or stop them, before changing provider.",

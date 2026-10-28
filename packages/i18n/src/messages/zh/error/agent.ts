@@ -36,6 +36,7 @@ export const messages = {
     "{provider} 没有可用模型，其他已登录的服务商也没有。请登录某个服务商，或在“服务器设置 → 服务商”中更改默认服务商。",
   "error.agent.noStartingModel":
     "{provider} 没有可用模型，其他已登录的服务商也没有。请登录某个服务商，或在“服务商与权限”中更改默认服务商。",
+  "error.agent.waitUntilIdle": "请等助手空闲后再操作。",
   "error.agent.waitBeforeProviderChange": "请等当前轮次和队列结束后再更改服务商。",
   "error.agent.waitForTasksBeforeProviderChange": "该助手的任务正在运行，请等它们结束或先停止它们，再更改服务商。",
   "error.agent.waitBeforeClearContext": "请等当前轮次和队列结束后再开始新对话。",

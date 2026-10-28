@@ -45,6 +45,7 @@ export const messages = {
     "{provider} heeft geen model beschikbaar, en geen andere aanbieder waarbij je bent ingelogd heeft er een. Log in bij een aanbieder, of wijzig de standaardaanbieder in Serverinstellingen → Aanbieders.",
   "error.agent.noStartingModel":
     "{provider} heeft geen model beschikbaar, en geen andere aanbieder waarbij je bent ingelogd heeft er een. Log in bij een aanbieder, of wijzig de standaardaanbieder in Aanbieders en machtigingen.",
+  "error.agent.waitUntilIdle": "Wacht tot de agent inactief is.",
   "error.agent.waitBeforeProviderChange":
     "Wacht tot de actieve beurt en de wachtrij klaar zijn voordat je de aanbieder wijzigt.",
   "error.agent.waitForTasksBeforeProviderChange":

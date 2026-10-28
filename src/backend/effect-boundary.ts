@@ -38,7 +38,7 @@ export async function runCauseEffect<A>(operation: Effect.Effect<A, { readonly c
         if (error === cause) throw error;
       }
     }
-    throw failure;
+    throw cause;
   }
   return result.success;
 }

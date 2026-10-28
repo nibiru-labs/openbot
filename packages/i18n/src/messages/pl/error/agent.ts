@@ -42,6 +42,7 @@ export const messages = {
     "{provider} nie ma dostępnego modelu i nie ma go też żaden inny zalogowany dostawca. Zaloguj się do dostawcy lub zmień domyślnego dostawcę w sekcji Ustawienia serwera → Dostawcy.",
   "error.agent.noStartingModel":
     "{provider} nie ma dostępnego modelu i nie ma go też żaden inny zalogowany dostawca. Zaloguj się do dostawcy lub zmień domyślnego dostawcę w sekcji „Dostawcy i uprawnienia”.",
+  "error.agent.waitUntilIdle": "Poczekaj, aż agent będzie bezczynny.",
   "error.agent.waitBeforeProviderChange": "Poczekaj, aż bieżąca tura i kolejka się zakończą, zanim zmienisz dostawcę.",
   "error.agent.waitForTasksBeforeProviderChange":
     "Zadania tego agenta są uruchomione. Przed zmianą dostawcy poczekaj, aż się zakończą, albo je zatrzymaj.",

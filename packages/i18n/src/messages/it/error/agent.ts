@@ -44,6 +44,7 @@ export const messages = {
     "{provider} non ha modelli disponibili e nessun altro provider con accesso ne ha. Accedi a un provider, oppure cambia il provider predefinito in Impostazioni del server → Provider.",
   "error.agent.noStartingModel":
     "{provider} non ha modelli disponibili e nessun altro provider con accesso ne ha. Accedi a un provider, oppure cambia il provider predefinito in Provider e permessi.",
+  "error.agent.waitUntilIdle": "Attendi che l'agente sia inattivo.",
   "error.agent.waitBeforeProviderChange": "Aspetta che il turno attivo e la coda finiscano prima di cambiare provider.",
   "error.agent.waitForTasksBeforeProviderChange":
     "Alcune attività di questo agente sono in corso. Attendi che finiscano, o interrompile, prima di cambiare provider.",

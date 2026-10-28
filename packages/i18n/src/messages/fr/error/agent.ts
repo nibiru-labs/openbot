@@ -45,6 +45,7 @@ export const messages = {
     "{provider} ne propose aucun modèle disponible, et aucun autre fournisseur connecté non plus. Connectez-vous à un fournisseur ou changez le fournisseur par défaut dans Réglages du serveur → Fournisseurs.",
   "error.agent.noStartingModel":
     "{provider} n’a aucun modèle disponible, et aucun autre fournisseur connecté n’en a. Connectez-vous à un fournisseur, ou changez le fournisseur par défaut dans Fournisseurs et autorisations.",
+  "error.agent.waitUntilIdle": "Attendez que l'agent soit inactif.",
   "error.agent.waitBeforeProviderChange":
     "Attendez la fin du tour actif et de la file d’attente avant de changer de fournisseur.",
   "error.agent.waitForTasksBeforeProviderChange":

@@ -48,6 +48,7 @@ export const messages = {
     "{provider} hat kein verfügbares Modell, und kein anderer angemeldeter Anbieter hat eines. Melde dich bei einem Anbieter an oder ändere den Standardanbieter unter Servereinstellungen → Anbieter.",
   "error.agent.noStartingModel":
     "{provider} hat kein verfügbares Modell. Auch kein anderer angemeldeter Anbieter hat eines. Melde dich bei einem Anbieter an oder ändere den Standardanbieter unter Anbieter und Berechtigungen.",
+  "error.agent.waitUntilIdle": "Warte, bis der Agent im Leerlauf ist.",
   "error.agent.waitBeforeProviderChange":
     "Warte, bis der aktive Durchlauf und die Warteschlange abgeschlossen sind, bevor du den Anbieter wechselst.",
   "error.agent.waitForTasksBeforeProviderChange":

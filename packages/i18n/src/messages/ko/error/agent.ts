@@ -42,6 +42,7 @@ export const messages = {
     "{provider}에 사용할 수 있는 모델이 없고, 로그인된 다른 제공자에도 없어요. 제공자에 로그인하거나 서버 설정 → 제공자에서 기본 제공자를 변경하세요.",
   "error.agent.noStartingModel":
     "{provider}에 사용할 수 있는 모델이 없고, 로그인된 다른 제공자에도 없어요. 제공자에 로그인하거나 제공자 및 권한에서 기본 제공자를 변경하세요.",
+  "error.agent.waitUntilIdle": "에이전트가 유휴 상태가 될 때까지 기다려 주세요.",
   "error.agent.waitBeforeProviderChange": "제공자를 변경하기 전에 진행 중인 턴과 대기열이 끝날 때까지 기다려 주세요.",
   "error.agent.waitForTasksBeforeProviderChange":
     "이 에이전트의 작업이 실행 중이에요. 제공자를 변경하기 전에 작업이 끝날 때까지 기다리거나 작업을 중지해 주세요.",

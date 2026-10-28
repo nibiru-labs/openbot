@@ -44,6 +44,7 @@ export const messages = {
     "{provider} に使用できるモデルがなく、サインイン済みのほかのプロバイダーにもありません。プロバイダーにサインインするか、サーバー設定 → プロバイダーでデフォルトのプロバイダーを変更してください。",
   "error.agent.noStartingModel":
     "{provider} に使用できるモデルがなく、サインイン済みのほかのプロバイダーにもありません。プロバイダーにサインインするか、「プロバイダーと権限」でデフォルトのプロバイダーを変更してください。",
+  "error.agent.waitUntilIdle": "エージェントがアイドルになるまでお待ちください。",
   "error.agent.waitBeforeProviderChange":
     "プロバイダーを変更する前に、実行中のターンとキューが終わるまでお待ちください。",
   "error.agent.waitForTasksBeforeProviderChange":

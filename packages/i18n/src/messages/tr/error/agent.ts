@@ -42,6 +42,7 @@ export const messages = {
     "{provider} için kullanılabilir model yok ve oturum açılmış diğer sağlayıcılarda da yok. Bir sağlayıcıda oturum açın veya Sunucu ayarları → Sağlayıcılar bölümünden varsayılan sağlayıcıyı değiştirin.",
   "error.agent.noStartingModel":
     "{provider} sağlayıcısının kullanılabilir modeli yok ve oturum açmış başka hiçbir sağlayıcının da modeli bulunmuyor. Bir sağlayıcıda oturum açın veya Sağlayıcılar ve izinler bölümünden varsayılan sağlayıcıyı değiştirin.",
+  "error.agent.waitUntilIdle": "Ajan boşta kalana kadar bekleyin.",
   "error.agent.waitBeforeProviderChange": "Sağlayıcıyı değiştirmeden önce etkin turun ve kuyruğun bitmesini bekleyin.",
   "error.agent.waitForTasksBeforeProviderChange":
     "Bu ajanın görevleri çalışıyor. Sağlayıcıyı değiştirmeden önce bitmelerini bekleyin veya onları durdurun.",
