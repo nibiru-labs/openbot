@@ -73,8 +73,8 @@ function paneOfMode(mode: RightPanelMode): SidePanelPane | null {
 
 export interface PanelsStoreDeps {
   props: ConversationProps;
-  rightPanels: () => Record<string, RightPanelMode>;
-  setRightPanels: (update: (current: Record<string, RightPanelMode>) => Record<string, RightPanelMode>) => void;
+  rightPanels: Store<Record<string, RightPanelMode>>;
+  setRightPanels: StoreSetter<Record<string, RightPanelMode>>;
   /** Owned with `rightPanels`, so that the tabs stay with the open pane when the view of the chat closes. */
   panels: Store<SidePanelsState>;
   setPanels: StoreSetter<SidePanelsState>;
@@ -109,7 +109,7 @@ export function createPanelsStore(deps: PanelsStoreDeps) {
     // A deleted channel takes no edit, so its panels stay closed.
     if (channel?.readOnly()) return "none";
     const agentId = conversationOwnerId(deps.props);
-    return agentId ? (deps.rightPanels()[agentId] ?? "none") : "none";
+    return agentId ? (deps.rightPanels[agentId] ?? "none") : "none";
   });
   const { panels, setPanels } = deps;
   const sidePanel = (): SidePanelState => {
@@ -154,7 +154,9 @@ export function createPanelsStore(deps: PanelsStoreDeps) {
       setSkillSettingsRequest(null);
       setRoutineSettingsRequest((current) => (current?.agentId === agentId ? null : current));
     }
-    deps.setRightPanels((current) => (current[agentId] === mode ? current : { ...current, [agentId]: mode }));
+    deps.setRightPanels((current) => {
+      if (current[agentId] !== mode) current[agentId] = mode;
+    });
     const pane = paneOfMode(mode);
     if (pane)
       updateSidePanel(agentId, (state) => ({

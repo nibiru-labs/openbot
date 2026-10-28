@@ -39,8 +39,8 @@ export function DynamicIslandBridge() {
   const { pendingIslandAction, setPendingIslandAction } = useServerSwitch();
   const { agentList, appendUiError } = useAgents();
   const {
-    activeTurns,
-    queues,
+    agentRows,
+    ensureQueueLoaded,
     pendingPrompts,
     setPendingPrompts,
     setSubmittedPromptRequests,
@@ -57,11 +57,18 @@ export function DynamicIslandBridge() {
   createEffect(
     () => {
       if (platform.landingPreview || !loaded()) return null;
+      const agentIds = agentList().map((agent) => agent.id);
+      for (const agentId of agentIds) ensureQueueLoaded(agentId);
       return {
         serverId: activeServerId(),
         agents: agentList(),
-        activeTurns: activeTurns(),
-        queues: queues(),
+        activeTurns: Object.fromEntries(agentIds.map((agentId) => [agentId, agentRows[agentId]?.activeTurn ?? null])),
+        queues: Object.fromEntries(
+          agentIds.flatMap((agentId) => {
+            const queue = agentRows[agentId]?.queue;
+            return queue ? [[agentId, queue] as const] : [];
+          }),
+        ),
         unreadReplies: unreadReplies(),
         unreadMessageIds: Object.fromEntries(
           Object.entries(conversations).map(([agentId, conversation]) => [
@@ -72,7 +79,7 @@ export function DynamicIslandBridge() {
         liveMessages: Object.fromEntries(
           Object.entries(conversations).map(([id, conversation]) => [id, conversation.messages]),
         ),
-        pendingPrompts: attentionByAgent(pendingPrompts(), agentList()),
+        pendingPrompts: attentionByAgent(pendingPrompts, agentList()),
         pendingApprovals: pendingApprovals(),
         failedTurns: failedTurns(),
       };
@@ -128,11 +135,13 @@ export function DynamicIslandBridge() {
     if (action.type === "open-app" || action.type === "send-message" || action.type === "stop-agent") return;
     if (action.type === "answer-prompt") {
       dynamicIslandCoordinator.resolveAction(action);
-      const prompt = attentionOfAgent(pendingPrompts(), action.agentId).find(
+      const prompt = attentionOfAgent(pendingPrompts, action.agentId).find(
         (event) => event.type === "prompt" && String(event.requestId) === String(action.requestId),
       );
       if (prompt?.type === "prompt") {
-        setPendingPrompts((current) => ({ ...current, [attentionEventKey(prompt)]: undefined }));
+        setPendingPrompts((current) => {
+          delete current[attentionEventKey(prompt)];
+        });
         setSubmittedPromptRequests((current) => ({
           ...current,
           [action.agentId]: promptRequestKey(prompt.turnId, prompt.requestId) ?? undefined,

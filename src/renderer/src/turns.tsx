@@ -9,7 +9,7 @@ import {
   type RoutineFields,
 } from "@openbot/contracts/ipc";
 import { currentText } from "@openbot/ui/text";
-import { createEffect, createMemo, createSignal, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, createStore, untrack } from "solid-js";
 import { desktopAnalytics } from "./analytics";
 import { useAnsweredPrompts } from "./answered-prompts";
 import {
@@ -25,6 +25,7 @@ import { useDynamicIsland } from "./features/dynamic-island/dynamic-island-conte
 import { useServers } from "./features/servers/servers-context";
 import { createScopeGuard } from "./scope-lifetime";
 import { createSimpleContext } from "./simple-context";
+import { type AgentTurnRow, agentTurnFieldRecord, seedAgentTurnRows } from "./turn-agent-rows";
 import { turnsPort } from "./turns-port";
 
 type PromptEvent = Extract<AgentEvent, { type: "prompt" }>;
@@ -74,31 +75,20 @@ const Turns = createSimpleContext({
   init: () => {
     const { activeServerId } = useServers();
     const { dynamicIslandCoordinator } = useDynamicIsland();
-    const { activeAgent, activeAgentId, agentList, agentStatus, appendUiError } = useAgents();
+    const { activeAgent, activeAgentId, agentStatus, appendUiError } = useAgents();
     const scopeIsCurrent = createScopeGuard();
 
     // The layer-2 seed: what this server was doing the last time it was open. The scope is keyed
     // on the server, so its id and the seed are read once.
     const scopeServerId = untrack(activeServerId);
     const seed = dynamicIslandCoordinator.serverState(scopeServerId);
-    const [activeTurns, setActiveTurns] = createSignal<Record<string, string | null>>(seed?.activeTurns ?? {});
-    const [turnProgress, setTurnProgress] = createSignal<
-      Record<string, { turnId: string; detail: string } | undefined>
-    >(seed?.turnProgress ?? {});
+    const [agentRows, setAgentRows] = createStore<Record<string, AgentTurnRow>>(seedAgentTurnRows(seed));
+    const queueLoadedAgents = new Set(Object.keys(seed?.queues ?? {}));
     // Every progress line of the newest turns, by turn, for the steps under the activity line.
-    const [turnStepLines, setTurnStepLines] = createSignal<TurnStepLines>({});
-    const [failedTurns, setFailedTurns] = createSignal<Record<string, string | undefined>>(seed?.failedTurns ?? {});
-    // The agents whose queue waits for a provider plan to reset, in epoch seconds. Only a runtime snapshot of the local host carries it.
-    const [contextStates, setContextStates] = createSignal<Record<string, AgentContextState>>({});
-    const [usageLimits, setUsageLimits] = createSignal<Record<string, number | null>>({});
+    const [turnStepLines, setTurnStepLines] = createStore<TurnStepLines>({});
     // Each provider account and model that a usage limit holds, also with no agent on it.
     const [usageLimitedModels, setUsageLimitedModels] = createSignal<AgentModelChoice[]>([]);
-    // The holds whose ask card the user closed with "Wait", by agent, with the reset of that hold.
-    const [waitedUsageLimits, setWaitedUsageLimits] = createSignal<Record<string, number | null>>({});
-    const [queues, setQueues] = createSignal<Record<string, QueueSnapshot>>(seed?.queues ?? {});
-    // Only the active agent's open waits load; a `waits-changed` event updates any agent.
-    const [waits, setWaits] = createSignal<Record<string, AgentWaitsSnapshot>>({});
-    const [routinesByConversation, setRoutinesByConversation] = createSignal<
+    const [routinesByConversation, setRoutinesByConversation] = createStore<
       Record<string, RoutineSnapshot | undefined>
     >({});
     const {
@@ -107,7 +97,7 @@ const Turns = createSimpleContext({
       submittedPromptRequests,
       setSubmittedPromptRequests,
     } = useAnsweredPrompts().promptMarkersFor(scopeServerId);
-    const [pendingPrompts, setPendingPrompts] = createSignal<PendingAttentionPrompts>(
+    const [pendingPrompts, setPendingPrompts] = createStore<PendingAttentionPrompts>(
       untrack(() =>
         seededAttentionPrompts(seed?.pendingPrompts, presentedPromptResolutions(), submittedPromptRequests()),
       ),
@@ -139,19 +129,186 @@ const Turns = createSimpleContext({
     const waitSnapshotRequests = new Map<string, number>();
     const routineSnapshotRequests = new Map<string, number>();
 
+    const activeTurns = () => agentTurnFieldRecord(agentRows, "activeTurn");
+    const turnProgress = () => agentTurnFieldRecord(agentRows, "turnProgress");
+    const failedTurns = () => agentTurnFieldRecord(agentRows, "failedTurn");
+    const contextStates = () => agentTurnFieldRecord(agentRows, "contextState");
+    const usageLimits = () => agentTurnFieldRecord(agentRows, "usageLimit");
+    const waitedUsageLimits = () => agentTurnFieldRecord(agentRows, "waitedUsageLimit");
+    const queues = () => agentTurnFieldRecord(agentRows, "queue");
+    const waits = () => agentTurnFieldRecord(agentRows, "waits");
+
+    function patchAgentRow(agentId: string, patch: Partial<AgentTurnRow>): void {
+      setAgentRows((draft) => {
+        draft[agentId] = { ...draft[agentId], ...patch };
+      });
+    }
+
+    function setActiveTurns(
+      update:
+        | Record<string, string | null>
+        | ((current: Record<string, string | null>) => Record<string, string | null>),
+    ): void {
+      const current = activeTurns();
+      const next = typeof update === "function" ? update(current) : update;
+      setAgentRows((draft) => {
+        for (const agentId of Object.keys(draft)) {
+          if (!(agentId in next) && draft[agentId]) draft[agentId].activeTurn = undefined;
+        }
+        for (const [agentId, activeTurn] of Object.entries(next)) {
+          if (!draft[agentId]) draft[agentId] = {};
+          draft[agentId].activeTurn = activeTurn;
+        }
+      });
+    }
+
+    function setTurnProgress(
+      update:
+        | Record<string, { turnId: string; detail: string } | undefined>
+        | ((
+            current: Record<string, { turnId: string; detail: string } | undefined>,
+          ) => Record<string, { turnId: string; detail: string } | undefined>),
+    ): void {
+      const current = turnProgress();
+      const next = typeof update === "function" ? update(current) : update;
+      setAgentRows((draft) => {
+        for (const [agentId, progress] of Object.entries(next)) {
+          if (!draft[agentId]) draft[agentId] = {};
+          draft[agentId].turnProgress = progress;
+        }
+        for (const agentId of Object.keys(draft)) {
+          if (!(agentId in next) && draft[agentId]) draft[agentId].turnProgress = undefined;
+        }
+      });
+    }
+
+    function setFailedTurns(
+      update:
+        | Record<string, string | undefined>
+        | ((current: Record<string, string | undefined>) => Record<string, string | undefined>),
+    ): void {
+      const current = failedTurns();
+      const next = typeof update === "function" ? update(current) : update;
+      setAgentRows((draft) => {
+        for (const [agentId, failedTurn] of Object.entries(next)) {
+          if (!draft[agentId]) draft[agentId] = {};
+          draft[agentId].failedTurn = failedTurn;
+        }
+        for (const agentId of Object.keys(draft)) {
+          if (!(agentId in next) && draft[agentId]) draft[agentId].failedTurn = undefined;
+        }
+      });
+    }
+
+    function setContextStates(
+      update:
+        | Record<string, AgentContextState>
+        | ((current: Record<string, AgentContextState>) => Record<string, AgentContextState>),
+    ): void {
+      const current = contextStates();
+      const next = typeof update === "function" ? update(current) : update;
+      setAgentRows((draft) => {
+        for (const [agentId, contextState] of Object.entries(next)) {
+          if (!draft[agentId]) draft[agentId] = {};
+          draft[agentId].contextState = contextState;
+        }
+        for (const agentId of Object.keys(draft)) {
+          if (!(agentId in next) && draft[agentId]) draft[agentId].contextState = undefined;
+        }
+      });
+    }
+
+    function setUsageLimits(
+      update:
+        | Record<string, number | null>
+        | ((current: Record<string, number | null>) => Record<string, number | null>),
+    ): void {
+      const current = usageLimits();
+      const next = typeof update === "function" ? update(current) : update;
+      setAgentRows((draft) => {
+        for (const [agentId, usageLimit] of Object.entries(next)) {
+          if (!draft[agentId]) draft[agentId] = {};
+          draft[agentId].usageLimit = usageLimit;
+        }
+        for (const agentId of Object.keys(draft)) {
+          if (!(agentId in next) && draft[agentId]) draft[agentId].usageLimit = undefined;
+        }
+      });
+    }
+
+    function setWaitedUsageLimits(
+      update:
+        | Record<string, number | null>
+        | ((current: Record<string, number | null>) => Record<string, number | null>),
+    ): void {
+      const current = waitedUsageLimits();
+      const next = typeof update === "function" ? update(current) : update;
+      setAgentRows((draft) => {
+        for (const [agentId, waitedUsageLimit] of Object.entries(next)) {
+          if (!draft[agentId]) draft[agentId] = {};
+          draft[agentId].waitedUsageLimit = waitedUsageLimit;
+        }
+        for (const agentId of Object.keys(draft)) {
+          if (!(agentId in next) && draft[agentId]) draft[agentId].waitedUsageLimit = undefined;
+        }
+      });
+    }
+
+    function setQueues(
+      update:
+        | Record<string, QueueSnapshot>
+        | ((current: Record<string, QueueSnapshot>) => Record<string, QueueSnapshot>),
+    ): void {
+      const current = queues();
+      const next = typeof update === "function" ? update(current) : update;
+      setAgentRows((draft) => {
+        for (const [agentId, queue] of Object.entries(next)) {
+          if (!draft[agentId]) draft[agentId] = {};
+          draft[agentId].queue = queue;
+          queueLoadedAgents.add(agentId);
+        }
+        for (const agentId of Object.keys(draft)) {
+          if (!(agentId in next) && draft[agentId]) draft[agentId].queue = undefined;
+        }
+      });
+    }
+
+    function setWaits(
+      update:
+        | Record<string, AgentWaitsSnapshot>
+        | ((current: Record<string, AgentWaitsSnapshot>) => Record<string, AgentWaitsSnapshot>),
+    ): void {
+      const current = waits();
+      const next = typeof update === "function" ? update(current) : update;
+      setAgentRows((draft) => {
+        for (const [agentId, snapshot] of Object.entries(next)) {
+          if (!draft[agentId]) draft[agentId] = {};
+          draft[agentId].waits = snapshot;
+        }
+      });
+    }
+
+    function ensureQueueLoaded(agentId: string): void {
+      if (queueLoadedAgents.has(agentId)) return;
+      queueLoadedAgents.add(agentId);
+      loadQueue(agentId);
+    }
+
     function refreshRoutineIds(agentId: string, serverId: string): void {
       const key = agentConversationKey(serverId, agentId);
       const request = (routineSnapshotRequests.get(key) ?? 0) + 1;
       routineSnapshotRequests.set(key, request);
       setRoutinesByConversation((current) => {
         const snapshot = current[key];
-        return snapshot ? { ...current, [key]: { ...snapshot, current: false } } : current;
+        if (snapshot) current[key] = { ...snapshot, current: false };
       });
       void turnsPort()
         .agent.listRoutines(agentId)
         .then((routines) => {
           if (routineSnapshotRequests.get(key) !== request) return;
-          setRoutinesByConversation((current) => ({ ...current, [key]: { routines, current: true } }));
+          setRoutinesByConversation((current) => {
+            current[key] = { routines, current: true };
+          });
         })
         .catch(() => undefined);
     }
@@ -170,7 +327,7 @@ const Turns = createSimpleContext({
         .agent.listQueue(agentId)
         .then((queue) => {
           if (!scopeIsCurrent() || queueSnapshotRequests.get(agentId) !== queueRequest) return;
-          setQueues((current) => ({ ...current, [agentId]: queue }));
+          patchAgentRow(agentId, { queue });
         })
         // This background read can time out while chat replies still arrive. Keep the last queue;
         // the next load or queue-changed event updates it. Queue action failures still report errors.
@@ -191,7 +348,7 @@ const Turns = createSimpleContext({
         .agent.listWaits(agentId)
         .then((snapshot) => {
           if (!scopeIsCurrent() || waitSnapshotRequests.get(agentId) !== request) return;
-          setWaits((current) => ({ ...current, [agentId]: snapshot }));
+          patchAgentRow(agentId, { waits: snapshot });
         })
         .catch((error) => {
           if (!scopeIsCurrent() || waitSnapshotRequests.get(agentId) !== request) return;
@@ -206,33 +363,9 @@ const Turns = createSimpleContext({
       },
     );
 
-    // The active-agent load above misses everyone else. A routine mark needs each agent's real
-    // queue sender, which a runtime snapshot does not carry.
-    createEffect(
-      () => ({
-        agentIds: agentList()
-          .map((agent) => agent.id)
-          .join("\0"),
-        agentPhase: agentStatus().phase,
-        serverId: activeServerId(),
-      }),
-      (next, previous) => {
-        if (
-          previous &&
-          next.agentIds === previous.agentIds &&
-          next.agentPhase === previous.agentPhase &&
-          next.serverId === previous.serverId
-        ) {
-          return;
-        }
-        if (!next.agentIds) return;
-        for (const agentId of next.agentIds.split("\0")) loadQueue(agentId);
-      },
-    );
-
     async function answerPrompt(answers: Record<string, string[]>, options?: PromptAnswerOptions): Promise<boolean> {
       const agent = activeAgent();
-      const prompt = agent ? pendingPrompts()[attentionKey(agent.id, agent.threadId)] : undefined;
+      const prompt = agent ? pendingPrompts[attentionKey(agent.id, agent.threadId)] : undefined;
       if (!agent || prompt?.type !== "prompt") return false;
       return submitPromptAnswers(agent.id, prompt, answers, options);
     }
@@ -317,12 +450,14 @@ const Turns = createSimpleContext({
     async function respondToBrowserTakeover(decision: "complete" | "cancel"): Promise<boolean> {
       const agent = activeAgent();
       const key = agent ? attentionKey(agent.id, agent.threadId) : undefined;
-      const event = key ? pendingPrompts()[key] : undefined;
+      const event = key ? pendingPrompts[key] : undefined;
       if (!agent || !key || event?.type !== "browser-takeover-requested") return false;
       const serverId = activeServerId();
       try {
         await turnsPort().agent.respondToBrowserTakeover({ requestId: event.request.requestId, decision });
-        setPendingPrompts((current) => ({ ...current, [key]: undefined }));
+        setPendingPrompts((current) => {
+          delete current[key];
+        });
         return true;
       } catch (error) {
         appendUiError(agent.id, error, currentText().t("app.errorStatus.browserTakeover"), serverId);
@@ -355,7 +490,7 @@ const Turns = createSimpleContext({
 
     function steerQueuedMessage(deliveryId: string) {
       const agent = activeAgent();
-      const turnId = agent ? activeTurns()[agent.id] : null;
+      const turnId = agent ? (agentRows[agent.id]?.activeTurn ?? null) : null;
       if (!agent || !turnId) return;
       const serverId = activeServerId();
       const analytics = desktopAnalytics.scope();
@@ -365,7 +500,7 @@ const Turns = createSimpleContext({
         .catch((error) => {
           analytics.track("queue_action", { action: "steer", result: "failed", failure_code: "steer_failed" });
           // After the turn ended, the message runs as the next turn. The refusal is old news (#3206).
-          if (activeTurns()[agent.id] !== turnId) return;
+          if (agentRows[agent.id]?.activeTurn !== turnId) return;
           appendUiError(agent.id, error, currentText().t("app.errorStatus.steer"), serverId);
         });
     }
@@ -453,7 +588,7 @@ const Turns = createSimpleContext({
 
     function stopActiveTurn() {
       const agent = activeAgent();
-      const turnId = agent ? activeTurns()[agent.id] : null;
+      const turnId = agent ? (agentRows[agent.id]?.activeTurn ?? null) : null;
       if (!agent || !turnId) return;
       const serverId = activeServerId();
       const analytics = desktopAnalytics.scope();
@@ -472,15 +607,17 @@ const Turns = createSimpleContext({
 
     const activeQueue = createMemo(() => {
       const agent = activeAgent();
-      return agent ? queues()[agent.id] : undefined;
+      if (!agent) return undefined;
+      ensureQueueLoaded(agent.id);
+      return agentRows[agent.id]?.queue;
     });
     const activeWaits = createMemo(() => {
       const agent = activeAgent();
-      return agent ? (waits()[agent.id]?.waits ?? []) : [];
+      return agent ? (agentRows[agent.id]?.waits?.waits ?? []) : [];
     });
     const activeRoutineSnapshot = createMemo(() => {
       const agent = activeAgent();
-      return agent ? routinesByConversation()[agentConversationKey(activeServerId(), agent.id)] : undefined;
+      return agent ? routinesByConversation[agentConversationKey(activeServerId(), agent.id)] : undefined;
     });
     // A routine link opens only a routine the newest list has; a deleted one must not open.
     const activeRoutineIds = createMemo(() => {
@@ -496,6 +633,8 @@ const Turns = createSimpleContext({
      * back to empty, exactly as `selectServer` did inline.
      */
     return {
+      agentRows,
+      ensureQueueLoaded,
       activeTurns,
       setActiveTurns,
       turnProgress,
@@ -514,6 +653,7 @@ const Turns = createSimpleContext({
       setWaitedUsageLimits,
       queues,
       setQueues,
+      waits,
       setWaits,
       waitSnapshotRequests,
       routinesByConversation,

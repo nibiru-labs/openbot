@@ -1054,7 +1054,9 @@ function playLiveDictation(
   options: { draft: string; animate: boolean },
 ): () => void {
   const setDraft = (text: string) =>
-    controller.setDrafts({ [target.agentId]: { text, attachments: [], replyToMessageId: null } });
+    controller.setDrafts((drafts) => {
+      drafts[target.agentId] = { text, attachments: [], replyToMessageId: null };
+    });
   setDraft(options.draft);
   controller.setVoicePhase("recording");
   if (!options.animate) {
@@ -1105,15 +1107,17 @@ function MockedConversation(props: {
   const initialAgentId = props.args.agent?.id;
   if (initialAgentId && props.initialAttachments?.length) {
     onSettled(() => {
-      controller.setDrafts({
-        [initialAgentId]: { text: "", attachments: props.initialAttachments ?? [], replyToMessageId: null },
+      controller.setDrafts((drafts) => {
+        drafts[initialAgentId] = { text: "", attachments: props.initialAttachments ?? [], replyToMessageId: null };
       });
     });
   }
   const replyToMessageId = props.replyToMessageId;
   if (initialAgentId && replyToMessageId) {
     onSettled(() => {
-      controller.setDrafts({ [initialAgentId]: { text: "", attachments: [], replyToMessageId } });
+      controller.setDrafts((drafts) => {
+        drafts[initialAgentId] = { text: "", attachments: [], replyToMessageId };
+      });
     });
   }
   if (props.voiceModelProgress !== undefined) {
@@ -1138,9 +1142,9 @@ function MockedConversation(props: {
   // story shows the banner where the chat it belongs to actually renders it.
   if (initialAgentId && props.conversationError) {
     onSettled(() => {
-      controller.setConversationErrors({
-        [composerDraftKey({ agentId: initialAgentId, serverId: props.args.server?.id ?? "local" })]:
-          props.conversationError ?? "",
+      controller.setConversationErrors((errors) => {
+        errors[composerDraftKey({ agentId: initialAgentId, serverId: props.args.server?.id ?? "local" })] =
+          props.conversationError ?? "";
       });
     });
   }
@@ -1172,7 +1176,7 @@ function MockedConversation(props: {
     if (!agentId) return;
     event.preventDefault();
     const requestId = crypto.randomUUID();
-    const currentDraft = controller.drafts()[agentId] ?? { text: "", attachments: [], replyToMessageId: null };
+    const currentDraft = controller.drafts[agentId] ?? { text: "", attachments: [], replyToMessageId: null };
     const attachments: DraftAttachment[] = files
       .slice(0, Math.max(0, 10 - currentDraft.attachments.length))
       .map((file, index) => {
@@ -1188,10 +1192,9 @@ function MockedConversation(props: {
           previewUrl,
         };
       });
-    controller.setDrafts((current) => ({
-      ...current,
-      [agentId]: { ...currentDraft, attachments: [...currentDraft.attachments, ...attachments] },
-    }));
+    controller.setDrafts((current) => {
+      current[agentId] = { ...currentDraft, attachments: [...currentDraft.attachments, ...attachments] };
+    });
   };
   const setStoryFrameElement = (element: HTMLDivElement) => {
     storyFrameElement = element;

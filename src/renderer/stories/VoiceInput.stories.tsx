@@ -99,13 +99,19 @@ function VoiceInputComposer(props: { state: VoiceInputState }) {
   onSettled(() => {
     const target = { agentId: conversationProps.agent?.id ?? "", serverId: conversationProps.server?.id ?? "local" };
     const { draft, phase, elapsedSeconds, levels, modelProgress, liveText, error, limitReached } = props.state;
-    if (draft) controller.setDrafts({ [target.agentId]: { text: draft, attachments: [], replyToMessageId: null } });
+    if (draft)
+      controller.setDrafts((drafts) => {
+        drafts[target.agentId] = { text: draft, attachments: [], replyToMessageId: null };
+      });
     if (phase) controller.setVoicePhase(phase);
     if (elapsedSeconds !== undefined) controller.setVoiceElapsedSeconds(elapsedSeconds);
     if (levels) controller.setVoiceLevels(levels);
     if (modelProgress !== undefined) controller.setVoiceModelProgress(modelProgress);
     if (liveText) controller.setVoiceLiveTranscript({ ...target, text: liveText });
-    if (error) controller.setConversationErrors({ [composerDraftKey(target)]: error() });
+    if (error)
+      controller.setConversationErrors((errors) => {
+        errors[composerDraftKey(target)] = error();
+      });
     if (limitReached) controller.setVoiceLimitReached(target);
   });
   return (

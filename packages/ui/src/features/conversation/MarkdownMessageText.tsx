@@ -2,10 +2,12 @@ import { fileReferenceName, isFileReference } from "@openbot/brand/file-referenc
 import { blockChatMath, chatMathBlockStart, chatMathStart, inlineChatMath } from "@openbot/contracts/chat-math";
 import { chatPreviewKind } from "@openbot/contracts/chat-preview";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
+import type { AttachmentSummary } from "@openbot/contracts/ipc";
 import { Button, Checkbox } from "@openbot/ui";
 import { Dynamic } from "@solidjs/web";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
 import { createMemo, For, Show } from "solid-js";
+import type { MessageCitation } from "../../data";
 import { useText } from "../../text";
 import { AttachmentReferenceVisual, attachmentReferenceTone } from "./AttachmentReference";
 import { CodeBlock } from "./CodeBlock";
@@ -13,6 +15,7 @@ import { CodePreview } from "./CodePreview";
 import type { MessageCodeBlock } from "./DataTable";
 import { MathFormula } from "./MathFormula";
 import { linkTitle, MessageLink, RichMessageText, type RichMessageTextProps, safeBrowserUrl } from "./RichMessageText";
+import { messageAttachmentsById, messageCitationsByNumber } from "./rich-message-parts";
 import {
   sameStreamingTailOffsets,
   streamingTailInside,
@@ -39,6 +42,8 @@ type MarkdownContentProps = Omit<
   "body" | "showCitationFooter" | "streaming" | "streamingTailAfter"
 > & {
   fileDirectory: FileDirectoryContext | null;
+  citationsByNumber: Map<number, MessageCitation>;
+  attachmentsById: Map<string, AttachmentSummary>;
 };
 
 interface FileDirectoryContext {
@@ -234,6 +239,8 @@ export function MarkdownMessageText(props: MarkdownMessageTextProps) {
       skills: props.skills,
       attachments: props.attachments,
       citations: props.citations,
+      citationsByNumber: messageCitationsByNumber(props.citations),
+      attachmentsById: messageAttachmentsById(props.attachments),
       onSelectAgent: props.onSelectAgent,
       onOpenLink: props.onOpenLink,
       onOpenAttachment: props.onOpenAttachment,
@@ -272,6 +279,8 @@ export function MarkdownInlineText(
     skills: props.skills,
     attachments: props.attachments,
     citations: props.citations,
+    citationsByNumber: messageCitationsByNumber(props.citations),
+    attachmentsById: messageAttachmentsById(props.attachments),
     onSelectAgent: props.onSelectAgent,
     onOpenLink: props.onOpenLink,
     onOpenAttachment: props.onOpenAttachment,

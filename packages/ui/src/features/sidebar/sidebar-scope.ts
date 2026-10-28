@@ -183,6 +183,7 @@ export function createSidebarScope(props: SidebarProps) {
     sectionDragClasses: dragState.sectionDragClasses,
     sectionIsCollapsed,
     sectionPosition,
+    getAgentList: () => agentList,
     setAgentListElement,
     setSectionNameInput,
     sidebarClickIsSuppressed,

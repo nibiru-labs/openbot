@@ -26,7 +26,8 @@ import {
 import type { AgentProfile } from "@openbot/ui/data";
 import { useText } from "@openbot/ui/text";
 import { Dynamic } from "@solidjs/web";
-import { createMemo, createSignal, createStore, For, Show } from "solid-js";
+import { createMemo, createSignal, createStore, For, onSettled, Show } from "solid-js";
+import { createListVirtualizer } from "../../components/createListVirtualizer";
 import { fileBadge } from "../conversation/AttachmentCards";
 import { attachmentReferenceBadge, attachmentReferenceTone } from "../conversation/AttachmentReference";
 import {
@@ -72,6 +73,36 @@ export interface FileListProps {
 }
 
 const LOADING_ROWS = [0, 1, 2, 3, 4];
+/** Below this count the list draws every row; above it only the rows near the scroll view render. */
+const STATIC_FILE_LIMIT = 100;
+const FILE_ROW_ESTIMATE = 52;
+const HEADING_ROW_ESTIMATE = 28;
+const GROUP_GAP_ESTIMATE = 8;
+const VIRTUAL_OVERSCAN = 8;
+
+interface FlatFileRow {
+  kind: "heading" | "file";
+  key: string;
+  label?: string;
+  spaced?: boolean;
+  file?: StoredFileRow;
+  dateLabel?: string;
+}
+
+function scrollParent(element: HTMLElement): HTMLElement | undefined {
+  let node: HTMLElement | null = element.parentElement;
+  while (node) {
+    const { overflowY } = getComputedStyle(node);
+    if (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") return node;
+    node = node.parentElement;
+  }
+  const root = element.ownerDocument.documentElement;
+  return root.scrollHeight > root.clientHeight ? root : undefined;
+}
+
+function scrollMarginOf(scrollElement: HTMLElement, listElement: HTMLElement): number {
+  return listElement.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top + scrollElement.scrollTop;
+}
 
 /**
  * The file browser every Files surface shares: Storage in Settings, an agent's Files, and a chat's
@@ -96,6 +127,33 @@ export function FileList(props: FileListProps) {
       ? groupFilesByDay(visible(), now(), t, format)
       : [{ key: "all", label: "", files: visible() }],
   );
+  const flatRows = createMemo((): FlatFileRow[] => {
+    const rows: FlatFileRow[] = [];
+    let spacedHeading = false;
+    for (const group of groups()) {
+      if (group.label) {
+        rows.push({
+          kind: "heading",
+          key: `h-${group.key}`,
+          label: group.label,
+          spaced: spacedHeading,
+        });
+        spacedHeading = true;
+      }
+      for (const file of group.files) {
+        rows.push({
+          kind: "file",
+          key: file.id,
+          file,
+          dateLabel: group.label
+            ? format.date(new Date(file.createdAt), { hour: "numeric", minute: "2-digit" })
+            : fileDayLabel(file.createdAt, now(), t, format),
+        });
+      }
+    }
+    return rows;
+  });
+  const virtualized = () => flatRows().length > STATIC_FILE_LIMIT;
   const filtered = () => query.search.trim() !== "" || query.type !== "all";
   const agentName = (agentId: string | null) =>
     agentId ? (props.agents?.find((agent) => agent.id === agentId)?.name ?? null) : null;
@@ -235,44 +293,67 @@ export function FileList(props: FileListProps) {
                 {fileCountLabel(visible().length, t)} ·{" "}
                 {format.fileSize(visible().reduce((sum, file) => sum + file.size, 0))}
               </p>
-              <For each={groups()}>
-                {(group) => (
-                  <div class="file-list-group">
-                    <Show when={group.label}>
-                      <Dynamic component={props.groupHeadingLevel === 3 ? "h3" : "h4"} class="file-list-group-heading">
-                        {group.label}
-                      </Dynamic>
-                    </Show>
-                    <ul class="file-list-rows">
-                      <For each={group.files}>
-                        {(file) => (
-                          <FileRow
-                            file={file}
-                            agentName={agentName(file.agentId)}
-                            showConversation={props.showConversation !== false && !props.compact}
-                            canDelete={props.canDelete === true && file.deletable}
-                            dateLabel={
-                              group.label
-                                ? format.date(new Date(file.createdAt), {
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                  })
-                                : fileDayLabel(file.createdAt, now(), t, format)
-                            }
-                            onPreview={() => props.onPreview(file)}
-                            onAction={(action) => {
-                              if (action === "delete") {
-                                setDeleteError(null);
-                                setPendingDelete(file);
-                              } else void props.onAction(file, action);
-                            }}
-                          />
-                        )}
-                      </For>
-                    </ul>
-                  </div>
-                )}
-              </For>
+              <Show
+                when={virtualized()}
+                fallback={
+                  <For each={groups()}>
+                    {(group) => (
+                      <div class="file-list-group">
+                        <Show when={group.label}>
+                          <Dynamic
+                            component={props.groupHeadingLevel === 3 ? "h3" : "h4"}
+                            class="file-list-group-heading"
+                          >
+                            {group.label}
+                          </Dynamic>
+                        </Show>
+                        <ul class="file-list-rows">
+                          <For each={group.files}>
+                            {(file) => (
+                              <FileRow
+                                file={file}
+                                agentName={agentName(file.agentId)}
+                                showConversation={props.showConversation !== false && !props.compact}
+                                canDelete={props.canDelete === true && file.deletable}
+                                dateLabel={
+                                  group.label
+                                    ? format.date(new Date(file.createdAt), {
+                                        hour: "numeric",
+                                        minute: "2-digit",
+                                      })
+                                    : fileDayLabel(file.createdAt, now(), t, format)
+                                }
+                                onPreview={() => props.onPreview(file)}
+                                onAction={(action) => {
+                                  if (action === "delete") {
+                                    setDeleteError(null);
+                                    setPendingDelete(file);
+                                  } else void props.onAction(file, action);
+                                }}
+                              />
+                            )}
+                          </For>
+                        </ul>
+                      </div>
+                    )}
+                  </For>
+                }
+              >
+                <VirtualFileRows
+                  rows={flatRows}
+                  groupHeadingLevel={props.groupHeadingLevel ?? 4}
+                  showConversation={props.showConversation !== false && !props.compact}
+                  canDelete={props.canDelete === true}
+                  agentName={agentName}
+                  onPreview={props.onPreview}
+                  onAction={(file, action) => {
+                    if (action === "delete") {
+                      setDeleteError(null);
+                      setPendingDelete(file);
+                    } else void props.onAction(file, action);
+                  }}
+                />
+              </Show>
             </Show>
           </Show>
         </Show>
@@ -298,12 +379,122 @@ export function FileList(props: FileListProps) {
   );
 }
 
+function VirtualFileRows(props: {
+  rows: () => FlatFileRow[];
+  groupHeadingLevel: 3 | 4;
+  showConversation: boolean;
+  canDelete: boolean;
+  agentName: (agentId: string | null) => string | null;
+  onPreview: (file: StoredFileRow) => void;
+  onAction: (file: StoredFileRow, action: StoredFileAction) => void;
+}) {
+  let listRoot: HTMLUListElement | undefined;
+  const [scrollElement, setScrollElement] = createSignal<HTMLElement>();
+  const [scrollMargin, setScrollMargin] = createSignal(0);
+  const indexByKey = createMemo(() => new Map(props.rows().map((row, index) => [row.key, index])));
+
+  const updateScrollMargin = (): void => {
+    const scroll = scrollElement();
+    const list = listRoot;
+    if (!scroll || !list) return;
+    setScrollMargin(scrollMarginOf(scroll, list));
+  };
+
+  onSettled(() => {
+    if (!listRoot) return;
+    const scroll = scrollParent(listRoot);
+    setScrollElement(scroll);
+    updateScrollMargin();
+    if (!scroll) return;
+    const observer = new ResizeObserver(updateScrollMargin);
+    observer.observe(scroll);
+    const section = listRoot.closest(".file-list");
+    if (section instanceof HTMLElement) observer.observe(section);
+    return () => observer.disconnect();
+  });
+
+  const virtualizer = createListVirtualizer({
+    rows: createMemo(() =>
+      props.rows().map((row) => ({
+        key: row.key,
+        size: row.kind === "heading" ? HEADING_ROW_ESTIMATE + (row.spaced ? GROUP_GAP_ESTIMATE : 0) : FILE_ROW_ESTIMATE,
+      })),
+    ),
+    getScrollElement: scrollElement,
+    scrollMargin,
+    pinnedIndex: () => -1,
+    overscan: VIRTUAL_OVERSCAN,
+  });
+
+  return (
+    <ul class="file-list-rows file-list-rows-virtual" data-virtualized="true" ref={listRoot}>
+      <li role="presentation" aria-hidden="true" style={{ height: `${virtualizer.totalSize()}px` }} />
+      <For each={virtualizer.items()} keyed={(item) => item.key}>
+        {(item) => {
+          const index = () => indexByKey().get(String(item().key));
+          const row = () => {
+            const current = index();
+            return current === undefined ? undefined : props.rows()[current];
+          };
+          return (
+            <Show when={row()}>
+              {(current) => {
+                const virtual = {
+                  get "data-index"() {
+                    return item().index;
+                  },
+                  get style() {
+                    return { top: `${item().start - scrollMargin()}px` };
+                  },
+                  ref: virtualizer.measureElement,
+                };
+                return (
+                  <Show
+                    when={current().kind === "heading"}
+                    fallback={
+                      <Show when={current().file}>
+                        {(file) => (
+                          <FileRow
+                            file={file()}
+                            agentName={props.agentName(file().agentId)}
+                            showConversation={props.showConversation}
+                            canDelete={props.canDelete && file().deletable}
+                            dateLabel={current().dateLabel ?? ""}
+                            virtual={virtual}
+                            onPreview={() => props.onPreview(file())}
+                            onAction={(action) => props.onAction(file(), action)}
+                          />
+                        )}
+                      </Show>
+                    }
+                  >
+                    <li class="file-list-virtual-row" {...virtual}>
+                      <Dynamic component={props.groupHeadingLevel === 3 ? "h3" : "h4"} class="file-list-group-heading">
+                        {current().label}
+                      </Dynamic>
+                    </li>
+                  </Show>
+                );
+              }}
+            </Show>
+          );
+        }}
+      </For>
+    </ul>
+  );
+}
+
 function FileRow(props: {
   file: StoredFileRow;
   agentName: string | null;
   showConversation: boolean;
   canDelete: boolean;
   dateLabel: string;
+  virtual?: {
+    readonly "data-index": number;
+    readonly style: { top: string };
+    ref: (element: HTMLElement) => void;
+  };
   onPreview: () => void;
   onAction: (action: StoredFileAction) => void;
 }) {
@@ -318,7 +509,13 @@ function FileRow(props: {
     ].filter(Boolean);
 
   return (
-    <li class="file-row" data-status={props.file.status}>
+    <li
+      class="file-row"
+      data-status={props.file.status}
+      data-index={props.virtual?.["data-index"]}
+      style={props.virtual?.style}
+      ref={props.virtual?.ref}
+    >
       <Button
         type="button"
         variant="ghost"

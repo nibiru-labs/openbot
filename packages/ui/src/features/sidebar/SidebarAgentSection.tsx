@@ -7,11 +7,12 @@
  */
 
 import { SIDEBAR_UNASSIGNED_SECTION_ID } from "@openbot/contracts/ipc";
-import { For, Match, Show, Switch } from "solid-js";
+import { Match, Show, Switch } from "solid-js";
 import { useText } from "../../text";
 import { SidebarAgentRow } from "./SidebarAgentRow";
 import { SidebarChannelRow } from "./SidebarChannelRow";
 import { SidebarSectionHeader } from "./SidebarSectionHeader";
+import { SidebarVirtualList } from "./SidebarVirtualList";
 import { useSidebarScope } from "./sidebar-scope";
 
 export function SidebarAgentSection(sectionProps: { sectionId: string }) {
@@ -42,20 +43,30 @@ export function SidebarAgentSection(sectionProps: { sectionId: string }) {
           aria-hidden={collapsed() ? "true" : undefined}
           inert={collapsed() ? true : undefined}
         >
-          <div id={`sidebar-section-body-${sectionId()}`} class="sidebar-section-body">
-            <For each={chats()}>
-              {(chat) => (
+          <SidebarVirtualList
+            bodyId={`sidebar-section-body-${sectionId()}`}
+            items={chats}
+            getKey={(chat) => chat.id}
+            hidden={collapsed}
+            pinnedIndex={() => {
+              const activeId = props.activeAgentId ?? props.activeChannelId;
+              if (!activeId) return -1;
+              return chats().findIndex((chat) => chat.id === activeId);
+            }}
+            renderItem={(chat, _index, virtual) => {
+              const item = chat();
+              return (
                 <Switch>
-                  <Match when={chat.kind === "agent" ? chat.agent : undefined}>
-                    {(agent) => <SidebarAgentRow agent={agent()} />}
+                  <Match when={item.kind === "agent" ? item.agent : undefined}>
+                    {(agent) => <SidebarAgentRow agent={agent()} virtual={virtual} />}
                   </Match>
-                  <Match when={chat.kind === "channel" ? chat.channel : undefined}>
-                    {(channel) => <SidebarChannelRow channel={channel()} />}
+                  <Match when={item.kind === "channel" ? item.channel : undefined}>
+                    {(channel) => <SidebarChannelRow channel={channel()} virtual={virtual} />}
                   </Match>
                 </Switch>
-              )}
-            </For>
-          </div>
+              );
+            }}
+          />
         </div>
       </section>
     </Show>

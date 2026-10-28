@@ -68,7 +68,7 @@ function DesktopChannelConversation(props: { channelId: string; account: () => C
   };
   const takeovers = createMemo(() => {
     const requests: BrowserTakeoverRequest[] = [];
-    for (const event of Object.values(pendingPrompts()))
+    for (const event of Object.values(pendingPrompts))
       if (event?.type === "browser-takeover-requested") requests.push(event.request);
     return requests;
   });

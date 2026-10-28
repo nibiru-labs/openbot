@@ -239,21 +239,24 @@ function AddServer() {
  */
 function HostedUpsell(props: AccountProps) {
   const { activeServer, hostedServersAvailable, hostedServersLoaded, hostedServerIds, setAddServerOpen } = useServers();
-  const { activeTurns, routinesByConversation } = useTurns();
+  const { agentRows, routinesByConversation } = useTurns();
   const platform = usePlatform();
   // The last current list of each conversation. A list that is loading again keeps the previous one.
   const seen = new Map<string, readonly RoutineFields[]>();
-  createEffect(routinesByConversation, (snapshots) => {
-    for (const [key, snapshot] of Object.entries(snapshots)) {
-      if (!snapshot?.current || seen.get(key) === snapshot.routines) continue;
-      const created = createdRoutines(seen.get(key), snapshot.routines);
-      seen.set(key, snapshot.routines);
-      const agentId = key.slice(key.indexOf("\0") + 1);
-      for (const routine of created) {
-        hostedUpsellRoutineCreated({ id: routine.id, name: routine.name, agentId });
+  createEffect(
+    () => routinesByConversation,
+    (snapshots) => {
+      for (const [key, snapshot] of Object.entries(snapshots)) {
+        if (!snapshot?.current || seen.get(key) === snapshot.routines) continue;
+        const created = createdRoutines(seen.get(key), snapshot.routines);
+        seen.set(key, snapshot.routines);
+        const agentId = key.slice(key.indexOf("\0") + 1);
+        for (const routine of created) {
+          hostedUpsellRoutineCreated({ id: routine.id, name: routine.name, agentId });
+        }
       }
-    }
-  });
+    },
+  );
   return (
     <HostedServerUpsell
       accountId={props.account().id}
@@ -267,7 +270,7 @@ function HostedUpsell(props: AccountProps) {
       }
       serverId={activeServer()?.id ?? "local"}
       host={activeServer()?.kind === "remote" ? { name: activeServer()?.name ?? "" } : "this-computer"}
-      busy={(agentId) => Boolean(activeTurns()[agentId])}
+      busy={(agentId) => Boolean(agentRows[agentId]?.activeTurn)}
       openPlans={() => setAddServerOpen(true, "upsell")}
       track={(action, entryPoint) =>
         desktopAnalytics.track("hosted_server_upsell", { action, entry_point: entryPoint })

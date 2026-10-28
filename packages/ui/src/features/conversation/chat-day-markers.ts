@@ -5,7 +5,7 @@
  */
 
 import type { AppFormat, AppTranslate } from "@openbot/i18n";
-import { currentText } from "@openbot/ui/text";
+import { currentText } from "@openbot/ui/text-value";
 
 /** The clock a caller can replace, so a test does not depend on the day the test runs. */
 export interface DayMarkerOptions {

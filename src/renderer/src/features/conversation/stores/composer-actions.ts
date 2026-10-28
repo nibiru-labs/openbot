@@ -15,6 +15,7 @@ import {
   expandComposerMentions,
 } from "@openbot/ui/features/conversation/ComposerEditor";
 import { currentText } from "@openbot/ui/text";
+import type { Store, StoreSetter } from "solid-js";
 import { playActionSound } from "../../../action-sounds";
 import { claimDictatedSend } from "../../speech/speech-replies";
 import { rememberAttachmentKinds } from "../attachment-analytics";
@@ -43,8 +44,8 @@ export interface ComposerActionsDeps {
   attachmentBusy: () => boolean;
   setAttachmentBusy: (busy: boolean) => void;
   attachmentImports: Map<string, ConversationTarget>;
-  drafts: () => Record<string, ComposerDraft>;
-  setDrafts: (update: (current: Record<string, ComposerDraft>) => Record<string, ComposerDraft>) => void;
+  drafts: Store<Record<string, ComposerDraft>>;
+  setDrafts: StoreSetter<Record<string, ComposerDraft>>;
   editingAgentId: () => string | null;
   setEditingAgentId: (id: string | null) => void;
   editingServerId: () => string | null;
@@ -147,7 +148,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     }
     deps.clearConversationError(target);
     const key = composerDraftKey(target);
-    const draft = deps.drafts()[key] ?? EMPTY_DRAFT;
+    const draft = deps.drafts[key] ?? EMPTY_DRAFT;
     const available = Math.max(0, INPUT_LIMITS.attachments - draft.attachments.length);
     const accepted = selected.slice(0, available);
     for (const attachment of selected.slice(available)) {
@@ -181,17 +182,16 @@ export function createComposerActions(deps: ComposerActionsDeps) {
         return [];
       }
     }
-    const currentDraft = deps.drafts()[key] ?? EMPTY_DRAFT;
+    const currentDraft = deps.drafts[key] ?? EMPTY_DRAFT;
     const remaining = Math.max(0, INPUT_LIMITS.attachments - currentDraft.attachments.length);
     for (const item of accepted.splice(remaining))
       void conversationRuntime(deps.props).agent.discardDraftAttachment(item.id, target.serverId);
-    deps.setDrafts((current) => ({
-      ...current,
-      [key]: {
+    deps.setDrafts((current) => {
+      current[key] = {
         ...(current[key] ?? EMPTY_DRAFT),
         attachments: [...currentDraft.attachments, ...accepted],
-      },
-    }));
+      };
+    });
     if (selected.length > accepted.length)
       deps.setComposerError(t("composer.error.attachmentLimit", { limit: INPUT_LIMITS.attachments }), target);
     deps.setShowComposerActions(false);
@@ -210,13 +210,15 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     // Puts `text` at the selection. A view can unmount during import, so newer edits stay and the
     // text goes at the end. Returns undefined when the message would be too long.
     const insert = (text: string): ComposerPasteResult | undefined => {
-      const current = deps.drafts()[key] ?? EMPTY_DRAFT;
+      const current = deps.drafts[key] ?? EMPTY_DRAFT;
       const next =
         current.text === before
           ? `${before.slice(0, selection.start)}${text}${before.slice(selection.end)}`
           : [current.text, text].filter(Boolean).join(" ");
       if (next.length > INPUT_LIMITS.messageText) return;
-      deps.setDrafts((drafts) => ({ ...drafts, [key]: { ...(drafts[key] ?? EMPTY_DRAFT), text: next } }));
+      deps.setDrafts((drafts) => {
+        drafts[key] = { ...(drafts[key] ?? EMPTY_DRAFT), text: next };
+      });
       return { value: next, caret: current.text === before ? selection.start + text.length : next.length };
     };
     const requestId = crypto.randomUUID();
@@ -226,7 +228,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     deps.clearConversationError(target);
     try {
       const originals = await Promise.all(files);
-      const draft = deps.drafts()[key] ?? EMPTY_DRAFT;
+      const draft = deps.drafts[key] ?? EMPTY_DRAFT;
       if (originals.length + draft.attachments.length > INPUT_LIMITS.attachments)
         throw new Error(t("composer.error.attachmentLimit", { limit: INPUT_LIMITS.attachments }));
       // Check the sizes before the bytes come into memory, as the path import does.
@@ -302,10 +304,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     if (!released.size) return;
     deps.setDrafts((drafts) => {
       const draft = drafts[key] ?? EMPTY_DRAFT;
-      return {
-        ...drafts,
-        [key]: { ...draft, attachments: draft.attachments.filter((attachment) => !released.has(attachment.id)) },
-      };
+      drafts[key] = { ...draft, attachments: draft.attachments.filter((attachment) => !released.has(attachment.id)) };
     });
     const runtime = conversationRuntime(deps.props);
     void copied.then((read) => {
@@ -316,7 +315,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
           const draft = drafts[key] ?? EMPTY_DRAFT;
           const present = new Set(draft.attachments.map((attachment) => attachment.id));
           const restored = unread.filter((attachment) => !present.has(attachment.id));
-          return { ...drafts, [key]: { ...draft, attachments: [...draft.attachments, ...restored] } };
+          drafts[key] = { ...draft, attachments: [...draft.attachments, ...restored] };
         });
       for (const id of released)
         if (read.has(id)) void runtime.agent.discardDraftAttachment(id, target.serverId).catch(() => {});
@@ -357,14 +356,13 @@ export function createComposerActions(deps: ComposerActionsDeps) {
       deps.setEditingDeliveryId(original.id);
       deps.setEditingEditId(editId);
       deps.setEditingPendingSave(null);
-      deps.setDrafts((current) => ({
-        ...current,
-        [composerDraftKey({ agentId, serverId })]: {
+      deps.setDrafts((current) => {
+        current[composerDraftKey({ agentId, serverId })] = {
           text: original.text,
           attachments: [...original.attachments],
           replyToMessageId: original.replyToMessageId,
-        },
-      }));
+        };
+      });
     };
     deps.setSubmitting(true);
     try {
@@ -456,7 +454,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
       }
     }
     const backup = deps.editingDraftBackup();
-    const draft = target ? (deps.drafts()[composerDraftKey(target)] ?? EMPTY_DRAFT) : EMPTY_DRAFT;
+    const draft = target ? (deps.drafts[composerDraftKey(target)] ?? EMPTY_DRAFT) : EMPTY_DRAFT;
     const preservedAttachmentIds = new Set([
       ...(backup?.attachments.map((attachment) => attachment.id) ?? []),
       ...deps.editingOriginalAttachmentIds(),
@@ -467,7 +465,9 @@ export function createComposerActions(deps: ComposerActionsDeps) {
       }
     }
     if (target) {
-      deps.setDrafts((current) => ({ ...current, [composerDraftKey(target)]: backup ?? EMPTY_DRAFT }));
+      deps.setDrafts((current) => {
+        current[composerDraftKey(target)] = backup ?? EMPTY_DRAFT;
+      });
       deps.setComposerError(null, target);
     }
     deps.setEditingAgentId(null);
@@ -622,7 +622,10 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     const savedTarget = { agentId, serverId };
     deps.clearConversationError(savedTarget);
     if (submittedSnapshot) deps.clearSubmittedDraft(savedTarget, submittedSnapshot);
-    else deps.setDrafts((current) => ({ ...current, [composerDraftKey(savedTarget)]: EMPTY_DRAFT }));
+    else
+      deps.setDrafts((current) => {
+        current[composerDraftKey(savedTarget)] = EMPTY_DRAFT;
+      });
     if (
       deps.editingAgentId() === agentId &&
       deps.editingServerId() === serverId &&
@@ -762,7 +765,9 @@ export function createComposerActions(deps: ComposerActionsDeps) {
     const removed = deps.pendingSends.remove(target, clientMessageId);
     if (!removed) return;
     discardVoiceRecording(removed);
-    deps.setDrafts((drafts) => ({ ...drafts, [composerDraftKey(target)]: removed.draft }));
+    deps.setDrafts((drafts) => {
+      drafts[composerDraftKey(target)] = removed.draft;
+    });
     deps.setComposerFocusRequest((value) => value + 1);
   }
 
@@ -799,7 +804,7 @@ export function createComposerActions(deps: ComposerActionsDeps) {
       const serverId = deps.voice.serverId;
       if (!agentId || !serverId) return;
       const target = { agentId, serverId };
-      const draft = copyComposerDraft(deps.drafts()[composerDraftKey(target)] ?? EMPTY_DRAFT);
+      const draft = copyComposerDraft(deps.drafts[composerDraftKey(target)] ?? EMPTY_DRAFT);
       const deliveryId =
         deps.editingAgentId() === agentId && deps.editingServerId() === serverId ? deps.editingDeliveryId() : null;
       const activeTarget = deps.currentTarget();

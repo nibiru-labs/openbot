@@ -21,7 +21,7 @@ import {
 } from "@openbot/ui";
 import type { JSX } from "@solidjs/web";
 import { Dynamic } from "@solidjs/web";
-import { createSignal, createUniqueId, For, Show, untrack } from "solid-js";
+import { createMemo, createSignal, createUniqueId, For, Show, untrack } from "solid-js";
 import { avatarHeadColor } from "../../bloub-avatar";
 import type {
   AgentMessageMarkerModel,
@@ -69,6 +69,12 @@ const STATUS_LABELS = {
   unavailable: "chat.marker.status.unavailable",
 } as const satisfies Record<ChatActionMarkerStatus, AppTextKey>;
 
+type AgentProfileById = Map<string, AgentProfile>;
+
+function agentProfilesById(agents: AgentProfile[]): AgentProfileById {
+  return new Map(agents.map((agent) => [agent.id, agent]));
+}
+
 type SingleChatActionMarkerModel = Exclude<
   ChatActionMarkerModel,
   { kind: "agent-message-group" } | { kind: "routine-run-group" }
@@ -90,6 +96,7 @@ function singleMarker(marker: ChatActionMarkerModel): SingleChatActionMarkerMode
 }
 
 export function ChatActionMarker(props: ChatActionMarkerProps) {
+  const agentsById = createMemo(() => agentProfilesById(props.agents));
   /*
    * A single agent message or routine run turns into a group when the next one arrives, and this
    * component stays mounted while it does. An entry after the ones drawn at mount joins later and is
@@ -110,7 +117,7 @@ export function ChatActionMarker(props: ChatActionMarkerProps) {
               {(marker) => (
                 <SingleChatActionMarker
                   marker={marker()}
-                  agents={props.agents}
+                  agentsById={agentsById()}
                   announce={props.announce}
                   onOpenSkill={props.onOpenSkill}
                   routineAvailable={props.routineAvailable}
@@ -128,7 +135,7 @@ export function ChatActionMarker(props: ChatActionMarkerProps) {
           {(group) => (
             <RoutineRunGroupMarker
               group={group()}
-              agents={props.agents}
+              agentsById={agentsById()}
               drawnRunCount={drawnEntryCount}
               routineAvailable={props.routineAvailable}
               onSelectAgent={props.onSelectAgent}
@@ -142,7 +149,7 @@ export function ChatActionMarker(props: ChatActionMarkerProps) {
       {(group) => (
         <AgentMessageGroupMarker
           group={group()}
-          agents={props.agents}
+          agentsById={agentsById()}
           drawnMessageCount={drawnEntryCount}
           onSelectAgent={props.onSelectAgent}
           onToggleAgentMessage={props.onToggleAgentMessage}
@@ -173,7 +180,7 @@ function MarkerGroup(
     listLabel: string;
     entries: readonly { id: string; marker: SingleChatActionMarkerModel }[];
     drawnCount: number;
-    agents: AgentProfile[];
+    agentsById: AgentProfileById;
     routineAvailable?: boolean | undefined;
     onSelectAgent: (agentId: string) => void;
     onOpenRoutine?: ((routine: { routineId: string; name: string }) => void) | undefined;
@@ -229,7 +236,7 @@ function MarkerGroup(
                     <li class="chat-action-history-entry">
                       <SingleChatActionMarker
                         marker={entry().marker}
-                        agents={props.agents}
+                        agentsById={props.agentsById}
                         routineAvailable={props.routineAvailable}
                         onSelectAgent={props.onSelectAgent}
                         onOpenRoutine={props.onOpenRoutine}
@@ -246,7 +253,7 @@ function MarkerGroup(
       </div>
       <span class="sr-only" role="status" aria-live="polite">
         <For each={joinedEntries()} keyed={(entry) => entry.id}>
-          {(entry) => <span>{markerAccessibleLabel(entry().marker, props.agents, t, sourceText)}</span>}
+          {(entry) => <span>{markerAccessibleLabel(entry().marker, props.agentsById, t, sourceText)}</span>}
         </For>
       </span>
     </Marker>
@@ -260,7 +267,7 @@ function MarkerGroup(
 function AgentMessageGroupMarker(
   props: AgentMessageTextProps & {
     group: AgentMessageGroupMarkerModel;
-    agents: AgentProfile[];
+    agentsById: AgentProfileById;
     drawnMessageCount: number;
     onSelectAgent: (agentId: string) => void;
   },
@@ -275,7 +282,7 @@ function AgentMessageGroupMarker(
       ),
     ),
   ];
-  const agents = () => agentIds().map((agentId) => props.agents.find((agent) => agent.id === agentId));
+  const agents = () => agentIds().map((agentId) => props.agentsById.get(agentId));
   const label = () => t("chat.marker.messageGroup", { count: props.group.messages.length });
   const agentsLabel = () => {
     const ids = agentIds();
@@ -289,7 +296,7 @@ function AgentMessageGroupMarker(
       listLabel={t("chat.marker.groupMessages")}
       entries={props.group.messages}
       drawnCount={props.drawnMessageCount}
-      agents={props.agents}
+      agentsById={props.agentsById}
       onSelectAgent={props.onSelectAgent}
       onToggleAgentMessage={props.onToggleAgentMessage}
       agentMessageText={props.agentMessageText}
@@ -332,7 +339,7 @@ function AgentMessageGroupMarker(
  */
 function RoutineRunGroupMarker(props: {
   group: RoutineRunGroupMarkerModel;
-  agents: AgentProfile[];
+  agentsById: AgentProfileById;
   drawnRunCount: number;
   routineAvailable?: boolean | undefined;
   onSelectAgent: (agentId: string) => void;
@@ -358,7 +365,7 @@ function RoutineRunGroupMarker(props: {
       listLabel={t("chat.marker.runGroup.runs")}
       entries={props.group.runs}
       drawnCount={props.drawnRunCount}
-      agents={props.agents}
+      agentsById={props.agentsById}
       routineAvailable={props.routineAvailable}
       onSelectAgent={props.onSelectAgent}
       onOpenRoutine={props.onOpenRoutine}
@@ -405,7 +412,10 @@ function RoutineRunGroupMarker(props: {
 }
 
 function SingleChatActionMarker(
-  props: Omit<ChatActionMarkerProps, "marker"> & { marker: SingleChatActionMarkerModel },
+  props: Omit<ChatActionMarkerProps, "marker" | "agents"> & {
+    marker: SingleChatActionMarkerModel;
+    agentsById: AgentProfileById;
+  },
 ) {
   const { t, format, sourceText } = useText();
   const label = () => markerLabel(props.marker, t, sourceText);
@@ -448,13 +458,15 @@ function SingleChatActionMarker(
       class={`chat-action-marker chat-action-marker-${props.marker.kind}`}
       role={props.announce ? "status" : "group"}
       aria-live={props.announce ? "polite" : "off"}
-      aria-label={markerAccessibleLabel(props.marker, props.agents, t, sourceText)}
+      aria-label={markerAccessibleLabel(props.marker, props.agentsById, t, sourceText)}
     >
       <div class="chat-action-marker-summary">
         <MarkerContent class="chat-action-marker-content">
           <span class="chat-action-marker-label">{label()}</span>
           <Show when={props.marker.kind === "agent-message" && props.marker}>
-            {(marker) => <AgentTarget marker={marker()} agents={props.agents} onSelectAgent={props.onSelectAgent} />}
+            {(marker) => (
+              <AgentTarget marker={marker()} agentsById={props.agentsById} onSelectAgent={props.onSelectAgent} />
+            )}
           </Show>
           <Show when={props.marker.kind === "routine-lifecycle" && props.marker}>
             {(marker) => (
@@ -481,7 +493,7 @@ function SingleChatActionMarker(
           <Show when={props.marker.kind === "channel-routing" && props.marker}>
             {(marker) => (
               <AgentButton
-                agent={props.agents.find((agent) => agent.id === marker().agentId)}
+                agent={props.agentsById.get(marker().agentId)}
                 fallbackId={marker().agentId}
                 onSelectAgent={props.onSelectAgent}
               />
@@ -549,7 +561,7 @@ function SingleChatActionMarker(
             {(marker) => (
               <AgentMessageTextToggle
                 marker={marker()}
-                agents={props.agents}
+                agentsById={props.agentsById}
                 onToggle={() => props.onToggleAgentMessage?.(marker().messageId)}
               />
             )}
@@ -601,12 +613,12 @@ function SingleChatActionMarker(
 /** The chevron that opens the text of an agent message under its marker. */
 function AgentMessageTextToggle(props: {
   marker: AgentMessageMarkerModel;
-  agents: AgentProfile[];
+  agentsById: AgentProfileById;
   onToggle: () => void;
 }) {
   const { t } = useText();
   const expanded = () => props.marker.expanded === true;
-  const name = () => counterpartName(props.marker, props.agents, t);
+  const name = () => counterpartName(props.marker, props.agentsById, t);
   const label = () => {
     if (props.marker.direction === "incoming") {
       return t(expanded() ? "chat.marker.hideMessageFrom" : "chat.marker.showMessageFrom", { name: name() });
@@ -631,16 +643,16 @@ function AgentMessageTextToggle(props: {
   );
 }
 
-function agentName(agents: AgentProfile[], agentId: string | undefined, t: AppTranslate): string {
-  return agents.find((agent) => agent.id === agentId)?.name ?? t("chat.marker.unavailableAgent");
+function agentName(agentsById: AgentProfileById, agentId: string | undefined, t: AppTranslate): string {
+  return (agentId ? agentsById.get(agentId)?.name : undefined) ?? t("chat.marker.unavailableAgent");
 }
 
 /** The agent on the other end: the sender of a message that arrived, or the recipients of one sent. */
-function counterpartName(marker: AgentMessageMarkerModel, agents: AgentProfile[], t: AppTranslate): string {
-  if (marker.direction === "incoming") return agentName(agents, marker.sourceAgentId, t);
+function counterpartName(marker: AgentMessageMarkerModel, agentsById: AgentProfileById, t: AppTranslate): string {
+  if (marker.direction === "incoming") return agentName(agentsById, marker.sourceAgentId, t);
   const recipients = marker.targetDeliveries;
   if (recipients.length !== 1) return t("chat.marker.agentCount", { count: recipients.length });
-  return agentName(agents, recipients[0]?.agentId, t);
+  return agentName(agentsById, recipients[0]?.agentId, t);
 }
 
 function RoutineRunHistory(props: {
@@ -731,15 +743,15 @@ function HostedSiteTarget(props: {
 
 function AgentTarget(props: {
   marker: Extract<ChatActionMarkerModel, { kind: "agent-message" }>;
-  agents: AgentProfile[];
+  agentsById: AgentProfileById;
   onSelectAgent: (agentId: string) => void;
 }) {
   const { t } = useText();
-  const source = () => props.agents.find((agent) => agent.id === props.marker.sourceAgentId);
+  const source = () => props.agentsById.get(props.marker.sourceAgentId);
   const recipients = () => props.marker.targetDeliveries;
   const singleRecipient = () => {
     const delivery = recipients()[0];
-    return delivery ? props.agents.find((agent) => agent.id === delivery.agentId) : undefined;
+    return delivery ? props.agentsById.get(delivery.agentId) : undefined;
   };
   return (
     <Show
@@ -761,17 +773,12 @@ function AgentTarget(props: {
         <DropdownMenu.Root placement="bottom" gutter={8} modal={false}>
           <DropdownMenu.Trigger
             class="chat-action-target chat-action-agent-menu-trigger"
-            style={agentTargetsStyle(
-              recipients().map((delivery) => props.agents.find((agent) => agent.id === delivery.agentId)),
-            )}
+            style={agentTargetsStyle(recipients().map((delivery) => props.agentsById.get(delivery.agentId)))}
           >
             <span class="chat-action-avatar-stack" aria-hidden="true">
               <For each={recipients().slice(0, 3)}>
                 {(delivery) => (
-                  <AgentAvatar
-                    agent={props.agents.find((agent) => agent.id === delivery.agentId)}
-                    class="chat-action-agent-avatar"
-                  />
+                  <AgentAvatar agent={props.agentsById.get(delivery.agentId)} class="chat-action-agent-avatar" />
                 )}
               </For>
             </span>
@@ -780,7 +787,7 @@ function AgentTarget(props: {
           <DropdownMenu.Content class="chat-action-agent-menu">
             <For each={recipients()}>
               {(delivery) => {
-                const agent = () => props.agents.find((candidate) => candidate.id === delivery.agentId);
+                const agent = () => props.agentsById.get(delivery.agentId);
                 return (
                   <DropdownMenu.Item
                     class="chat-action-agent-menu-item"
@@ -989,7 +996,7 @@ function agentTargetsStyle(agents: Array<AgentProfile | undefined>): string | un
 
 function markerAccessibleLabel(
   marker: SingleChatActionMarkerModel,
-  agents: AgentProfile[],
+  agentsById: AgentProfileById,
   t: AppTranslate,
   sourceText: (text: string) => string,
 ): string {
@@ -1009,11 +1016,11 @@ function markerAccessibleLabel(
   if (marker.kind === "skill-lifecycle") return t("chat.marker.accessible.named", { label, name: marker.skillName });
   const unavailable = t("chat.marker.unavailableAgent");
   if (marker.kind === "agent-message") {
-    const agent = counterpartName(marker, agents, t);
+    const agent = counterpartName(marker, agentsById, t);
     return t("chat.marker.accessible.message", { label, agent, status: t(STATUS_LABELS[marker.status]) });
   }
   if (marker.kind === "channel-routing") {
-    const agent = agents.find((candidate) => candidate.id === marker.agentId)?.name ?? unavailable;
+    const agent = agentsById.get(marker.agentId)?.name ?? unavailable;
     return t("chat.marker.accessible.routing", { label, agent });
   }
   if (marker.kind === "hosted-site")

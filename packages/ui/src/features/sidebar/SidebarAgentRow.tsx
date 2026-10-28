@@ -11,6 +11,7 @@
 import { AppWindow, Badge, buttonVariants, Clock3, ContextMenu, Lock } from "@openbot/ui";
 import type { JSX } from "@solidjs/web";
 import { createSignal, Show } from "solid-js";
+import type { VirtualRowProps } from "../../components/VirtualListbox";
 import type { AgentProfile } from "../../data";
 import { useText } from "../../text";
 import { AgentAvatar } from "../agents/AgentAvatar";
@@ -25,7 +26,12 @@ import { useSidebarScope } from "./sidebar-scope";
  * the group holds its members still during a drag while the state moves on. `userHidden` is set by
  * the "Hidden" group.
  */
-export function SidebarAgentRow(rowProps: { agent: AgentProfile; waiting?: boolean; userHidden?: boolean }) {
+export function SidebarAgentRow(rowProps: {
+  agent: AgentProfile;
+  waiting?: boolean;
+  userHidden?: boolean;
+  virtual?: VirtualRowProps | undefined;
+}) {
   const {
     dragOffset,
     draggedChatId,
@@ -168,7 +174,12 @@ export function SidebarAgentRow(rowProps: { agent: AgentProfile; waiting?: boole
           "sidebar-drag-shifting": dragOffset(rowProps.agent.id).y !== 0,
         },
       ]}
-      style={`--sidebar-drag-y: ${dragOffset(rowProps.agent.id).y}px;`}
+      data-index={rowProps.virtual?.["data-index"]}
+      style={{
+        ...rowProps.virtual?.style,
+        "--sidebar-drag-y": `${dragOffset(rowProps.agent.id).y}px`,
+      }}
+      ref={rowProps.virtual?.ref}
       data-chat-id={rowProps.waiting || rowProps.userHidden ? undefined : rowProps.agent.id}
       draggable={draggable() ? "true" : "false"}
       onDragStart={(event: DragEvent & { currentTarget: HTMLElement }) => startChatDragging(event, rowProps.agent.id)}

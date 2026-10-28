@@ -414,3 +414,18 @@ export const FILES_LONG_NAME_ROWS: StoredFileRow[] = [
     name: "autumn-campaign-hero-image-generated-variant-with-warmer-light-and-logo.png",
   },
 ];
+
+/** Five thousand rows for file-list perf checks and the large Storybook story. */
+export const FILES_LARGE_ROWS: StoredFileRow[] = Array.from({ length: 5000 }, (_, index) =>
+  row(
+    {
+      name: `generated-artifact-${String(index).padStart(4, "0")}.txt`,
+      size: 4 * KB + index,
+      hoursAgo: index * 0.05,
+      agentId: index % 2 === 0 ? "chief" : "research",
+      conversationId: index % 3 === 0 ? "c-launch" : "c-sources",
+      source: "generated",
+    },
+    index + 10_000,
+  ),
+);

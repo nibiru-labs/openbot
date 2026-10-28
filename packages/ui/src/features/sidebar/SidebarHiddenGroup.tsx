@@ -6,9 +6,10 @@
  */
 
 import { Button, ChevronDown } from "@openbot/ui";
-import { For, Show } from "solid-js";
+import { Show } from "solid-js";
 import { useText } from "../../text";
 import { SidebarAgentRow } from "./SidebarAgentRow";
+import { SidebarVirtualList } from "./SidebarVirtualList";
 import { useSidebarScope } from "./sidebar-scope";
 import { SIDEBAR_HIDDEN_GROUP_OPEN_ID } from "./sidebar-types";
 
@@ -54,9 +55,13 @@ export function SidebarHiddenGroup() {
           aria-hidden={open() ? undefined : "true"}
           inert={open() ? undefined : true}
         >
-          <div id={BODY_ID} class="sidebar-section-body">
-            <For each={userHiddenAgentList()}>{(agent) => <SidebarAgentRow agent={agent} userHidden />}</For>
-          </div>
+          <SidebarVirtualList
+            bodyId={BODY_ID}
+            items={userHiddenAgentList}
+            getKey={(agent) => agent.id}
+            hidden={() => !open()}
+            renderItem={(agent, _index, virtual) => <SidebarAgentRow agent={agent()} userHidden virtual={virtual} />}
+          />
         </div>
       </section>
     </Show>
