@@ -52,7 +52,11 @@ if (request.op === 'acquire') {
 );
 await writeFile(config, JSON.stringify({ journalDirectory: journal, command: [process.execPath, coordinator, held] }));
 process.env.OPENBOT_FLEET_CAPACITY_CONFIG = config;
-await installFakeAgent(executable, "pi-steer", { FAKE_LOG: join(root, "pi.log"), FAKE_DIR: root });
+await installFakeAgent(executable, "pi-steer", {
+  FAKE_LOG: join(root, "pi.log"),
+  FAKE_DIR: root,
+  FAKE_COMPACT_DELAY: "1",
+});
 
 try {
   const client = requireProviderDriver("deepseek").createClient(
@@ -117,7 +121,16 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   checks.push("Pi holds admission throughout a real adapter turn and steer");
-  await runCauseEffect(client.request("thread/compact/start", { threadId: thread }, (value) => value));
+  const compact = runCauseEffect(client.request("thread/compact/start", { threadId: thread }, (value) => value));
+  const compactDeadline = Date.now() + 10_000;
+  while (!(await readFile(join(root, "pi.log"), "utf8")).includes('"event":"compact"')) {
+    if (Date.now() > compactDeadline) throw new Error("Pi compaction did not start.");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.equal(client.canReleaseProcess?.(), false);
+  assert.ok(client.releaseIdleThreads);
+  await runCauseEffect(client.releaseIdleThreads());
+  await compact;
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
   checks.push("Pi compaction releases admission after the RPC acknowledges completion");
