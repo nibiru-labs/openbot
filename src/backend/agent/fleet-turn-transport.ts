@@ -33,7 +33,7 @@ export class FleetTurnCommandTransport implements FleetTurnTransport {
 
   async release(input: FleetTurnReservation): Promise<void> {
     const response = await this.#call({ op: "release", run_id: input.run_id, token: input.token });
-    if (!("released" in response) || typeof response.released !== "boolean") {
+    if (response.released !== true) {
       throw new Error("Invalid fleet release response.");
     }
   }
@@ -49,8 +49,18 @@ export class FleetTurnCommandTransport implements FleetTurnTransport {
         if (done) return;
         done = true;
         clearTimeout(timer);
+        if (child.exitCode !== null || child.signalCode !== null) {
+          reject(new Error(message));
+          return;
+        }
         child.kill();
-        reject(new Error(message));
+        const escalation = setTimeout(() => child.kill("SIGKILL"), 1_000);
+        const deadline = setTimeout(() => reject(new Error(message)), 2_000);
+        child.once("close", () => {
+          clearTimeout(escalation);
+          clearTimeout(deadline);
+          reject(new Error(message));
+        });
       };
       child.on("error", () => fail("Fleet coordinator could not start."));
       child.stdin.on("error", () => fail("Fleet coordinator input failed."));

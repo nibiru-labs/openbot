@@ -26,6 +26,10 @@ const transport = coordinator(`
 `);
 assert.deepEqual(await transport.acquire(reservation), { admitted: true });
 await transport.release(reservation);
+await assert.rejects(
+  coordinator('process.stdout.write(\'{"ok":true,"released":false}\')').release(reservation),
+  /release response/i,
+);
 checks.push("separate acquire and release requests reach a child process");
 
 await assert.rejects(coordinator("process.stdout.write('{}')").acquire(reservation), /invalid response/i);
@@ -39,6 +43,15 @@ await assert.rejects(
 );
 await assert.rejects(coordinator("process.stdout.write('x'.repeat(70000))").acquire(reservation), /too large/i);
 checks.push("lost and oversized responses fail closed");
+if (process.platform !== "win32") {
+  await assert.rejects(
+    coordinator("process.on('SIGTERM', () => {}); process.stdin.resume(); setInterval(() => {}, 10000)", 200).acquire(
+      reservation,
+    ),
+    /timed out/i,
+  );
+  checks.push("a coordinator ignoring SIGTERM is killed before the timeout rejection");
+}
 
 const directory = join(process.cwd(), ".openbot-build", "fleet-turn-transport-e2e");
 await mkdir(directory, { recursive: true });
