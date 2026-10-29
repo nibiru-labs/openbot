@@ -61,6 +61,20 @@ try {
       agyClient = client;
       agyThread = thread;
     }
+    await assert.rejects(
+      runCauseEffect(
+        client.request(
+          "turn/start",
+          {
+            threadId: thread,
+            input: [{ type: "localImage", path: join(root, "missing.png") }],
+          },
+          (value) => value,
+        ),
+      ),
+    );
+    assert.deepEqual(await readdir(held), []);
+    assert.deepEqual(await readdir(journal), []);
     const result = await runTurn(client, thread, { text: "hello", timeoutMs: 10_000 });
     assert.equal(result.status, "completed");
     const deadline = Date.now() + 10_000;
@@ -77,7 +91,7 @@ try {
       .split("\n")
       .map((line) => JSON.parse(line));
     const backend = provider === "cursor" ? "cursor" : "agy";
-    assert.equal(entries.filter((entry) => entry.op === "acquire" && entry.backend === backend).length, 2);
+    assert.equal(entries.filter((entry) => entry.op === "acquire" && entry.backend === backend).length, 3);
     checks.push(`${provider} holds admission for both a turn and a private usage prompt`);
   }
   assert.ok(agyClient && agyThread);

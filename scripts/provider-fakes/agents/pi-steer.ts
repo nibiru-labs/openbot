@@ -52,6 +52,7 @@ const handlers: Record<string, (command: RpcRecord) => void> = {
     log({ event: "prompt", text: String(command.message), streamingBehavior: String(command.streamingBehavior) });
     if (streaming) return refuse(command, "Agent is already processing.");
     streaming = true;
+    if (command.message === "no-ack") return;
     answer(command, { disposition: "started" });
   },
   steer: (command) => {

@@ -18,11 +18,16 @@ await mkdir(held);
 await writeFile(
   coordinator,
   `
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 const request = JSON.parse(readFileSync(0, 'utf8'));
 const path = join(process.argv[2], request.run_id);
 if (request.op === 'acquire') {
+  if (existsSync(join(process.argv[2], 'deny'))) {
+    writeFileSync(join(process.argv[2], 'denied'), 'observed');
+    process.stdout.write(JSON.stringify({ok:true, admitted:false}));
+    process.exit(0);
+  }
   writeFileSync(path, 'held', {flag:'wx', mode:0o600});
   process.stdout.write(JSON.stringify({ok:true, admitted:true}));
 } else {
@@ -39,6 +44,7 @@ const send = (value) => process.stdout.write(JSON.stringify(value) + '\\n');
 readline.createInterface({input:process.stdin}).on('line', line => {
   const request = JSON.parse(line), threadId = request.params.threadId;
   if (threadId === 'missing') return send({id:request.id, result:{}});
+  if (threadId === 'archived') return send({id:request.id, error:{code:-32600, message:'thread is archived'}});
   if (threadId === 'wrong-before') {
     send({method:'turn/started', params:{threadId, turn:{id:'other'}}});
     return send({id:request.id, result:{turn:{id:'current'}}});
@@ -72,6 +78,12 @@ try {
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
   checks.push("early completion and a stale completion release the correct slot");
+
+  await assert.rejects(Effect.runPromise(client.request("turn/start", { threadId: "archived" }, decodeRecordResponse)));
+  assert.deepEqual(await readdir(held), []);
+  assert.deepEqual(await readdir(journal), []);
+  assert.equal(gate.recoveryRequired, false);
+  checks.push("an explicitly archived thread releases the refused admission");
 
   await Effect.runPromise(client.request("thread/compact/start", { threadId: "compact" }, decodeRecordResponse));
   assert.deepEqual(await readdir(held), []);
@@ -113,6 +125,32 @@ try {
     }
   }
   checks.push("a mismatched start before or after the response stops the provider and retains admission");
+
+  const busyHeld = join(root, "busy-held");
+  const busyJournal = join(root, "busy-journal");
+  await mkdir(busyHeld);
+  await writeFile(join(busyHeld, "deny"), "");
+  const busyGate = await runCauseEffect(
+    FleetTurnGate.open(busyJournal, new FleetTurnCommandTransport(process.execPath, [coordinator, busyHeld])),
+  );
+  const busyClient = new CodexAppServerClient(executable, 5_000, undefined, busyGate);
+  busyClient.start();
+  const waiting = Effect.runPromise(busyClient.request("turn/start", { threadId: "busy" }, decodeRecordResponse));
+  waiting.catch(() => {});
+  try {
+    const deadline = Date.now() + 5_000;
+    while (!(await readdir(busyHeld)).includes("denied")) {
+      if (Date.now() > deadline) throw new Error("The coordinator did not observe the admission wait.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    await Effect.runPromise(busyClient.stop());
+    await assert.rejects(waiting);
+    assert.deepEqual(await readdir(busyJournal), []);
+    assert.equal(busyGate.recoveryRequired, false);
+  } finally {
+    await Effect.runPromise(busyClient.stop());
+  }
+  checks.push("stopping a client cancels its admission wait without leaking a slot");
 
   const directory = join(process.cwd(), ".openbot-build", "app-server-fleet-e2e");
   await mkdir(directory, { recursive: true });

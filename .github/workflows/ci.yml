@@ -476,7 +476,13 @@ jobs:
 
       - name: Run the Pi fleet admission E2E test
         if: ${{ !cancelled() }}
-        run: bun scripts/pi-fleet-e2e.ts
+        run: |
+          bun scripts/pi-fleet-e2e.ts
+          bun scripts/pi-fleet-e2e.ts --timeout
+
+      - name: Run the fleet configuration E2E test
+        if: ${{ !cancelled() }}
+        run: bun scripts/fleet-turn-config-e2e.ts
 
       - name: Run the ACP fleet admission E2E test
         if: ${{ !cancelled() }}
@@ -595,6 +601,7 @@ jobs:
             .openbot-build/app-server-fleet-e2e/
             .openbot-build/pi-fleet-e2e/
             .openbot-build/acp-fleet-e2e/
+            .openbot-build/fleet-turn-config-e2e/
             .openbot-build/zip-attachment-e2e/
             .openbot-build/mp4-attachment-e2e/
             .openbot-build/agent-mcp-tools-e2e/

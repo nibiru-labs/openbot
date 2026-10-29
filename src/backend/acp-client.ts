@@ -432,6 +432,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   readonly #fleet: ReturnType<typeof configuredFleetTurnGate>;
   readonly #fleetBackend: "cursor" | "agy" | null;
   readonly #fleetThreads = new Map<string, string>();
+  readonly #fleetSent = new Set<string>();
   readonly #serverRequests = new PendingServerRequests((request) => this.emit("request", request));
   #initialized: Deferred.Deferred<void, ProviderClientOperationError> | null = null;
   #scope = Scope.makeUnsafe();
@@ -461,9 +462,12 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       }
       void runCauseEffect(this.#fleet.completed(threadId, turnId))
         .then(() => {
-          if (!this.#fleet?.has(threadId)) this.#fleetThreads.delete(threadId);
+          if (!this.#fleet?.has(threadId)) {
+            this.#fleetThreads.delete(threadId);
+            this.#fleetSent.delete(threadId);
+          }
         })
-        .catch(() => this.emit("diagnostic", "ACP fleet reservation requires operator recovery."));
+        .catch(() => this.emit("diagnostic", sourceText("error.provider.fleetUnavailable")));
     });
     this.#flavor = options.flavor;
     this.#transport = new AcpConnection({
@@ -692,17 +696,24 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const backend = this.#fleetBackend;
     if (!gate || !backend) return;
     while (true) {
-      if (!this.running) return yield* providerFailure(new Error("ACP stopped while waiting for fleet admission."));
+      if (!this.running) return yield* providerFailure(new Error(sourceText("error.provider.fleetUnavailable")));
       if (gate.recoveryRequired)
-        return yield* providerFailure(new Error("Fleet admission requires operator recovery."));
-      if (!gate.has(id) && (yield* gate.begin(id, backend, null).pipe(toProviderClientOperationError))) {
+        return yield* providerFailure(new Error(sourceText("error.provider.fleetUnavailable")));
+      if (
+        !gate.has(id) &&
+        (yield* gate
+          .begin(id, backend, null)
+          .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable"))))))
+      ) {
         if (!this.running) {
-          yield* gate.cancelBeforeSend(id).pipe(toProviderClientOperationError);
-          return yield* providerFailure(new Error("ACP stopped while waiting for fleet admission."));
+          yield* gate
+            .cancelBeforeSend(id)
+            .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
+          return yield* providerFailure(new Error(sourceText("error.provider.fleetUnavailable")));
         }
-        gate.sent(id);
         const reservation = gate.reservationId(id);
-        if (!reservation) return yield* providerFailure(new Error("ACP fleet reservation disappeared."));
+        if (!reservation)
+          return yield* providerFailure(new Error(sourceText("error.provider.fleetIdentityUnconfirmed")));
         this.#fleetThreads.set(id, reservation);
         return;
       }
@@ -718,6 +729,21 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #retainFleetTurns(): void {
     for (const id of this.#fleetThreads.keys()) this.#retainFleetTurn(id);
     this.#fleetThreads.clear();
+    this.#fleetSent.clear();
+  }
+
+  #cancelOrRetainFleetTurn(id: string): Effect.Effect<void> {
+    return Effect.gen({ self: this }, function* () {
+      const gate = this.#fleet;
+      const reservation = this.#fleetThreads.get(id);
+      if (!gate || !reservation || !gate.owns(id, reservation)) return;
+      if (this.#fleetSent.has(id)) {
+        this.#retainFleetTurn(id);
+        return;
+      }
+      yield* gate.cancelBeforeSend(id).pipe(Effect.catch(() => Effect.sync(() => this.#retainFleetTurn(id))));
+      if (!gate.has(id)) this.#fleetThreads.delete(id);
+    });
   }
 
   readonly readSessionSettings = Effect.fn("AcpAgentClient.readSessionSettings")(function* (
@@ -858,7 +884,11 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const fleetId = `private-${randomUUID()}`;
     if (this.#fleet) {
       yield* this.#admitFleetTurn(fleetId);
-      yield* this.#fleet.started(fleetId, fleetId).pipe(toProviderClientOperationError);
+      this.#fleet.sent(fleetId);
+      this.#fleetSent.add(fleetId);
+      yield* this.#fleet
+        .started(fleetId, fleetId)
+        .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
     }
     const answer: string[] = [];
     this.#privateAnswer = answer;
@@ -876,8 +906,13 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       Effect.onError(() => Effect.sync(() => this.#retainFleetTurn(fleetId))),
     );
     if (this.#fleet) {
-      yield* this.#fleet.completed(fleetId, fleetId).pipe(toProviderClientOperationError);
-      if (!this.#fleet.has(fleetId)) this.#fleetThreads.delete(fleetId);
+      yield* this.#fleet
+        .completed(fleetId, fleetId)
+        .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
+      if (!this.#fleet.has(fleetId)) {
+        this.#fleetThreads.delete(fleetId);
+        this.#fleetSent.delete(fleetId);
+      }
     }
     return result;
   });
@@ -1049,11 +1084,16 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         const threadId = yield* providerSync(() => requiredString(params, "threadId"));
         if (this.#fleet) yield* this.#admitFleetTurn(threadId);
         const response = yield* this.#startTurnEffect(params).pipe(
-          Effect.onError(() => Effect.sync(() => this.#retainFleetTurn(threadId))),
+          Effect.onError(() => this.#cancelOrRetainFleetTurn(threadId)),
         );
         if (this.#fleet) {
-          yield* this.#fleet.started(threadId, response.turn.id).pipe(toProviderClientOperationError);
-          if (!this.#fleet.has(threadId)) this.#fleetThreads.delete(threadId);
+          yield* this.#fleet
+            .started(threadId, response.turn.id)
+            .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
+          if (!this.#fleet.has(threadId)) {
+            this.#fleetThreads.delete(threadId);
+            this.#fleetSent.delete(threadId);
+          }
         }
         return yield* providerSync(() => decoder(response));
       }
@@ -1852,6 +1892,10 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     };
     thread.activeTurn = turn;
     this.#threads.holdForTurn(thread);
+    if (this.#fleet) {
+      this.#fleet.sent(threadId);
+      this.#fleetSent.add(threadId);
+    }
     this.emit("notification", {
       method: "turn/started",
       params: { threadId: thread.id, turn: { id: turn.id, status: "inProgress" } },

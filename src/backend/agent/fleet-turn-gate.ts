@@ -178,6 +178,18 @@ export class FleetTurnGate {
     });
   }
 
+  /** A provider rejection can release only if no turn or completion was observed. */
+  rejectedBeforeTurn(threadId: string) {
+    return Effect.gen({ self: this }, function* () {
+      const slot = this.#require(threadId);
+      if (slot.state !== "sent" || slot.turnId || slot.earlyCompletions.size > 0)
+        return yield* Effect.fail(
+          new FleetTurnGateFailed({ cause: new Error("A provider turn may already have run.") }),
+        );
+      yield* this.#release(slot);
+    });
+  }
+
   /** A lost provider or uncertain start must retain the coordinator slot. */
   uncertain(threadId: string): void {
     const slot = this.#require(threadId);
