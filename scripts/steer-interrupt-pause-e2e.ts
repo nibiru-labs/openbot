@@ -39,16 +39,19 @@ const { OpenBotDatabase } = await import("../src/backend/openbot-database");
  */
 const FAKE_CODEX = `#!/usr/bin/env node
 const fs = require("node:fs");
+const { randomUUID } = require("node:crypto");
 if (process.argv.includes("--version")) {
   process.stdout.write("codex-cli 0.160.1\\n");
   process.exit(0);
 }
-const log = (entry) => fs.appendFileSync(process.env.OPENBOT_FAKE_CODEX_LOG, JSON.stringify({ ...entry, processId: process.pid }) + "\\n");
+const processInstance = randomUUID();
+const log = (entry) => fs.appendFileSync(process.env.OPENBOT_FAKE_CODEX_LOG, JSON.stringify({ ...entry, processId: process.pid, processInstance }) + "\\n");
+process.on("exit", () => log({ method: "process-exit", params: {} }));
+process.on("SIGTERM", () => process.exit(0));
 const control = () => JSON.parse(fs.readFileSync(process.env.OPENBOT_FAKE_CODEX_CONTROL, "utf8"));
 const config = { config: { mcp_servers: {} }, layers: [{ name: { type: "user", file: "/fake/.codex/config.toml", profile: null }, version: "1", config: { mcp_servers: {} } }] };
 let buffer = "";
 let threads = 0;
-let turns = 0;
 let calls = 0;
 /** threadId -> turnId of the held turn. */
 const held = new Map();
@@ -87,7 +90,7 @@ const answer = (message) => {
     case "thread/items/list": return write({ id: message.id, result: { data: [], nextCursor: null } });
     case "thread/read": return write({ id: message.id, result: { thread: { id: params.threadId, turns: [] } } });
     case "turn/start": {
-      const turnId = "turn-" + (++turns);
+      const turnId = "turn-" + randomUUID();
       const input = JSON.stringify(params.input);
       write({ id: message.id, result: { turn: { id: turnId, status: "inProgress", items: [] } } });
       write({ method: "turn/started", params: { threadId: params.threadId, turn: { id: turnId } } });
@@ -217,6 +220,7 @@ const protocolMethods = new Set([
   "held-ready",
   "tool-call",
   "tool-answer",
+  "process-exit",
 ]);
 
 function protocol(path = logPath) {
@@ -232,6 +236,12 @@ function protocol(path = logPath) {
         Number.isSafeInteger(entry.processId) && Number(entry.processId) > 0,
         `invalid process ID at line ${index + 1}`,
       );
+      const processInstance = getString(entry, "processInstance");
+      assert(
+        processInstance &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(processInstance),
+        `invalid process instance at line ${index + 1}`,
+      );
       assert(entry.params === null || isRecord(entry.params), `invalid params at line ${index + 1}`);
       assert(
         entry.id === undefined || entry.id === null || typeof entry.id === "string" || typeof entry.id === "number",
@@ -246,6 +256,7 @@ function protocol(path = logPath) {
         outcome: method === "tool-answer" ? busyOutcomes(params) : null,
         callId: getString(entry, "id"),
         processId: entry.processId,
+        processInstance,
         spec: params.spec,
       };
     });
@@ -257,7 +268,7 @@ function assertAnswerCardinality(entries: ReturnType<typeof protocol>) {
   const matches = (call: (typeof entries)[number], answer: (typeof entries)[number]) =>
     typeof call.callId === "string" &&
     answer.callId === call.callId &&
-    answer.processId === call.processId &&
+    answer.processInstance === call.processInstance &&
     answer.threadId === call.threadId &&
     answer.turnId === call.turnId;
   for (const call of toolCalls) {
@@ -306,31 +317,42 @@ const status = (deliveryId: string | undefined) =>
   deliveryId ? mailbox.getDelivery(deliveryId)?.delivery.status : null;
 const runningTurn = (agentId: string) =>
   agents.listQueue(agentId).deliveries.find((item) => item.status === "running")?.turnId;
+function heldEvidence(entries: ReturnType<typeof protocol>, threadId: string, turnId: string, text: string) {
+  const turns = entries.filter(
+    (entry) =>
+      entry.method === "turn-ready" &&
+      entry.threadId === threadId &&
+      entry.turnId === turnId &&
+      entry.input.includes(text),
+  );
+  if (turns.length !== 1) return false;
+  const turn = turns[0];
+  return (
+    entries.some(
+      (entry) =>
+        entry.method === "thread-bound" &&
+        entry.processInstance === turn?.processInstance &&
+        entry.threadId === threadId,
+    ) &&
+    entries.some(
+      (entry) =>
+        entry.method === "held-ready" &&
+        entry.processInstance === turn?.processInstance &&
+        entry.threadId === threadId &&
+        entry.turnId === turnId &&
+        entry.input.includes(text),
+    )
+  );
+}
 const waitForHeld = (agentId: string, deliveryId: string, text: string) =>
   waitFor(`${text} to run and be held by the provider`, () => {
     const delivery = mailbox.getDelivery(deliveryId)?.delivery;
     const threadId = store.activeProviderSession(agentId)?.externalSessionId;
-    const binding = calls("thread-bound").findLast((entry) => entry.threadId === threadId);
-    if (binding && typeof binding.processId === "number") {
-      try {
-        process.kill(binding.processId, 0);
-      } catch (error) {
-        if (isRecord(error) && error.code === "ESRCH") return null;
-        throw error;
-      }
-    } else return null;
     return delivery?.status === "running" &&
       agents.listQueue(agentId).deliveries.some((item) => item.id === deliveryId && item.status === "running") &&
       delivery.turnId &&
       threadId &&
-      binding &&
-      calls("held-ready").some(
-        (entry) =>
-          entry.processId === binding.processId &&
-          entry.threadId === threadId &&
-          entry.turnId === delivery.turnId &&
-          entry.input.includes(text),
-      )
+      heldEvidence(protocol(), threadId, delivery.turnId, text)
       ? delivery.turnId
       : null;
   });
@@ -439,7 +461,10 @@ try {
     assert(turn);
     assert(agents.listQueue(senderId).deliveries.some((item) => item.id === deliveryId && item.turnId === turn.turnId));
     const toolCalls = calls("tool-call").filter(
-      (entry) => entry.processId === turn.processId && entry.threadId === turn.threadId && entry.turnId === turn.turnId,
+      (entry) =>
+        entry.processInstance === turn.processInstance &&
+        entry.threadId === turn.threadId &&
+        entry.turnId === turn.turnId,
     );
     assert.equal(toolCalls.length, specs.length, `unexpected call count for ${marker}`);
     return specs.map((spec) => {
@@ -449,7 +474,7 @@ try {
       assert(call?.callId);
       const answers = calls("tool-answer").filter(
         (entry) =>
-          entry.processId === call.processId &&
+          entry.processInstance === call.processInstance &&
           entry.threadId === call.threadId &&
           entry.turnId === call.turnId &&
           entry.callId === call.callId,
@@ -644,19 +669,13 @@ try {
 } finally {
   try {
     await runCauseEffect(agents.stop());
-    const processIds = [...new Set(protocol().map((entry) => entry.processId))];
-    await waitFor("provider processes to exit", () =>
-      processIds.every((pid) => {
-        assert(typeof pid === "number", "invalid provider process ID");
-        try {
-          process.kill(pid, 0);
-          return false;
-        } catch (error) {
-          if (isRecord(error) && error.code === "ESRCH") return true;
-          throw error;
-        }
-      }),
-    );
+    await waitFor("provider processes to exit", () => {
+      const entries = protocol();
+      const instances = new Set(entries.map((entry) => entry.processInstance));
+      return [...instances].every((instance) =>
+        entries.some((entry) => entry.method === "process-exit" && entry.processInstance === instance),
+      );
+    });
     const entries = protocol();
     assertAnswerCardinality(entries);
     const answer = entries.find((entry) => entry.method === "tool-answer");
@@ -669,12 +688,53 @@ try {
     writeFileSync(invalidLog, "{invalid\n");
     assert.throws(() => protocol(invalidLog));
     for (const method of [undefined, null, 42, "", "turn/interupt"]) {
-      writeFileSync(invalidLog, `${JSON.stringify({ method, processId: 1, params: {} })}\n`);
+      writeFileSync(
+        invalidLog,
+        `${JSON.stringify({ method, processId: 1, processInstance: "00000000-0000-4000-8000-000000000001", params: {} })}\n`,
+      );
       assert.throws(
         () => assert.equal(protocol(invalidLog).filter((entry) => entry.method === "turn/interrupt").length, 0),
         /invalid synthetic log method/,
       );
     }
+    const staleFixture = join(root, "stale-protocol.jsonl");
+    const current = "00000000-0000-4000-8000-000000000001";
+    const stale = "00000000-0000-4000-8000-000000000002";
+    const record = (method: string, processInstance: string) => ({
+      method,
+      processId: processInstance === current ? 1 : 2,
+      processInstance,
+      params: { threadId: "thread-1", turnId: "turn-1", input: "HOLD" },
+    });
+    writeFileSync(
+      staleFixture,
+      `${[
+        record("thread-bound", current),
+        record("turn-ready", current),
+        record("thread-bound", stale),
+        record("held-ready", stale),
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n")}\n`,
+    );
+    const fixture = protocol(staleFixture);
+    const oldBinding = fixture.findLast((entry) => entry.method === "thread-bound" && entry.threadId === "thread-1");
+    assert(
+      fixture.some(
+        (entry) =>
+          entry.method === "held-ready" &&
+          entry.processId === oldBinding?.processId &&
+          entry.threadId === "thread-1" &&
+          entry.turnId === "turn-1" &&
+          entry.input.includes("HOLD"),
+      ),
+    );
+    assert.equal(heldEvidence(fixture, "thread-1", "turn-1", "HOLD"), false);
+    writeFileSync(staleFixture, `${JSON.stringify(record("held-ready", current))}\n`, { flag: "a" });
+    assert.equal(heldEvidence(protocol(staleFixture), "thread-1", "turn-1", "HOLD"), true);
+    writeFileSync(invalidLog, `${JSON.stringify({ method: "held-ready", processId: 1, params: {} })}\n`);
+    assert.throws(() => protocol(invalidLog), /invalid process instance/);
+    report.checks.push("Stale held evidence from another fake process is rejected when thread and turn IDs match");
     assert.throws(() => protocol(join(root, "missing-protocol.jsonl")));
     if (!report.error) report.passed = true;
   } catch (error) {
