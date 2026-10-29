@@ -49,7 +49,8 @@ const handlers: Record<string, (command: RpcRecord) => void> = {
   get_session_stats: (command) => refuse(command, "No stats."),
   compact: (command) => {
     log({ event: "compact" });
-    answer(command);
+    if (process.env.FAKE_COMPACT_DELAY) setTimeout(() => answer(command), 1000);
+    else answer(command);
   },
   prompt: (command) => {
     log({ event: "prompt", text: String(command.message), streamingBehavior: String(command.streamingBehavior) });
