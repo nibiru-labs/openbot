@@ -13,7 +13,6 @@ import { mock } from "bun:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, open, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { strFromU8, unzipSync, Zip, ZipPassThrough } from "fflate";
 import { runCauseEffect } from "../src/backend/effect-boundary";
@@ -58,7 +57,11 @@ let writeLimit = Number.POSITIVE_INFINITY;
 let failSourceClose = false;
 let releaseWrite: (() => void) | undefined;
 let writeStarted: (() => void) | undefined;
+let sourceCloseFailed: (() => void) | undefined;
+let failWrite = false;
 let archiveClosed = false;
+let gatedWritePending = false;
+let closedDuringWrite = false;
 
 mock.module("node:fs/promises", () => ({
   ...realFs,
@@ -71,26 +74,39 @@ mock.module("node:fs/promises", () => ({
         length?: number,
         position?: number | null,
       ): Promise<{ bytesWritten: number; buffer: Uint8Array }> => {
-        if (failSourceClose && !releaseWrite) {
-          await new Promise<void>((resolve) => {
-            releaseWrite = resolve;
-            writeStarted?.();
-          });
+        const gated = (failSourceClose || failWrite) && args[1] === "w" && !releaseWrite;
+        if (gated) gatedWritePending = true;
+        try {
+          if (gated) {
+            await new Promise<void>((resolve) => {
+              releaseWrite = resolve;
+              writeStarted?.();
+            });
+          }
+          if (failWrite) throw new Error("Synthetic asynchronous write failure.");
+          const start = offset ?? 0;
+          const count = Math.min(length ?? buffer.length - start, writeLimit);
+          if (count <= 0) return { bytesWritten: 0, buffer };
+          const result = await handle.write(buffer, start, count, position ?? null);
+          return { bytesWritten: count, buffer: result.buffer };
+        } finally {
+          if (gated) gatedWritePending = false;
         }
-        const start = offset ?? 0;
-        const count = Math.min(length ?? buffer.length - start, writeLimit);
-        if (count <= 0) return { bytesWritten: 0, buffer };
-        const result = await handle.write(buffer, start, count, position ?? null);
-        return { bytesWritten: count, buffer: result.buffer };
       },
       read: (buffer: Uint8Array, offset?: number, length?: number, position?: number | null) =>
         failSourceClose && args[1] === "r"
           ? Promise.resolve({ bytesRead: 0, buffer })
           : handle.read(buffer, offset, length, position),
       close: async () => {
-        if (failSourceClose && args[1] === "w") archiveClosed = true;
+        if ((failSourceClose || failWrite) && args[1] === "w") {
+          archiveClosed = true;
+          if (gatedWritePending) closedDuringWrite = true;
+        }
         await handle.close();
-        if (failSourceClose && args[1] === "r") throw new Error("Synthetic source close failure.");
+        if (failSourceClose && args[1] === "r") {
+          sourceCloseFailed?.();
+          throw new Error("Synthetic source close failure.");
+        }
       },
     };
   },
@@ -104,9 +120,10 @@ const MANIFEST = '{"schemaVersion":4,"synthetic":true}\n';
 
 let temporaryRoot: string | undefined;
 try {
+  await mkdir(OUT, { recursive: true });
   const root = await step(
     "create a temporary profile",
-    () => mkdtemp(join(tmpdir(), "openbot-backup-archive-e2e-")),
+    () => mkdtemp(join(OUT, "fixture-")),
     () => ({ created: true }),
   );
   temporaryRoot = root;
@@ -120,17 +137,52 @@ try {
     const started = new Promise<void>((resolve) => {
       writeStarted = resolve;
     });
+    const sourceFailed = new Promise<void>((resolve) => {
+      sourceCloseFailed = resolve;
+    });
     const result = runCauseEffect(createBackupArchive("linux", folder, join(root, "open-failure.zip")));
     const rejected = assert.rejects(result, /Synthetic source close failure/);
-    await started;
-    await Promise.resolve();
-    assert.equal(archiveClosed, false, "The output closed before the pending write finished.");
-    assert.ok(releaseWrite);
-    releaseWrite();
-    await rejected;
-    assert.equal(archiveClosed, true);
-    failSourceClose = false;
-    return { failed: true, closedAfterWrite: true };
+    try {
+      await started;
+      await sourceFailed;
+      // Run the close failure's promise continuations before checking the still-blocked write.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(archiveClosed, false, "The output closed before the pending write finished.");
+    } finally {
+      releaseWrite?.();
+      await rejected;
+      failSourceClose = false;
+      releaseWrite = undefined;
+      writeStarted = undefined;
+      sourceCloseFailed = undefined;
+    }
+    assert.equal(archiveClosed, true, "The output did not close after the pending write finished.");
+    assert.equal(closedDuringWrite, false, "The output closed while the write was pending.");
+    return { sourceCloseFailed: true, closedAfterWrite: true };
+  });
+
+  await step("the archive closes after an asynchronous write fails", async () => {
+    failWrite = true;
+    archiveClosed = false;
+    closedDuringWrite = false;
+    const started = new Promise<void>((resolve) => {
+      writeStarted = resolve;
+    });
+    const result = runCauseEffect(createBackupArchive("linux", folder, join(root, "write-failure.zip")));
+    const rejected = assert.rejects(result, /Synthetic asynchronous write failure/);
+    try {
+      await started;
+      assert.equal(archiveClosed, false, "The output closed while the write was pending.");
+    } finally {
+      releaseWrite?.();
+      await rejected;
+      failWrite = false;
+      releaseWrite = undefined;
+      writeStarted = undefined;
+    }
+    assert.equal(archiveClosed, true, "The output did not close after the write failed.");
+    assert.equal(closedDuringWrite, false, "The output closed before the write failed.");
+    return { writeFailed: true, closedAfterWrite: true };
   });
 
   await step(
