@@ -312,6 +312,16 @@ export class ContextCompaction {
         // A sent request may still start later; retain its lane until its outcome is known.
         if (client.cancelPendingCompaction?.(threadId) === false) {
           budget.deadlineExpired = true;
+          const grace = setTimeout(
+            () => {
+              if (budget.phase !== "requested" || !budget.deadlineExpired) return;
+              // No start event arrived: stop the uncertain provider before releasing the lane.
+              Effect.runFork(client.stop().pipe(Effect.ensuring(Effect.sync(() => this.#abandon(agentId, threadId)))));
+            },
+            Math.max(this.#graceMs, 5_000),
+          );
+          grace.unref?.();
+          this.#timers.set(threadId, grace);
           return;
         }
         this.#abandon(agentId, threadId);
