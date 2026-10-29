@@ -481,6 +481,7 @@ jobs:
           bun scripts/pi-fleet-e2e.ts --timeout
           bun scripts/pi-fleet-e2e.ts --interrupt
           bun scripts/pi-fleet-e2e.ts --idle
+          bun scripts/pi-fleet-e2e.ts --stop
 
       - name: Run the fleet configuration E2E test
         if: ${{ !cancelled() }}
@@ -489,6 +490,10 @@ jobs:
       - name: Run the ACP fleet admission E2E test
         if: ${{ !cancelled() }}
         run: bun scripts/acp-fleet-e2e.ts
+
+      - name: Run the Codex compaction fleet deadline E2E test
+        if: ${{ !cancelled() }}
+        run: bun scripts/codex-compaction-queue-e2e.ts --fleet-late
 
       - name: Run the ZIP attachment E2E test
         if: ${{ !cancelled() }}
@@ -604,6 +609,7 @@ jobs:
             .openbot-build/pi-fleet-e2e/
             .openbot-build/acp-fleet-e2e/
             .openbot-build/fleet-turn-config-e2e/
+            .openbot-build/codex-compaction-fleet-late-e2e/
             .openbot-build/zip-attachment-e2e/
             .openbot-build/mp4-attachment-e2e/
             .openbot-build/agent-mcp-tools-e2e/

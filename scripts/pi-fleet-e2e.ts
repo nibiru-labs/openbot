@@ -21,6 +21,7 @@ const checks: string[] = [];
 const timeoutScenario = process.argv.includes("--timeout");
 const interruptScenario = process.argv.includes("--interrupt");
 const idleScenario = process.argv.includes("--idle");
+const stopScenario = process.argv.includes("--stop");
 await mkdir(held);
 await writeFile(
   coordinator,
@@ -120,7 +121,31 @@ try {
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
   checks.push("Pi compaction releases admission after the RPC acknowledges completion");
-  if (idleScenario) {
+  if (stopScenario) {
+    await writeFile(join(held, "deny"), "");
+    const waiting = runCauseEffect(
+      client.request(
+        "turn/start",
+        {
+          threadId: thread,
+          input: [{ type: "text", text: "stopped-before-send", text_elements: [] }],
+        },
+        (value) => value,
+      ),
+    );
+    waiting.catch(() => {});
+    const deadline = Date.now() + 10_000;
+    while (!(await readdir(held)).includes("denied")) {
+      if (Date.now() > deadline) throw new Error("Pi admission did not wait.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    await runCauseEffect(client.request("turn/interrupt", { threadId: thread }, (value) => value));
+    await assert.rejects(waiting);
+    assert.deepEqual(await readdir(journal), []);
+    const log = await readFile(join(root, "pi.log"), "utf8");
+    assert.equal(log.includes("stopped-before-send"), false);
+    checks.push("stopping a waiting Pi turn prevents its prompt from being sent");
+  } else if (idleScenario) {
     await writeFile(join(held, "deny"), "");
     const next = runCauseEffect(
       client.request(
@@ -235,13 +260,15 @@ try {
     checks.push("a lost admission response retains its journal and never sends the Pi prompt");
   }
   await mkdir(reportDirectory, { recursive: true });
-  const report = idleScenario
-    ? "idle-report.json"
-    : interruptScenario
-      ? "interrupt-report.json"
-      : timeoutScenario
-        ? "timeout-report.json"
-        : "report.json";
+  const report = stopScenario
+    ? "stop-report.json"
+    : idleScenario
+      ? "idle-report.json"
+      : interruptScenario
+        ? "interrupt-report.json"
+        : timeoutScenario
+          ? "timeout-report.json"
+          : "report.json";
   await writeFile(join(reportDirectory, report), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   process.stdout.write(`PASS ${join(reportDirectory, report)}\n`);
 } catch (error) {

@@ -16,6 +16,7 @@ interface ThreadContextBudget {
   /** `stopping`: the deadline asked Codex to stop the compaction turn, and the queue waits for its end. */
   phase: "idle" | "requested" | "running" | "stopping";
   compactionTurnId: string | null;
+  deadlineExpired?: boolean;
   lastCompactedTokens: number | null;
 }
 
@@ -309,7 +310,10 @@ export class ContextCompaction {
       if (budget.phase === "running" && turnId) this.#stop(agentId, threadId, client, turnId);
       else {
         // A sent request may still start later; retain its lane until its outcome is known.
-        if (client.cancelPendingCompaction?.(threadId) === false) return;
+        if (client.cancelPendingCompaction?.(threadId) === false) {
+          budget.deadlineExpired = true;
+          return;
+        }
         this.#abandon(agentId, threadId);
       }
     }, this.#timeoutMs);
@@ -359,6 +363,10 @@ export class ContextCompaction {
     if (budget?.phase !== "requested" || this.#compacting.get(threadId)?.agentId !== agentId) return false;
     budget.phase = "running";
     budget.compactionTurnId = turnId;
+    if (budget.deadlineExpired) {
+      const client = this.#compacting.get(threadId)?.client;
+      if (client) this.#stop(agentId, threadId, client, turnId);
+    }
     return true;
   }
 
@@ -544,6 +552,7 @@ export class ContextCompaction {
       budget.pending = false;
       budget.phase = "idle";
       budget.compactionTurnId = null;
+      delete budget.deadlineExpired;
     }
     if (this.#compacting.get(threadId)?.agentId === agentId) this.#compacting.delete(threadId);
   }
