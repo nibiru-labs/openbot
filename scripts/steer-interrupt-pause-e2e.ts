@@ -8,6 +8,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { AGENT_PROVIDERS, type BusyMessageMode, DEFAULT_BUSY_MESSAGE_MODE } from "@openbot/contracts/ipc";
+import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import type { AgentBrowserHost } from "../src/backend/agent/turn-lifecycle";
 import { getString, isRecord } from "../src/backend/protocol";
@@ -420,7 +421,8 @@ try {
   assert.equal(sameSender.stopped, 1);
   report.checks.push("Two overlapping interrupts from one sender stop the turn once; the second waits on the cooldown");
 
-  // Two senders at once, with one interrupt left in the window: the limit lets one stop through.
+  // Two senders at once, with one interrupt left in the window. The second call can see the
+  // target's stopping turn as idle before it reaches the limit check; that queued result has no reason.
   const second = await runCauseEffect(
     agents.createAgent({
       name: "Second",
@@ -442,25 +444,38 @@ try {
   await waitFor("the new senders' first turns to end", () =>
     [second.id, third.id].every((id) => agents.listQueue(id).deliveries.every((item) => item.status === "completed")),
   );
-  await waitFor("the held turn of the target", () => runningTurn(target.id));
+  const heldBeforeLimit = await waitFor("the held delivery of the target", () =>
+    agents.listQueue(target.id).deliveries.find((item) => item.status === "running"),
+  );
   const secondText = "HOLD-LIMIT-SECOND";
   const thirdText = "HOLD-LIMIT-THIRD";
   const limited = await overlapping([second.id, third.id], [[interruptSpec(secondText)], [interruptSpec(thirdText)]]);
   assert.deepEqual(limited.outcomes.map((outcome) => outcome.result).sort(), ["interrupted", "queued"]);
-  const refused = limited.outcomes.find((outcome) => outcome.result === "queued");
-  assert(refused?.reason, "the limit refusal gives no reason");
+  const queued = limited.outcomes.find((outcome) => outcome.result === "queued");
+  if (queued?.reason) assert.equal(queued.reason, sourceText("error.backend.agentControlLimit"));
   assert.equal(limited.stopped, 1);
-  assert.equal(status(holdFour), "interrupted");
-  const deliveries = [secondText, thirdText].map((text) =>
-    agents.listQueue(target.id).deliveries.find((item) => item.text === text),
+  await waitFor("the held delivery to be interrupted", () => status(heldBeforeLimit.id) === "interrupted");
+  const readDeliveries = () =>
+    [secondText, thirdText].map((text) => agents.listQueue(target.id).deliveries.find((item) => item.text === text));
+  await waitFor("one limit message to start", () =>
+    readDeliveries().some((delivery) => delivery?.status === "running" || delivery?.status === "completed"),
   );
+  const deliveries = readDeliveries();
   assert(deliveries.every(Boolean), "one of the overlapping messages was not queued");
   assert.equal(deliveries.filter((delivery) => delivery?.status === "queued").length, 1);
   assert.equal(
     deliveries.filter((delivery) => delivery?.status === "running" || delivery?.status === "completed").length,
     1,
   );
-  report.checks.push("Two overlapping interrupts from two senders stop the turn once; the limit holds for the second");
+  const waiting = deliveries.find((delivery) => delivery?.status === "queued");
+  const started = deliveries.find((delivery) => delivery?.status === "running" || delivery?.status === "completed");
+  assert.equal(calls("turn/start").filter((entry) => entry.input.includes(started?.text ?? "")).length, 1);
+  assert.equal(calls("turn/start").filter((entry) => entry.input.includes(waiting?.text ?? "")).length, 0);
+  report.checks.push(
+    queued?.reason
+      ? "Two senders stop one turn; the capacity limit queues the other message"
+      : "Two senders stop one turn; the other message stays queued while the target is stopping",
+  );
 
   report.passed = true;
 } catch (error) {
