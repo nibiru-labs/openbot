@@ -480,6 +480,10 @@ jobs:
           bun scripts/pi-fleet-e2e.ts
           bun scripts/pi-fleet-e2e.ts --timeout
 
+      - name: Run the fleet configuration E2E test
+        if: ${{ !cancelled() }}
+        run: bun scripts/fleet-turn-config-e2e.ts
+
       - name: Run the ZIP attachment E2E test
         if: ${{ !cancelled() }}
         run: bun run test:zip-attachments
@@ -592,6 +596,7 @@ jobs:
             .openbot-build/fleet-turn-transport-e2e/
             .openbot-build/app-server-fleet-e2e/
             .openbot-build/pi-fleet-e2e/
+            .openbot-build/fleet-turn-config-e2e/
             .openbot-build/zip-attachment-e2e/
             .openbot-build/mp4-attachment-e2e/
             .openbot-build/agent-mcp-tools-e2e/
