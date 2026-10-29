@@ -33,6 +33,10 @@ if (request.op === 'acquire') {
   process.stdout.write(JSON.stringify({ok:true, admitted:true}));
 } else {
   unlinkSync(path);
+  if (existsSync(join(process.argv[2], 'delay-release'))) {
+    writeFileSync(join(process.argv[2], 'release-started'), '');
+    while (!existsSync(join(process.argv[2], 'release-continue'))) await new Promise(resolve => setTimeout(resolve, 20));
+  }
   process.stdout.write(JSON.stringify({ok:true, released:true}));
 }
 `,
@@ -41,7 +45,7 @@ await writeFile(
   executable,
   `#!/usr/bin/env node
 const readline = require('node:readline');
-const { appendFileSync } = require('node:fs');
+const { appendFileSync, existsSync } = require('node:fs');
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\\n');
 readline.createInterface({input:process.stdin}).on('line', line => {
   const request = JSON.parse(line), threadId = request.params.threadId;
@@ -60,6 +64,16 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     send({method:'turn/started', params:{threadId, turn:{id:'compact-turn'}}});
     send({method:'turn/completed', params:{threadId, turn:{id:'compact-turn'}}});
     return send({id:request.id, result:{}});
+  }
+  if (threadId === 'completion-stop') {
+    send({id:request.id, result:{turn:{id:'current'}}});
+    const timer = setInterval(() => {
+      if (!existsSync(${JSON.stringify(join(root, "finish-completion"))})) return;
+      clearInterval(timer);
+      send({method:'turn/started', params:{threadId, turn:{id:'current'}}});
+      send({method:'turn/completed', params:{threadId, turn:{id:'current'}}});
+    }, 20);
+    return;
   }
   if (threadId === 'early') {
     send({method:'turn/started', params:{threadId, turn:{id:'current'}}});
@@ -81,6 +95,33 @@ try {
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
   checks.push("early completion and a stale completion release the correct slot");
+
+  const stopHeld = join(root, "stop-held");
+  const stopJournal = join(root, "stop-journal");
+  await mkdir(stopHeld);
+  await writeFile(join(stopHeld, "delay-release"), "");
+  const stopGate = await runCauseEffect(
+    FleetTurnGate.open(stopJournal, new FleetTurnCommandTransport(process.execPath, [coordinator, stopHeld])),
+  );
+  const stopClient = new CodexAppServerClient(executable, 5_000, undefined, stopGate);
+  stopClient.start();
+  await Effect.runPromise(stopClient.request("turn/start", { threadId: "completion-stop" }, decodeRecordResponse));
+  await writeFile(join(root, "finish-completion"), "");
+  const releaseDeadline = Date.now() + 10_000;
+  while (!(await readdir(stopHeld)).includes("release-started")) {
+    if (Date.now() > releaseDeadline) throw new Error("Codex release did not start.");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  let stopped = false;
+  const stopping = Effect.runPromise(stopClient.stop()).then(() => {
+    stopped = true;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(stopped, false, "shutdown must wait for the blocked release");
+  await writeFile(join(stopHeld, "release-continue"), "");
+  await stopping;
+  assert.deepEqual(await readdir(stopJournal), []);
+  checks.push("Codex shutdown waits for its completed turn release");
 
   await assert.rejects(Effect.runPromise(client.request("turn/start", { threadId: "archived" }, decodeRecordResponse)));
   assert.deepEqual(await readdir(held), []);
