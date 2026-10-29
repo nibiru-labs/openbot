@@ -476,7 +476,9 @@ jobs:
 
       - name: Run the Pi fleet admission E2E test
         if: ${{ !cancelled() }}
-        run: bun scripts/pi-fleet-e2e.ts
+        run: |
+          bun scripts/pi-fleet-e2e.ts
+          bun scripts/pi-fleet-e2e.ts --timeout
 
       - name: Run the ZIP attachment E2E test
         if: ${{ !cancelled() }}

@@ -17,6 +17,7 @@ const executable = join(root, "bin", "pi");
 const reportDirectory = resolve(import.meta.dirname, "../.openbot-build/pi-fleet-e2e");
 const clients: AgentClient[] = [];
 const checks: string[] = [];
+const timeoutScenario = process.argv.includes("--timeout");
 await mkdir(held);
 await writeFile(
   coordinator,
@@ -49,6 +50,21 @@ try {
   clients.push(client);
   client.start();
   const thread = await startThread(client, { cwd: root });
+  await assert.rejects(
+    runCauseEffect(
+      client.request(
+        "turn/start",
+        {
+          threadId: thread,
+          input: [{ type: "localImage", path: join(root, "missing.png") }],
+        },
+        (value) => value,
+      ),
+    ),
+  );
+  assert.deepEqual(await readdir(held), []);
+  assert.deepEqual(await readdir(journal), []);
+  checks.push("a preparation failure releases admission before Pi receives a prompt");
   let completed: (() => void) | undefined;
   const done = new Promise<void>((finish) => {
     completed = finish;
@@ -92,26 +108,53 @@ try {
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
   checks.push("Pi compaction releases admission after the RPC acknowledges completion");
-  await writeFile(join(held, "lose-response"), "");
-  await assert.rejects(
-    runCauseEffect(
+  if (timeoutScenario) {
+    const timedOut = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Pi acknowledgement timeout was not observed.")), 10_000);
+      client.on("notification", (event) => {
+        if (event.method === "turn/completed" && getString(event.params, "threadId") === thread) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+    await runCauseEffect(
       client.request(
         "turn/start",
         {
           threadId: thread,
-          input: [{ type: "text", text: "not-sent", text_elements: [] }],
+          input: [{ type: "text", text: "no-ack", text_elements: [] }],
         },
         (value) => value,
       ),
-    ),
-  );
-  assert.equal((await readdir(journal)).length, 1);
-  const log = await readFile(join(root, "pi.log"), "utf8");
-  assert.equal(log.includes("not-sent"), false);
-  checks.push("a lost admission response retains its journal and never sends the Pi prompt");
+    );
+    await timedOut;
+    assert.equal((await readdir(held)).length, 1);
+    assert.equal((await readdir(journal)).length, 1);
+    checks.push("a timed-out Pi acknowledgement retains admission while the provider may still run");
+  } else {
+    await writeFile(join(held, "lose-response"), "");
+    await assert.rejects(
+      runCauseEffect(
+        client.request(
+          "turn/start",
+          {
+            threadId: thread,
+            input: [{ type: "text", text: "not-sent", text_elements: [] }],
+          },
+          (value) => value,
+        ),
+      ),
+    );
+    assert.equal((await readdir(journal)).length, 1);
+    const log = await readFile(join(root, "pi.log"), "utf8");
+    assert.equal(log.includes("not-sent"), false);
+    checks.push("a lost admission response retains its journal and never sends the Pi prompt");
+  }
   await mkdir(reportDirectory, { recursive: true });
-  await writeFile(join(reportDirectory, "report.json"), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
-  process.stdout.write(`PASS ${join(reportDirectory, "report.json")}\n`);
+  const report = timeoutScenario ? "timeout-report.json" : "report.json";
+  await writeFile(join(reportDirectory, report), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
+  process.stdout.write(`PASS ${join(reportDirectory, report)}\n`);
 } catch (error) {
   await mkdir(reportDirectory, { recursive: true });
   await writeFile(
