@@ -44,6 +44,10 @@ const handlers: Record<string, (command: RpcRecord) => void> = {
   get_state: (command) => answer(command, { sessionFile, isStreaming: streaming, isCompacting: false }),
   switch_session: (command) => answer(command, { cancelled: false }),
   get_session_stats: (command) => refuse(command, "No stats."),
+  compact: (command) => {
+    log({ event: "compact" });
+    answer(command);
+  },
   prompt: (command) => {
     log({ event: "prompt", text: String(command.message), streamingBehavior: String(command.streamingBehavior) });
     if (streaming) return refuse(command, "Agent is already processing.");
