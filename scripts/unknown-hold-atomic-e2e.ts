@@ -65,4 +65,5 @@ const after = new MailboxStore(root, join(root, "shared"), db);
 await runCauseEffect(after.initialize());
 assert.equal(after.getDelivery(id)?.delivery.status, "queued");
 await runCauseEffect(gate.dispose());
+db.close();
 await writeFile(join(root, "report.json"), JSON.stringify({ rollback: true, commit: true, restart: true }, null, 2));

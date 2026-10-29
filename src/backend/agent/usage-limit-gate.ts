@@ -442,12 +442,14 @@ export class UsageLimitGate {
     // A reset already past would release the queue at once into the same refusal.
     const future = (value: number | null) => (value !== null && value * 1_000 > Date.now() ? value : null);
     limit.resetsAt = future(resetsAt) ?? future(limit.resetsAt);
-    this.#limits.set(key, limit);
-    if (family !== undefined) this.#arm(key, limit);
-    else if (!limit.unknownPhase) {
+    if (family !== undefined) {
+      this.#limits.set(key, limit);
+      this.#arm(key, limit);
+    } else if (!limit.unknownPhase) {
       limit.unknownPhase = "waiting";
       limit.deadline = (this.#timers.now?.() ?? Date.now()) + UNKNOWN_PROBE_DELAY_MS;
       this.#persist(limit);
+      this.#limits.set(key, limit);
       this.#armUnknown(key, limit);
     }
     yield* this.#hooks.held(this.#heldAgents(limit).map((held) => held.id));
