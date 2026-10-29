@@ -178,7 +178,7 @@ const answer = (request) => {
     case "initialize": return reply({});
     case "account/read": return reply({ account: { type: "chatgpt", email: "codex@example.com" } });
     case "account/rateLimits/read": return reply({ rateLimits: { limitId: "codex", primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: Math.floor(Date.now() / 1000) + 3600 }, secondary: null }, rateLimitsByLimitId: null });
-    case "model/list": return reply({ data: [{ model: ${JSON.stringify(CODEX_MODEL)}, displayName: "Codex" }] });
+    case "model/list": return reply({ data: [{ model: ${JSON.stringify(CODEX_MODEL)}, displayName: "Codex" }, { model: "e2e-second-model", displayName: "Second" }] });
     case "plugin/list": return reply({ marketplaces: [] });
     case "config/read": return reply(config);
     case "config/batchWrite": return reply({});
@@ -201,7 +201,7 @@ const answer = (request) => {
       const input = JSON.stringify(params.input);
       const current = input.split("--- current message ---").at(-1);
       turn.input = current;
-      const limited = current.includes("usage-");
+      const limited = current.includes("usage-") || input.includes("routing-scope-");
       const caseId = /case:([a-z-]+)/.exec(current)?.[1] ?? "no-case";
       fs.appendFileSync(${JSON.stringify(codexLog)}, JSON.stringify({ model: params.model, threadId: thread.id, turnId: turn.id, input, limited }) + "\\n");
       reply({ turn });
@@ -210,13 +210,14 @@ const answer = (request) => {
       const finish = (status) => { turn.status = status; write({ method: "turn/completed", params: { threadId: thread.id, turn } }); };
       active.set(turn.id, finish);
       setImmediate(() => {
-        if (limited && !current.includes("usage-empty")) {
+        if (limited && !input.includes("routing-scope-") && !current.includes("usage-empty")) {
           fs.appendFileSync(${JSON.stringify(workLog)}, JSON.stringify({ caseId, step: "checkpoint" }) + "\\n");
           item({ type: "commandExecution", id: randomUUID(), command: "save-checkpoint " + caseId, cwd: params.cwd, status: "completed", exitCode: 0, aggregatedOutput: "checkpoint-result=" + caseId });
           if (!current.includes("usage-tool-only")) item({ type: "agentMessage", id: randomUUID(), phase: "commentary", text: "Checkpoint saved for " + caseId + ". Only the final step remains." });
         }
         if (current.includes("usage-wait")) return;
         if (limited) {
+          if (input.includes("routing-scope-")) write({ method: "openbot/usageLimit", params: { threadId: thread.id, turnId: turn.id, resetsAt: Math.floor(Date.now() / 1000) + 3600, ...(input.includes("routing-scope-account") ? { family: null } : {}) } });
           const error = { message: "You've hit your usage limit. Try again later.", codexErrorInfo: "usageLimitExceeded" };
           turn.error = error;
           write({ method: "error", params: { threadId: thread.id, turnId: turn.id, error, willRetry: false } });
@@ -431,9 +432,9 @@ const database = new OpenBotDatabase(userData);
 const clients: ClaudeStandIn[] = [];
 const events: AgentEvent[] = [];
 
-function startService() {
-  const store = new AgentStore(userData, home, database);
-  const mailbox = new MailboxStore(userData, store.sharedRoot, store.database);
+function startService(serviceUserData = userData, serviceDatabase = database) {
+  const store = new AgentStore(serviceUserData, home, serviceDatabase);
+  const mailbox = new MailboxStore(serviceUserData, store.sharedRoot, store.database);
   const service = new AgentService({
     store,
     mailbox,
@@ -580,6 +581,67 @@ async function verifyHistoryKeepsRequests(agentId: string) {
 }
 
 try {
+  await runCauseEffect(service.initialize());
+  for (const scope of ["account", "model"]) {
+    await check(`routing refusal holds the ${scope} scope`, async () => {
+      await runCauseEffect(service.stop());
+      const scopeUserData = join(root, `routing-${scope}`);
+      const scopeDatabase = new OpenBotDatabase(scopeUserData);
+      ({ store, mailbox, service } = startService(scopeUserData, scopeDatabase));
+      try {
+        await runCauseEffect(service.initialize());
+        const lead = await createCodex(`Routing lead ${scope}`);
+        const other = await createCodex(`Routing other ${scope}`);
+        await runCauseEffect(service.updateAgent({ agentId: other.id, model: "e2e-second-model" }));
+        const channelId = randomUUID();
+        const actor = { id: "local", name: "Alex" };
+        await runCauseEffect(
+          service.channels.command(
+            {
+              type: "save",
+              operationId: randomUUID(),
+              channelId,
+              draft: {
+                name: "Routing scope",
+                title: "",
+                instructions: "Route the work.",
+                members: [{ agentId: lead.id }, { agentId: other.id }],
+                leadAgentId: lead.id,
+              },
+            },
+            actor,
+          ),
+        );
+        await runCauseEffect(
+          service.channels.command(
+            {
+              type: "send",
+              operationId: randomUUID(),
+              channelId,
+              text: `routing-scope-${scope}`,
+              recipientAgentId: null,
+              replyToMessageId: null,
+              attachmentDraftIds: [],
+            },
+            actor,
+          ),
+        );
+        const held = await waitFor("the routing lead to be held", () => {
+          const limits = service.getRuntimeSnapshot().usageLimits ?? [];
+          return limits.some((limit) => limit.agentId === lead.id) ? limits : null;
+        });
+        assert.equal(
+          held.some((limit) => limit.agentId === other.id),
+          scope === "account",
+        );
+        return { scope, held: held.map((limit) => limit.agentId) };
+      } finally {
+        await runCauseEffect(service.stop());
+        scopeDatabase.close();
+        ({ store, mailbox, service } = startService());
+      }
+    });
+  }
   await runCauseEffect(service.initialize());
   const create = (name: string) =>
     runCauseEffect(

@@ -1027,11 +1027,10 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
             )
             .pipe(
               // A routing turn can be the first one a spent plan refuses: in its completion, or as the
-              // error of the `turn/start` request. It holds the lead's model the way a refused member turn
-              // does, and the channel keeps the task queued for the reset.
+              // error of the `turn/start` request. Keep the reported scope. A text-only error holds the model.
               Effect.tapError((failure) =>
                 failure instanceof GenerationUsageLimitError
-                  ? this.#usageLimits.reached(lead.id, failure.resetsAt, lead.model)
+                  ? this.#usageLimits.reached(lead.id, failure.resetsAt, lead.model, failure.family)
                   : failure.cause instanceof Error && isPlanLimitDiagnostic(failure.cause.message)
                     ? this.#usageLimits.reached(lead.id, null, lead.model)
                     : Effect.void,
