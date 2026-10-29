@@ -5,7 +5,6 @@
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { AGENT_PROVIDERS, type BusyMessageMode, DEFAULT_BUSY_MESSAGE_MODE } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
@@ -14,12 +13,13 @@ import type { AgentBrowserHost } from "../src/backend/agent/turn-lifecycle";
 import { getString, isRecord } from "../src/backend/protocol";
 
 const OUT = resolve(import.meta.dirname, "../.openbot-build/steer-interrupt-pause-e2e");
-const root = await mkdtemp(join(tmpdir(), "openbot-steer-pause-"));
+mkdirSync(OUT, { recursive: true });
+const root = await mkdtemp(join(OUT, "synthetic-"));
 const userData = join(root, "user-data");
 const home = join(root, "home");
 const logPath = join(root, "protocol.jsonl");
 const controlPath = join(root, "control.json");
-const fakeCodex = join(root, "codex");
+const fakeCodex = join(root, "codex.cjs");
 
 // Before the service modules load: the Codex process and the stores read the home folder.
 process.env.OPENBOT_CODEX_PATH = fakeCodex;
@@ -85,7 +85,10 @@ const answer = (message) => {
       const input = JSON.stringify(params.input);
       write({ id: message.id, result: { turn: { id: turnId, status: "inProgress", items: [] } } });
       write({ method: "turn/started", params: { threadId: params.threadId, turn: { id: turnId } } });
-      if (input.includes("HOLD")) held.set(params.threadId, turnId);
+      if (input.includes("HOLD")) {
+        held.set(params.threadId, turnId);
+        log({ method: "held-ready", params: { threadId: params.threadId, turnId, input: params.input } });
+      }
       else if (input.includes("CALL")) {
         // calls sends several tool calls at once, as a model may; call sends one.
         const overlap = input.match(/CALL-OVERLAP-(\\d+)/);
@@ -192,6 +195,7 @@ function protocol() {
           method: getString(entry, "method"),
           input: JSON.stringify(params.input ?? ""),
           threadId: getString(params, "threadId"),
+          turnId: getString(params, "turnId"),
           outcome: getString(entry, "method") === "tool-answer" ? busyOutcomes(params) : null,
           callId: getString(entry, "id"),
         };
@@ -475,6 +479,45 @@ try {
     queued?.reason
       ? "Two senders stop one turn; the capacity limit queues the other message"
       : "Two senders stop one turn; the other message stays queued while the target is stopping",
+  );
+
+  // The three accepted teammate interrupts have filled the target's window. Wait until the fake
+  // provider has held the new turn, then use a fresh sender so the cooldown cannot mask the limit.
+  const capacitySender = await runCauseEffect(
+    agents.createAgent({
+      name: "Capacity sender",
+      description: "Synthetic",
+      avatarSeed: "capacity-sender",
+      avatarHue: null,
+      initialMessage: "Hello.",
+    }),
+  );
+  await waitFor("the capacity sender's first turn to end", () =>
+    agents.listQueue(capacitySender.id).deliveries.every((item) => item.status === "completed"),
+  );
+  const capacityTurn = await waitFor("the target provider to hold its running turn", () => {
+    const delivery = agents.listQueue(target.id).deliveries.find((item) => item.status === "running");
+    return delivery?.turnId &&
+      calls("held-ready").some((entry) => entry.turnId === delivery.turnId && entry.input.includes(delivery.text))
+      ? delivery.turnId
+      : null;
+  });
+  const capacityDelivery = agents.listQueue(target.id).deliveries.find((item) => item.turnId === capacityTurn);
+  assert(capacityDelivery);
+  const capacityText = "CAPACITY-REFUSAL";
+  const capacity = await overlapping([capacitySender.id], [[interruptSpec(capacityText)]]);
+  assert.deepEqual(capacity.outcomes, [
+    { agentId: target.id, result: "queued", reason: sourceText("error.backend.agentControlLimit") },
+  ]);
+  assert.equal(capacity.stopped, 0);
+  assert.equal(status(capacityDelivery.id), "running");
+  assert.equal(runningTurn(target.id), capacityTurn);
+  const refusedDeliveries = agents.listQueue(target.id).deliveries.filter((item) => item.text === capacityText);
+  assert.equal(refusedDeliveries.length, 1);
+  assert.equal(refusedDeliveries[0]?.status, "queued");
+  assert.equal(calls("turn/start").filter((entry) => entry.input.includes(capacityText)).length, 0);
+  report.checks.push(
+    "A running target at interrupt capacity refuses one message with the limit reason and stays running",
   );
 
   report.passed = true;
