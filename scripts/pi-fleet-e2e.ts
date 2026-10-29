@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { Effect, Fiber } from "effect";
 import type { AgentClient } from "../src/backend/agent-client";
 import { runCauseEffect } from "../src/backend/effect-boundary";
 import { getRecord, getString } from "../src/backend/protocol";
@@ -18,6 +19,8 @@ const reportDirectory = resolve(import.meta.dirname, "../.openbot-build/pi-fleet
 const clients: AgentClient[] = [];
 const checks: string[] = [];
 const timeoutScenario = process.argv.includes("--timeout");
+const interruptScenario = process.argv.includes("--interrupt");
+const idleScenario = process.argv.includes("--idle");
 await mkdir(held);
 await writeFile(
   coordinator,
@@ -28,7 +31,16 @@ const request = JSON.parse(readFileSync(0, 'utf8'));
 const path = join(process.argv[2], request.run_id);
 if (request.op === 'acquire') {
   if (request.backend !== 'pi' || request.provider !== 'minimax-cn') process.exit(4);
+  if (existsSync(join(process.argv[2], 'deny'))) {
+    writeFileSync(join(process.argv[2], 'denied'), '');
+    process.stdout.write(JSON.stringify({ok:true, admitted:false}));
+    process.exit(0);
+  }
   writeFileSync(path, 'held', { flag: 'wx' });
+  if (existsSync(join(process.argv[2], 'delay-response'))) {
+    writeFileSync(join(process.argv[2], 'acquire-pending'), '');
+    while (!existsSync(join(process.argv[2], 'allow-response'))) await new Promise(resolve => setTimeout(resolve, 20));
+  }
   if (existsSync(join(process.argv[2], 'lose-response'))) process.exit(1);
   process.stdout.write(JSON.stringify({ok:true, admitted:true}));
 } else {
@@ -108,7 +120,78 @@ try {
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
   checks.push("Pi compaction releases admission after the RPC acknowledges completion");
-  if (timeoutScenario) {
+  if (idleScenario) {
+    await writeFile(join(held, "deny"), "");
+    const next = runCauseEffect(
+      client.request(
+        "turn/start",
+        {
+          threadId: thread,
+          input: [{ type: "text", text: "work", text_elements: [] }],
+        },
+        (value) => value,
+      ),
+    );
+    const deadline = Date.now() + 10_000;
+    while (!(await readdir(held)).includes("denied")) {
+      if (Date.now() > deadline) throw new Error("Pi admission did not wait.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.ok(client.releaseIdleThreads);
+    await runCauseEffect(client.releaseIdleThreads());
+    await rm(join(held, "deny"));
+    const reopened = await next;
+    const newTurn = getString(getRecord(reopened, "turn"), "id");
+    assert.ok(newTurn);
+    const resumed = new Promise<void>((resolve) =>
+      client.on("notification", (event) => {
+        if (event.method === "turn/completed" && getString(event.params, "threadId") === thread) resolve();
+      }),
+    );
+    await runCauseEffect(
+      client.request(
+        "turn/steer",
+        {
+          threadId: thread,
+          expectedTurnId: newTurn,
+          input: [{ type: "text", text: "finish", text_elements: [] }],
+        },
+        (value) => value,
+      ),
+    );
+    await resumed;
+    while ((await readdir(journal)).length) {
+      if (Date.now() > deadline) throw new Error("Pi reopened turn did not release admission.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    checks.push("a thread released while waiting is reopened after admission");
+  } else if (interruptScenario) {
+    await writeFile(join(held, "delay-response"), "");
+    const fiber = Effect.runFork(
+      client.request(
+        "turn/start",
+        {
+          threadId: thread,
+          input: [{ type: "text", text: "interrupted-before-send", text_elements: [] }],
+        },
+        (value) => value,
+      ),
+    );
+    const deadline = Date.now() + 10_000;
+    while (!(await readdir(held)).includes("acquire-pending")) {
+      if (Date.now() > deadline) throw new Error("Pi acquisition did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const interruption = Effect.runPromise(Fiber.interrupt(fiber));
+    await writeFile(join(held, "allow-response"), "");
+    await interruption;
+    assert.deepEqual(await readdir(journal), []);
+    const entries = await readdir(held);
+    assert.deepEqual(entries.sort(), ["acquire-pending", "allow-response", "delay-response"]);
+    const log = await readFile(join(root, "pi.log"), "utf8");
+    assert.equal(log.includes("interrupted-before-send"), false);
+    checks.push("interrupted acquisition releases its unsent reservation");
+  } else if (timeoutScenario) {
     const timedOut = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Pi acknowledgement timeout was not observed.")), 10_000);
       client.on("notification", (event) => {
@@ -152,7 +235,13 @@ try {
     checks.push("a lost admission response retains its journal and never sends the Pi prompt");
   }
   await mkdir(reportDirectory, { recursive: true });
-  const report = timeoutScenario ? "timeout-report.json" : "report.json";
+  const report = idleScenario
+    ? "idle-report.json"
+    : interruptScenario
+      ? "interrupt-report.json"
+      : timeoutScenario
+        ? "timeout-report.json"
+        : "report.json";
   await writeFile(join(reportDirectory, report), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   process.stdout.write(`PASS ${join(reportDirectory, report)}\n`);
 } catch (error) {

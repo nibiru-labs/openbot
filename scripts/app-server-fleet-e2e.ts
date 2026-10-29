@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -14,6 +14,7 @@ const executable = join(root, "codex");
 const coordinator = join(root, "coordinator.mjs");
 const held = join(root, "held");
 const journal = join(root, "journal");
+const requests = join(root, "provider-requests.log");
 await mkdir(held);
 await writeFile(
   coordinator,
@@ -40,9 +41,11 @@ await writeFile(
   executable,
   `#!/usr/bin/env node
 const readline = require('node:readline');
+const { appendFileSync } = require('node:fs');
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\\n');
 readline.createInterface({input:process.stdin}).on('line', line => {
   const request = JSON.parse(line), threadId = request.params.threadId;
+  appendFileSync(${JSON.stringify(requests)}, request.method + '\\n');
   if (threadId === 'missing') return send({id:request.id, result:{}});
   if (threadId === 'archived') return send({id:request.id, error:{code:-32600, message:'thread is archived'}});
   if (threadId === 'wrong-before') {
@@ -135,6 +138,22 @@ try {
   );
   const busyClient = new CodexAppServerClient(executable, 5_000, undefined, busyGate);
   busyClient.start();
+  const compactWaiting = Effect.runPromise(
+    busyClient.request("thread/compact/start", { threadId: "busy-compact" }, decodeRecordResponse),
+  );
+  compactWaiting.catch(() => {});
+  const compactDeadline = Date.now() + 5_000;
+  while (!(await readdir(busyHeld)).includes("denied")) {
+    if (Date.now() > compactDeadline) throw new Error("The coordinator did not observe the compaction wait.");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.equal(busyClient.cancelPendingCompaction("busy-compact"), true);
+  await assert.rejects(compactWaiting);
+  assert.deepEqual(await readdir(busyJournal), []);
+  const observed = await readFile(requests, "utf8");
+  assert.equal(observed.split("\n").filter((name) => name === "thread/compact/start").length, 1);
+  checks.push("a cancelled pending compaction never reaches the provider");
+  await rm(join(busyHeld, "denied"));
   const waiting = Effect.runPromise(busyClient.request("turn/start", { threadId: "busy" }, decodeRecordResponse));
   waiting.catch(() => {});
   try {

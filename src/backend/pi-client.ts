@@ -297,11 +297,13 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       case "turn/start":
       case "turn/steer": {
         const id = yield* providerSync(() => requiredString(params, "threadId"));
-        const thread = yield* this.#thread(id, params);
-        if (method === "turn/start" && this.#fleet) yield* this.#admitFleetTurn(id);
-        response = yield* thread.gate
-          .withPermit(method === "turn/steer" ? this.#steer(thread, params) : this.#prompt(thread, params))
-          .pipe(Effect.onError(() => (method === "turn/start" ? this.#cancelOrRetainFleetTurn(id) : Effect.void)));
+        response = yield* Effect.gen({ self: this }, function* () {
+          if (method === "turn/start" && this.#fleet) yield* this.#admitFleetTurn(id);
+          const thread = yield* this.#thread(id, params);
+          return yield* thread.gate.withPermit(
+            method === "turn/steer" ? this.#steer(thread, params) : this.#prompt(thread, params),
+          );
+        }).pipe(Effect.onError(() => (method === "turn/start" ? this.#cancelOrRetainFleetTurn(id) : Effect.void)));
         if (method === "turn/start" && this.#fleet) {
           const turnId = getString(getRecord(response, "turn"), "id");
           if (!turnId) {
@@ -331,10 +333,10 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       }
       case "thread/compact/start": {
         const id = yield* providerSync(() => requiredString(params, "threadId"));
-        const thread = yield* this.#thread(id, params);
-        if (this.#fleet) yield* this.#admitFleetTurn(id);
-        yield* thread.gate
-          .withPermit(
+        yield* Effect.gen({ self: this }, function* () {
+          if (this.#fleet) yield* this.#admitFleetTurn(id);
+          const thread = yield* this.#thread(id, params);
+          yield* thread.gate.withPermit(
             Effect.gen({ self: this }, function* () {
               if (this.#fleet) {
                 this.#fleet.sent(id);
@@ -342,8 +344,8 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
               }
               yield* thread.rpc.request({ type: "compact" }, timeoutMs ?? 120_000);
             }),
-          )
-          .pipe(Effect.onError(() => this.#cancelOrRetainFleetTurn(id)));
+          );
+        }).pipe(Effect.onError(() => this.#cancelOrRetainFleetTurn(id)));
         if (this.#fleet) {
           const turnId = `compact-${randomUUID()}`;
           yield* this.#fleet
@@ -369,31 +371,35 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
   readonly #admitFleetTurn = Effect.fn("PiAgentClient.admitFleetTurn")(function* (this: PiAgentClient, id: string) {
     const gate = this.#fleet;
     if (!gate) return;
-    while (true) {
-      if (!this.running) return yield* providerFailure(new Error(sourceText("error.provider.piStopped")));
-      if (gate.recoveryRequired)
-        return yield* providerFailure(new Error(sourceText("error.provider.fleetUnavailable")));
-      // Pi is conservatively counted against MiniMax as well until the active provider is verified.
-      if (
-        !gate.has(id) &&
-        (yield* gate
-          .begin(id, "pi", "minimax-cn")
-          .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable"))))))
-      ) {
-        if (!this.running) {
-          yield* gate
-            .cancelBeforeSend(id)
-            .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
-          return yield* providerFailure(new Error(sourceText("error.provider.piStopped")));
+    yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen({ self: this }, function* () {
+        while (true) {
+          if (!this.running) return yield* providerFailure(new Error(sourceText("error.provider.piStopped")));
+          if (gate.requiresRecovery("pi"))
+            return yield* providerFailure(new Error(sourceText("error.provider.fleetUnavailable")));
+          // Pi is conservatively counted against MiniMax as well until the active provider is verified.
+          if (
+            !gate.has(id) &&
+            (yield* gate
+              .begin(id, "pi", "minimax-cn")
+              .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable"))))))
+          ) {
+            if (!this.running) {
+              yield* gate
+                .cancelBeforeSend(id)
+                .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
+              return yield* providerFailure(new Error(sourceText("error.provider.piStopped")));
+            }
+            const reservation = gate.reservationId(id);
+            if (!reservation)
+              return yield* providerFailure(new Error(sourceText("error.provider.fleetIdentityUnconfirmed")));
+            this.#fleetThreads.set(id, reservation);
+            return;
+          }
+          yield* restore(Effect.sleep(1_000));
         }
-        const reservation = gate.reservationId(id);
-        if (!reservation)
-          return yield* providerFailure(new Error(sourceText("error.provider.fleetIdentityUnconfirmed")));
-        this.#fleetThreads.set(id, reservation);
-        return;
-      }
-      yield* Effect.sleep(1_000);
-    }
+      }),
+    );
   });
 
   #retainFleetTurn(id: string): void {

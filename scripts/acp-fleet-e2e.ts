@@ -18,16 +18,23 @@ const clients: AgentClient[] = [];
 const checks: string[] = [];
 let agyClient: AgentClient | undefined;
 let agyThread: string | undefined;
+let cursorClient: AgentClient | undefined;
+let cursorThread: string | undefined;
 await mkdir(held);
 await writeFile(
   coordinator,
   `
-import { readFileSync, writeFileSync, unlinkSync, appendFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, appendFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 const request = JSON.parse(readFileSync(0, 'utf8'));
 const path = join(process.argv[2], request.run_id);
 appendFileSync(process.argv[3], JSON.stringify({op:request.op, backend:request.backend ?? null}) + '\\n');
 if (request.op === 'acquire') {
+  if (existsSync(join(process.argv[2], 'deny'))) {
+    writeFileSync(join(process.argv[2], 'denied'), '');
+    process.stdout.write(JSON.stringify({ok:true, admitted:false}));
+    process.exit(0);
+  }
   writeFileSync(path, 'held', {flag:'wx'});
   process.stdout.write(JSON.stringify({ok:true, admitted:true}));
 } else {
@@ -60,6 +67,10 @@ try {
     if (provider === "antigravity") {
       agyClient = client;
       agyThread = thread;
+    }
+    if (provider === "cursor") {
+      cursorClient = client;
+      cursorThread = thread;
     }
     await assert.rejects(
       runCauseEffect(
@@ -95,6 +106,29 @@ try {
     checks.push(`${provider} holds admission for both a turn and a private usage prompt`);
   }
   assert.ok(agyClient && agyThread);
+  await writeFile(join(held, "deny"), "");
+  const pending = runCauseEffect(
+    agyClient.request(
+      "turn/start",
+      {
+        threadId: agyThread,
+        input: [{ type: "text", text: "cancel-before-send", text_elements: [] }],
+      },
+      (value) => value,
+    ),
+  );
+  pending.catch(() => {});
+  const waitingDeadline = Date.now() + 5_000;
+  while (!(await readdir(held)).includes("denied")) {
+    if (Date.now() > waitingDeadline) throw new Error("ACP admission did not wait.");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  await runCauseEffect(agyClient.request("turn/interrupt", { threadId: agyThread }, (value) => value));
+  await assert.rejects(pending);
+  assert.deepEqual(await readdir(journal), []);
+  await rm(join(held, "deny"));
+  await rm(join(held, "denied"));
+  checks.push("stopping a pending ACP turn cancels admission before sending");
   const ended = new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Antigravity cancellation did not finish locally.")), 10_000);
     agyClient?.on("notification", (event) => {
@@ -121,6 +155,10 @@ try {
   assert.equal((await readdir(held)).length, 1);
   assert.equal((await readdir(journal)).length, 1);
   checks.push("a locally abandoned Antigravity prompt retains its reservation");
+  assert.ok(cursorClient && cursorThread);
+  const cursorAfter = await runTurn(cursorClient, cursorThread, { text: "still available", timeoutMs: 10_000 });
+  assert.equal(cursorAfter.status, "completed");
+  checks.push("an uncertain Antigravity turn does not block Cursor");
   await mkdir(reportDirectory, { recursive: true });
   await writeFile(join(reportDirectory, "report.json"), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   process.stdout.write(`PASS ${join(reportDirectory, "report.json")}\n`);
