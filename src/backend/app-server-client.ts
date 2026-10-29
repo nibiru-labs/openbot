@@ -524,7 +524,8 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   #admitFleetTurn(threadId: string, compactionSignal?: AbortSignal) {
     return Effect.gen({ self: this }, function* () {
       const gate = this.#fleet;
-      if (!gate) throw new Error("Fleet admission is not configured.");
+      if (!gate)
+        return yield* new ProviderClientOperationError({ cause: new Error("Fleet admission is not configured.") });
       const child = this.#process;
       const signal = this.#fleetWaitAbort.signal;
       while (true) {
@@ -532,7 +533,10 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
           return yield* new ProviderClientOperationError({
             cause: new Error("Codex stopped while waiting for fleet admission."),
           });
-        if (gate.requiresRecovery("codex")) throw new Error("Fleet admission requires operator recovery.");
+        if (gate.requiresRecovery("codex"))
+          return yield* new ProviderClientOperationError({
+            cause: new Error("Fleet admission requires operator recovery."),
+          });
         if (!gate.has(threadId) && (yield* gate.begin(threadId, "codex", null))) {
           if (signal.aborted || compactionSignal?.aborted || this.#process !== child || !this.running) {
             yield* gate.cancelBeforeSend(threadId);
@@ -542,7 +546,10 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
           }
           gate.sent(threadId);
           const reservationId = gate.reservationId(threadId);
-          if (!reservationId) throw new Error("Fleet reservation disappeared before provider start.");
+          if (!reservationId)
+            return yield* new ProviderClientOperationError({
+              cause: new Error("Fleet reservation disappeared before provider start."),
+            });
           this.#fleetThreads.set(threadId, reservationId);
           return reservationId;
         }

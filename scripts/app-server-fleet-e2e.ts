@@ -98,6 +98,13 @@ try {
   assert.equal((await readdir(held)).length, 1);
   assert.equal((await readdir(journal)).length, 1);
   checks.push("missing provider confirmation retains the coordinator slot");
+  const recovery = await Effect.runPromise(
+    client
+      .request("thread/compact/start", { threadId: "recovery" }, decodeRecordResponse)
+      .pipe(Effect.match({ onFailure: () => "typed failure", onSuccess: () => "unexpected success" })),
+  );
+  assert.equal(recovery, "typed failure");
+  checks.push("a recovery-blocked compaction fails through the typed error channel");
 
   for (const scenario of ["wrong-before", "wrong-after"]) {
     const scenarioHeld = join(root, `${scenario}-held`);
