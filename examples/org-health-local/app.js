@@ -63,6 +63,8 @@ function render(data) {
             (series[key] !== null && (typeof series[key] !== "number" || !Number.isFinite(series[key]))),
         ),
     ) ||
+    overallCost["2026-05H1参考"] !== null ||
+    overallHeads["2026-05H1参考"] !== null ||
     !costRates ||
     !revRates ||
     !fullRates
@@ -125,7 +127,7 @@ function render(data) {
       "不含运维 / 设施 · 成本 ÷ 收入折人民币",
       costRates,
       `营收业务技术人力率 ${safe(asPercent(revRates["2026-01实际"]))} → ${safe(asPercent(revRates["2026-09实际"]))}；全口径整体率（含运维 / 设施）${safe(asPercent(fullRates["整体2026-01实际"]))} → ${safe(asPercent(fullRates["整体2026-09实际"]))}，分摊流程待确认。`,
-      { format: asPercent, warn: true },
+      { format: asPercent, forecastLabel: "年末测算 / 目标收入", warn: true },
     ),
   ].join("");
   $("#insight-grid").innerHTML = data.insights
@@ -176,6 +178,9 @@ fetch("./data/diagnosis.json", { cache: "no-store" })
   .catch((error) => {
     ["metric-grid", "insight-grid", "definitions-grid", "risk-grid", "recommendations"].forEach((id) => {
       document.getElementById(id).replaceChildren();
+    });
+    ["scope-month", "scope-date", "scope-source", "footer-source"].forEach((id) => {
+      document.getElementById(id).textContent = "—";
     });
     $("#asof-short").textContent = "加载失败";
     $("#conclusion").textContent = error.message || "无法加载本地诊断数据，请检查本机服务。";
