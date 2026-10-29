@@ -160,6 +160,58 @@ assert.equal(gate.hasUnknownLimit(agent.id), true);
 const after = new MailboxStore(root, join(root, "shared"), db);
 await runCauseEffect(after.initialize());
 assert.equal(after.getDelivery(id)?.delivery.status, "queued");
+
+// A channel with no ready backup gives the assignment back and interrupts its delivery.
+const second = await runCauseEffect(
+  mailbox.enqueue({ sender: { kind: "user" }, recipientAgentIds: [agent.id], text: "release" }),
+);
+const releasedId = second.deliveries[0]?.id;
+assert.ok(releasedId);
+await runCauseEffect(mailbox.markStarting(releasedId));
+const releasedTask = { ...task, id: "released-task", rootTaskId: "released-task" };
+channels.store.update(channel, {
+  tasks: [releasedTask],
+  assignments: [{ ...assignment, id: "released-assignment", taskId: releasedTask.id, deliveryId: releasedId }],
+});
+const prepareRelease = () => {
+  const finish = channels.prepareRequeueForLimit(releasedId);
+  assert.ok(finish);
+  return { status: "interrupted" as const, publish: () => Effect.runSync(finish) };
+};
+const beforeRelease = publications;
+db.connection.exec(
+  "CREATE TRIGGER atomic_release_failure BEFORE UPDATE ON projection_deliveries BEGIN SELECT RAISE(ABORT, 'injected release failure'); END",
+);
+assert.throws(
+  () =>
+    mailbox.requeueWithHold(
+      [{ id: releasedId }],
+      (connection) => gate.prepareUnknown(agent.id, null, connection),
+      prepareRelease,
+    ),
+  /injected release failure/,
+);
+db.connection.exec("DROP TRIGGER atomic_release_failure");
+assert.equal(channels.store.assignmentForDelivery(releasedId)?.state, "starting");
+assert.equal(channels.store.tasks(channel.id).find((item) => item.id === releasedTask.id)?.revision, 1);
+assert.equal(mailbox.getDelivery(releasedId)?.delivery.status, "starting");
+assert.equal(publications, beforeRelease);
+mailbox.requeueWithHold(
+  [{ id: releasedId }],
+  (connection) => gate.prepareUnknown(agent.id, null, connection),
+  prepareRelease,
+);
+assert.equal(channels.store.assignmentForDelivery(releasedId)?.state, "interrupted");
+assert.equal(channels.store.tasks(channel.id).find((item) => item.id === releasedTask.id)?.revision, 2);
+assert.equal(mailbox.getDelivery(releasedId)?.delivery.status, "interrupted");
+assert.equal(publications, beforeRelease + 1);
 await runCauseEffect(gate.dispose());
 db.close();
-await writeFile(join(root, "report.json"), JSON.stringify({ rollback: true, commit: true, restart: true }, null, 2));
+await writeFile(
+  join(root, "report.json"),
+  JSON.stringify(
+    { rollback: true, commit: true, restart: true, channelReleaseRollback: true, channelReleaseCommit: true },
+    null,
+    2,
+  ),
+);
