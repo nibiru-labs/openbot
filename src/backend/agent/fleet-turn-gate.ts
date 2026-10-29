@@ -10,7 +10,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { Effect, Schema } from "effect";
 import { z } from "zod";
 import { causeHelpers } from "../effect-boundary";
@@ -66,8 +66,23 @@ export class FleetTurnGate {
 
   static open(directory: string, transport: FleetTurnTransport) {
     return sync(() => {
-      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      const created = mkdirSync(directory, { recursive: true, mode: 0o700 });
       chmodSync(directory, 0o700);
+      // Persist each newly created directory entry before any reservation can be acquired.
+      if (created && process.platform !== "win32") {
+        const stop = dirname(resolve(created));
+        let parent = dirname(resolve(directory));
+        while (true) {
+          const fd = openSync(parent, "r");
+          try {
+            fsyncSync(fd);
+          } finally {
+            closeSync(fd);
+          }
+          if (parent === stop) break;
+          parent = dirname(parent);
+        }
+      }
       const gate = new FleetTurnGate(directory, transport);
       for (const name of readdirSync(directory).filter((entry) => entry.endsWith(".json"))) {
         try {
