@@ -39,7 +39,10 @@ if (request.op === 'acquire') {
   process.stdout.write(JSON.stringify({ok:true, admitted:true}));
 } else {
   unlinkSync(path);
-  if (existsSync(join(process.argv[2], 'delay-release'))) await new Promise(resolve => setTimeout(resolve, 700));
+  if (existsSync(join(process.argv[2], 'delay-release'))) {
+    writeFileSync(join(process.argv[2], 'release-started'), '');
+    while (!existsSync(join(process.argv[2], 'release-continue'))) await new Promise(resolve => setTimeout(resolve, 20));
+  }
   process.stdout.write(JSON.stringify({ok:true, released:true}));
 }
 `,
@@ -160,7 +163,19 @@ try {
   await writeFile(join(held, "delay-release"), "");
   const cursorAfter = await runTurn(cursorClient, cursorThread, { text: "still available", timeoutMs: 10_000 });
   assert.equal(cursorAfter.status, "completed");
-  await stopClients([cursorClient]);
+  const releaseDeadline = Date.now() + 10_000;
+  while (!(await readdir(held)).includes("release-started")) {
+    if (Date.now() > releaseDeadline) throw new Error("Cursor release did not start.");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  let stopped = false;
+  const stopping = stopClients([cursorClient]).then(() => {
+    stopped = true;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(stopped, false, "shutdown must wait for the blocked release");
+  await writeFile(join(held, "release-continue"), "");
+  await stopping;
   const remaining = await readdir(journal);
   assert.equal(remaining.length, 1);
   const remainingFile = remaining[0];
