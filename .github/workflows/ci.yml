@@ -481,6 +481,7 @@ jobs:
           bun scripts/pi-fleet-e2e.ts --timeout
           bun scripts/pi-fleet-e2e.ts --interrupt
           bun scripts/pi-fleet-e2e.ts --idle
+          bun scripts/pi-fleet-e2e.ts --stop
 
       - name: Run the fleet configuration E2E test
         if: ${{ !cancelled() }}
