@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Effect, Schema } from "effect";
 import { causeHelpers } from "../effect-boundary";
 
-export class FleetTurnGateFailed extends Schema.TaggedError<FleetTurnGateFailed>()("FleetTurnGateFailed", {
+class FleetTurnGateFailed extends Schema.TaggedError<FleetTurnGateFailed>()("FleetTurnGateFailed", {
   cause: Schema.Defect(),
 }) {}
 const { io, sync } = causeHelpers(FleetTurnGateFailed);
