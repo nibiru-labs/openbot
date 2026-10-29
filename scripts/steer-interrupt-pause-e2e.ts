@@ -159,14 +159,20 @@ function recordOf(value: unknown) {
 }
 
 /** The first busy outcome in the answer to a `send_message` call, from the fake's `tool-answer` entry. */
-function busyOutcome(params: unknown) {
+function busyOutcomes(params: unknown) {
   const result = isRecord(params) && isRecord(params.result) ? params.result : {};
   const items = Array.isArray(result.contentItems) ? result.contentItems : [];
   const text = isRecord(items[0]) ? getString(items[0], "text") : undefined;
   const receipt = recordOf(text ? JSON.parse(text) : null);
   const busy = Array.isArray(receipt.busy) ? receipt.busy : [];
-  const first = isRecord(busy[0]) ? busy[0] : {};
-  return { result: getString(first, "result"), reason: getString(first, "reason") };
+  return busy.map((item) => {
+    const outcome = isRecord(item) ? item : {};
+    return {
+      agentId: getString(outcome, "agentId"),
+      result: getString(outcome, "result"),
+      reason: getString(outcome, "reason"),
+    };
+  });
 }
 
 function protocol() {
@@ -181,7 +187,8 @@ function protocol() {
           method: getString(entry, "method"),
           input: JSON.stringify(params.input ?? ""),
           threadId: getString(params, "threadId"),
-          outcome: getString(entry, "method") === "tool-answer" ? busyOutcome(params) : null,
+          outcome: getString(entry, "method") === "tool-answer" ? busyOutcomes(params) : null,
+          callId: getString(entry, "id"),
         };
       });
   } catch {
@@ -326,7 +333,10 @@ try {
     );
     await send(sender.id, `CALL-${text}`);
     await waitFor(`the ${busy} tool answer`, () => calls("tool-answer").length > before);
-    return calls("tool-answer").at(-1)?.outcome;
+    return calls("tool-answer")
+      .slice(before)
+      .flatMap((entry) => entry.outcome ?? [])
+      .at(-1);
   };
   const steer = await teammateCall("steer", "TEAM-STEER");
   assert.equal(steer?.result, "steered");
@@ -358,15 +368,17 @@ try {
     expectsReply: false,
     busy: "interrupt",
   });
-  const overlapping = async (senderIds: string[], specs: unknown[], expected: number) => {
+  const overlapping = async (senderIds: string[], specsBySender: unknown[][]) => {
     const start = calls("tool-answer").length;
     const interruptsBefore = calls("turn/interrupt").length;
-    await writeFile(controlPath, JSON.stringify({ calls: specs }));
+    const specs = specsBySender.flat();
+    await Promise.all(
+      senderIds.map((_senderId, index) => writeFile(controlPath, JSON.stringify({ calls: specsBySender[index] }))),
+    );
     await Promise.all(senderIds.map((senderId) => send(senderId, "CALL-OVERLAP")));
-    await waitFor("every overlapping tool answer", () => calls("tool-answer").length >= start + expected);
-    const outcomes = calls("tool-answer")
-      .slice(start)
-      .map((entry) => entry.outcome?.result ?? "none");
+    await waitFor("every overlapping tool answer", () => calls("tool-answer").length >= start + specs.length);
+    const answers = calls("tool-answer").slice(start, start + specs.length);
+    const outcomes = answers.flatMap((entry) => entry.outcome ?? []);
     return { outcomes, stopped: calls("turn/interrupt").length - interruptsBefore };
   };
 
@@ -385,8 +397,8 @@ try {
     agents.listQueue(cooling.id).deliveries.every((item) => item.status === "completed"),
   );
   await waitFor("the held turn of the target", () => runningTurn(target.id));
-  const sameSender = await overlapping([cooling.id], [interruptSpec("HOLD-COOL-1"), interruptSpec("HOLD-COOL-2")], 2);
-  assert.deepEqual([...sameSender.outcomes].sort(), ["interrupted", "queued"]);
+  const sameSender = await overlapping([cooling.id], [[interruptSpec("HOLD-COOL-1"), interruptSpec("HOLD-COOL-2")]]);
+  assert.deepEqual(sameSender.outcomes.map((outcome) => outcome.result).sort(), ["interrupted", "queued"]);
   assert.equal(sameSender.stopped, 1);
   report.checks.push("Two overlapping interrupts from one sender stop the turn once; the second waits on the cooldown");
 
@@ -413,9 +425,23 @@ try {
     [second.id, third.id].every((id) => agents.listQueue(id).deliveries.every((item) => item.status === "completed")),
   );
   await waitFor("the held turn of the target", () => runningTurn(target.id));
-  const limited = await overlapping([second.id, third.id], [interruptSpec("HOLD-LIMIT")], 2);
-  assert.equal(limited.outcomes.filter((result) => result === "interrupted").length, 1);
+  const secondText = "HOLD-LIMIT-SECOND";
+  const thirdText = "HOLD-LIMIT-THIRD";
+  const limited = await overlapping([second.id, third.id], [[interruptSpec(secondText)], [interruptSpec(thirdText)]]);
+  assert.deepEqual(limited.outcomes.map((outcome) => outcome.result).sort(), ["interrupted", "queued"]);
+  const refused = limited.outcomes.find((outcome) => outcome.result === "queued");
+  assert(refused?.reason, "the limit refusal gives no reason");
   assert.equal(limited.stopped, 1);
+  assert.equal(status(holdFour), "interrupted");
+  const deliveries = [secondText, thirdText].map((text) =>
+    agents.listQueue(target.id).deliveries.find((item) => item.text === text),
+  );
+  assert(deliveries.every(Boolean), "one of the overlapping messages was not queued");
+  assert.equal(deliveries.filter((delivery) => delivery?.status === "queued").length, 1);
+  assert.equal(
+    deliveries.filter((delivery) => delivery?.status === "running" || delivery?.status === "completed").length,
+    1,
+  );
   report.checks.push("Two overlapping interrupts from two senders stop the turn once; the limit holds for the second");
 
   report.passed = true;
