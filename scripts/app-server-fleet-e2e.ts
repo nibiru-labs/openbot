@@ -39,6 +39,11 @@ const send = (value) => process.stdout.write(JSON.stringify(value) + '\\n');
 readline.createInterface({input:process.stdin}).on('line', line => {
   const request = JSON.parse(line), threadId = request.params.threadId;
   if (threadId === 'missing') return send({id:request.id, result:{}});
+  if (threadId === 'compact') {
+    send({method:'turn/started', params:{threadId, turn:{id:'compact-turn'}}});
+    send({method:'turn/completed', params:{threadId, turn:{id:'compact-turn'}}});
+    return send({id:request.id, result:{}});
+  }
   if (threadId === 'early') {
     send({method:'turn/started', params:{threadId, turn:{id:'current'}}});
     send({method:'turn/completed', params:{threadId, turn:{id:'current'}}});
@@ -60,6 +65,11 @@ try {
   assert.deepEqual(await readdir(journal), []);
   checks.push("early completion and a stale completion release the correct slot");
 
+  await Effect.runPromise(client.request("thread/compact/start", { threadId: "compact" }, decodeRecordResponse));
+  assert.deepEqual(await readdir(held), []);
+  assert.deepEqual(await readdir(journal), []);
+  checks.push("compaction completion before its empty response releases the matching slot");
+
   await assert.rejects(Effect.runPromise(client.request("turn/start", { threadId: "missing" }, decodeRecordResponse)));
   assert.equal(gate.recoveryRequired, true);
   assert.equal((await readdir(held)).length, 1);
@@ -71,6 +81,14 @@ try {
   const output = join(directory, "report.json");
   await writeFile(output, `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   process.stdout.write(`PASS ${output}\n`);
+} catch (error) {
+  const directory = join(process.cwd(), ".openbot-build", "app-server-fleet-e2e");
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, "report.json"),
+    `${JSON.stringify({ passed: false, checks, error: String(error) }, null, 2)}\n`,
+  );
+  throw error;
 } finally {
   await Effect.runPromise(client.stop());
   await rm(root, { recursive: true, force: true });

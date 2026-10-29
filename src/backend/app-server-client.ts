@@ -74,6 +74,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   readonly #extraEnv: Readonly<Record<string, string>> | undefined;
   readonly #fleet: FleetTurnGate | null;
   readonly #fleetThreads = new Map<string, string>();
+  readonly #fleetCompactions = new Map<string, { turnId: string | null; confirmed: boolean }>();
 
   constructor(
     executable: string,
@@ -282,12 +283,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   ) {
     let fleetThread: string | null = null;
     let fleetReservation: string | null = null;
-    if (this.#fleet && method === "thread/compact/start") {
-      return yield* new ProviderClientOperationError({
-        cause: new Error("Codex compaction is unavailable while fleet admission is enabled."),
-      });
-    }
-    if (this.#fleet && method === "turn/start") {
+    if (this.#fleet && (method === "turn/start" || method === "thread/compact/start")) {
       if (!isRecord(params) || !isString(params.threadId) || !params.threadId) {
         return yield* new ProviderClientOperationError({ cause: new Error("Fleet admission needs a thread ID.") });
       }
@@ -297,6 +293,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
         return yield* new ProviderClientOperationError({ cause: new Error("Codex App Server is not running.") });
       }
       fleetReservation = yield* this.#admitFleetTurn(threadId).pipe(toProviderClientOperationError);
+      if (method === "thread/compact/start") this.#fleetCompactions.set(threadId, { turnId: null, confirmed: false });
     }
     const id = this.#nextId++;
     const child = this.#process;
@@ -313,6 +310,40 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
                     cause: new Error("Fleet reservation changed before Codex confirmed the turn."),
                   }),
                 ),
+              );
+              return;
+            }
+            if (method === "thread/compact/start") {
+              const compaction = this.#fleetCompactions.get(threadId);
+              if (!compaction) {
+                gate.uncertain(threadId);
+                resume(
+                  Effect.fail(
+                    new ProviderClientOperationError({ cause: new Error("Fleet compaction state is missing.") }),
+                  ),
+                );
+                return;
+              }
+              compaction.confirmed = true;
+              const decoded = Effect.try({
+                try: () => decoder(value),
+                catch: (cause) => new ProviderClientOperationError({ cause }),
+              });
+              resume(
+                compaction.turnId
+                  ? gate.started(threadId, compaction.turnId).pipe(
+                      toProviderClientOperationError,
+                      Effect.tap(() =>
+                        Effect.sync(() => {
+                          if (!gate.has(threadId)) {
+                            this.#fleetThreads.delete(threadId);
+                            this.#fleetCompactions.delete(threadId);
+                          }
+                        }),
+                      ),
+                      Effect.andThen(decoded),
+                    )
+                  : decoded,
               );
               return;
             }
@@ -405,6 +436,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
       if (this.#fleet?.owns(threadId, reservationId)) this.#fleet.uncertain(threadId);
     }
     this.#fleetThreads.clear();
+    this.#fleetCompactions.clear();
   }
 
   notify(method: string, params: unknown = {}): void {
@@ -473,10 +505,30 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
               return;
             }
           } else {
+            if (message.method === "turn/started") {
+              const compaction = this.#fleetCompactions.get(threadId);
+              if (compaction) {
+                if (compaction.turnId && compaction.turnId !== turnId) {
+                  this.#fleet.uncertain(threadId);
+                  if (this.#process)
+                    this.#fail(new Error("Codex compaction turn identity is uncertain."), this.#process);
+                  return;
+                }
+                compaction.turnId = turnId;
+                if (compaction.confirmed)
+                  void runCauseEffect(this.#fleet.started(threadId, turnId)).catch(() => {
+                    if (this.#process)
+                      this.#fail(new Error("Codex compaction turn identity is uncertain."), this.#process);
+                  });
+              }
+            }
             if (message.method === "turn/completed") {
               void runCauseEffect(this.#fleet.completed(threadId, turnId))
                 .then(() => {
-                  if (!this.#fleet?.has(threadId)) this.#fleetThreads.delete(threadId);
+                  if (!this.#fleet?.has(threadId)) {
+                    this.#fleetThreads.delete(threadId);
+                    this.#fleetCompactions.delete(threadId);
+                  }
                 })
                 .catch(() => this.emit("diagnostic", "Fleet turn reservation requires operator recovery."));
             }

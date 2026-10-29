@@ -92,6 +92,10 @@ try {
   await writeFile(output, `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   assert.equal(JSON.parse(await readFile(output, "utf8")).passed, true);
   process.stdout.write(`PASS ${output}\n`);
+} catch (error) {
+  await mkdir(join(process.cwd(), ".openbot-build", "fleet-turn-gate-e2e"), { recursive: true });
+  await writeFile(output, `${JSON.stringify({ passed: false, checks, error: String(error) }, null, 2)}\n`);
+  throw error;
 } finally {
   await rm(root, { recursive: true, force: true });
 }
