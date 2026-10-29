@@ -199,6 +199,8 @@ export class FleetTurnGate {
   /** A lost provider or uncertain start must retain the coordinator slot. */
   uncertain(threadId: string): void {
     const slot = this.#require(threadId);
+    // A matched completion already proved the turn ended; let its release finish.
+    if (slot.state === "releasing") return;
     slot.state = "uncertain";
     this.#blockedBackends.add(slot.reservation.backend);
   }
