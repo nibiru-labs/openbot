@@ -492,6 +492,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun scripts/acp-fleet-e2e.ts
 
+      - name: Run the ACP stream loss E2E test
+        if: ${{ !cancelled() }}
+        run: bun scripts/acp-stream-loss-e2e.ts
+
       - name: Run the Codex compaction fleet deadline E2E test
         if: ${{ !cancelled() }}
         run: bun scripts/codex-compaction-queue-e2e.ts --fleet-late

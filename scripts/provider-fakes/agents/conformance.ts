@@ -103,6 +103,15 @@ serveFakeAcpAgent(
       const sessionId = request.params.sessionId ?? "";
       const text = promptText(request.params);
       logEntry({ event: "prompt", sessionId, model: models.get(sessionId) ?? null, text });
+      if (text.trim() === "drop-stream") {
+        process.stdout.write("x".repeat(32 * 1024 * 1024 + 1));
+        setInterval(() => {}, 60_000);
+        return;
+      }
+      if (text.trim() === "reject-prompt") {
+        peer.fail(request, { code: -32000, message: "Prompt rejected" });
+        return;
+      }
       if (text.trim() === "wait") {
         waiting.set(sessionId, () => peer.reply(request, { stopReason: "cancelled" }));
         return;
