@@ -43,7 +43,7 @@ if (process.argv.includes("--version")) {
   process.stdout.write("codex-cli 0.160.1\\n");
   process.exit(0);
 }
-const log = (entry) => fs.appendFileSync(process.env.OPENBOT_FAKE_CODEX_LOG, JSON.stringify(entry) + "\\n");
+const log = (entry) => fs.appendFileSync(process.env.OPENBOT_FAKE_CODEX_LOG, JSON.stringify({ ...entry, processId: process.pid }) + "\\n");
 const control = () => JSON.parse(fs.readFileSync(process.env.OPENBOT_FAKE_CODEX_CONTROL, "utf8"));
 const config = { config: { mcp_servers: {} }, layers: [{ name: { type: "user", file: "/fake/.codex/config.toml", profile: null }, version: "1", config: { mcp_servers: {} } }] };
 let buffer = "";
@@ -85,6 +85,7 @@ const answer = (message) => {
       const input = JSON.stringify(params.input);
       write({ id: message.id, result: { turn: { id: turnId, status: "inProgress", items: [] } } });
       write({ method: "turn/started", params: { threadId: params.threadId, turn: { id: turnId } } });
+      log({ method: "turn-ready", params: { threadId: params.threadId, turnId, input: params.input } });
       if (input.includes("HOLD")) {
         held.set(params.threadId, turnId);
         log({ method: "held-ready", params: { threadId: params.threadId, turnId, input: params.input } });
@@ -99,7 +100,8 @@ const answer = (message) => {
         const shared = { threadId: params.threadId, turnId, remaining: specs.length };
         for (const spec of specs) {
           const id = "call-" + (++calls);
-          pending.set(id, shared);
+          pending.set(id, { ...shared, shared, spec, answered: false });
+          log({ method: "tool-call", id, params: { threadId: params.threadId, turnId, spec } });
           write({ id, method: "item/tool/call", params: { threadId: params.threadId, turnId, callId: id, namespace: "openbot", tool: "send_message", arguments: spec } });
         }
       } else setImmediate(() => finish(params.threadId, turnId, "completed"));
@@ -133,10 +135,12 @@ process.stdin.on("data", (chunk) => {
         log({ method: message.method, id: message.id ?? null, params: message.params ?? null });
         if (message.id !== undefined) answer(message);
       } else if (pending.has(message.id)) {
-        const shared = pending.get(message.id);
-        pending.delete(message.id);
-        log({ method: "tool-answer", id: message.id, params: { result: message.result ?? null, error: message.error ?? null } });
-        if (--shared.remaining === 0) finish(shared.threadId, shared.turnId, "completed");
+        const call = pending.get(message.id);
+        log({ method: "tool-answer", id: message.id, params: { threadId: call.threadId, turnId: call.turnId, spec: call.spec, result: message.result ?? null, error: message.error ?? null } });
+        if (!call.answered) {
+          call.answered = true;
+          if (--call.shared.remaining === 0) finish(call.threadId, call.turnId, "completed");
+        }
       }
     }
     newline = buffer.indexOf("\\n");
@@ -198,6 +202,8 @@ function protocol() {
           turnId: getString(params, "turnId"),
           outcome: getString(entry, "method") === "tool-answer" ? busyOutcomes(params) : null,
           callId: getString(entry, "id"),
+          processId: entry.processId,
+          spec: params.spec,
         };
       });
   } catch {
@@ -242,6 +248,16 @@ const status = (deliveryId: string | undefined) =>
   deliveryId ? mailbox.getDelivery(deliveryId)?.delivery.status : null;
 const runningTurn = (agentId: string) =>
   agents.listQueue(agentId).deliveries.find((item) => item.status === "running")?.turnId;
+const waitForHeld = (agentId: string, deliveryId: string, text: string) =>
+  waitFor(`${text} to run and be held by the provider`, () => {
+    const delivery = mailbox.getDelivery(deliveryId)?.delivery;
+    return delivery?.status === "running" &&
+      agents.listQueue(agentId).deliveries.some((item) => item.id === deliveryId && item.status === "running") &&
+      delivery.turnId &&
+      calls("held-ready").some((entry) => entry.turnId === delivery.turnId && entry.input.includes(text))
+      ? delivery.turnId
+      : null;
+  });
 let sends = 0;
 const send = async (agentId: string, text: string, interrupt?: boolean) => {
   const receipt = await runCauseEffect(
@@ -265,9 +281,10 @@ try {
     }),
   );
   const firstDelivery = await waitFor(
-    "the held first turn",
-    () => agents.listQueue(target.id).deliveries.find((item) => item.status === "running")?.id,
+    "the first delivery",
+    () => agents.listQueue(target.id).deliveries.find((item) => item.text.includes("HOLD-FIRST"))?.id,
   );
+  await waitForHeld(target.id, firstDelivery, "HOLD-FIRST");
 
   // Pause, Run now, and Resume.
   const queuedA = await send(target.id, "QUEUED-A");
@@ -295,7 +312,7 @@ try {
 
   // Stop and send: the new message starts before the message that waited.
   const holdTwo = await send(target.id, "HOLD-TWO");
-  await waitFor("HOLD-TWO to run", () => status(holdTwo) === "running");
+  await waitForHeld(target.id, holdTwo, "HOLD-TWO");
   const queuedC = await send(target.id, "QUEUED-C");
   const nowD = await send(target.id, "NOW-D", true);
   await waitFor(
@@ -314,7 +331,7 @@ try {
   assert.equal(DEFAULT_BUSY_MESSAGE_MODE, "steer");
   busyMode = DEFAULT_BUSY_MESSAGE_MODE;
   const holdThree = await send(target.id, "HOLD-THREE");
-  const heldTurn = await waitFor("HOLD-THREE to run", () => status(holdThree) === "running" && runningTurn(target.id));
+  const heldTurn = await waitForHeld(target.id, holdThree, "HOLD-THREE");
   const steered = await send(target.id, "STEERED-E");
   await waitFor("STEERED-E to join the running turn", () => status(steered) === "running");
   assert.equal(mailbox.getDelivery(steered)?.delivery.turnId, heldTurn);
@@ -334,18 +351,47 @@ try {
   await waitFor("the sender's first turn to end", () =>
     agents.listQueue(sender.id).deliveries.every((item) => item.status === "completed"),
   );
-  const teammateCall = async (busy: "steer" | "interrupt", text: string) => {
-    const before = calls("tool-answer").length;
-    await writeFile(
-      controlPath,
-      JSON.stringify({ call: { recipientAgentIds: [target.id], text, expectsReply: false, busy } }),
+  const answersFor = async (senderId: string, deliveryId: string, marker: string, specs: unknown[]) => {
+    await waitFor(`${marker} sender turn to complete`, () => status(deliveryId) === "completed");
+    const delivery = mailbox.getDelivery(deliveryId)?.delivery;
+    assert(delivery?.turnId, `no turn for ${marker}`);
+    const turns = calls("turn-ready").filter(
+      (entry) => entry.turnId === delivery.turnId && entry.input.includes(marker),
     );
-    await send(sender.id, `CALL-${text}`);
-    await waitFor(`the ${busy} tool answer`, () => calls("tool-answer").length > before);
-    return calls("tool-answer")
-      .slice(before)
-      .flatMap((entry) => entry.outcome ?? [])
-      .at(-1);
+    assert.equal(turns.length, 1, `expected one provider turn for ${marker}`);
+    const turn = turns[0];
+    assert(turn);
+    assert(agents.listQueue(senderId).deliveries.some((item) => item.id === deliveryId && item.turnId === turn.turnId));
+    const toolCalls = calls("tool-call").filter(
+      (entry) => entry.processId === turn.processId && entry.threadId === turn.threadId && entry.turnId === turn.turnId,
+    );
+    assert.equal(toolCalls.length, specs.length, `unexpected call count for ${marker}`);
+    return specs.map((spec) => {
+      const matching = toolCalls.filter((entry) => JSON.stringify(entry.spec) === JSON.stringify(spec));
+      assert.equal(matching.length, 1, `expected one call for ${marker}`);
+      const call = matching[0];
+      assert(call?.callId);
+      const answers = calls("tool-answer").filter(
+        (entry) =>
+          entry.processId === call.processId &&
+          entry.threadId === call.threadId &&
+          entry.turnId === call.turnId &&
+          entry.callId === call.callId,
+      );
+      assert.equal(answers.length, 1, `expected one answer for ${marker} ${call.callId}`);
+      assert.deepEqual(answers[0]?.spec, spec);
+      assert.equal(answers[0]?.outcome?.length, 1);
+      const outcome = answers[0]?.outcome?.[0];
+      assert.equal(outcome?.agentId, target.id);
+      return outcome;
+    });
+  };
+  const teammateCall = async (busy: "steer" | "interrupt", text: string) => {
+    const spec = { recipientAgentIds: [target.id], text, expectsReply: false, busy };
+    await writeFile(controlPath, JSON.stringify({ call: spec }));
+    const marker = `CALL-${text}`;
+    const deliveryId = await send(sender.id, marker);
+    return (await answersFor(sender.id, deliveryId, marker, [spec]))[0];
   };
   const steer = await teammateCall("steer", "TEAM-STEER");
   assert.equal(steer?.result, "steered");
@@ -361,11 +407,11 @@ try {
   report.checks.push("A teammate interrupts another agent's turn, and its message starts next");
 
   const holdFour = await send(target.id, "HOLD-FOUR");
-  await waitFor("HOLD-FOUR to run", () => status(holdFour) === "running");
+  await waitForHeld(target.id, holdFour, "HOLD-FOUR");
   const interruptsBefore = calls("turn/interrupt").length;
   const cooled = await teammateCall("interrupt", "TEAM-AGAIN");
   assert.equal(cooled?.result, "queued");
-  assert(cooled?.reason, "the cooldown gives no reason");
+  assert.equal(cooled?.reason, sourceText("error.backend.agentControlCooldown"));
   assert.equal(calls("turn/interrupt").length, interruptsBefore);
   assert.equal(status(holdFour), "running");
   report.checks.push("A second interrupt within the cooldown is refused with a reason and the message stays queued");
@@ -380,28 +426,24 @@ try {
   let overlapSequence = 0;
   const overlapping = async (senderIds: string[], specsBySender: unknown[][]) => {
     assert.equal(senderIds.length, specsBySender.length);
-    const start = calls("tool-answer").length;
     const interruptsBefore = calls("turn/interrupt").length;
-    const specs = specsBySender.flat();
     const keys = senderIds.map(() => ++overlapSequence);
     await Promise.all(
       keys.map((key, index) => writeFile(`${controlPath}.${key}`, JSON.stringify({ calls: specsBySender[index] }))),
     );
-    await Promise.all(senderIds.map((senderId, index) => send(senderId, `CALL-OVERLAP-${keys[index]}`)));
-    try {
-      await waitFor("every overlapping tool answer", () => calls("tool-answer").length >= start + specs.length);
-    } catch (error) {
-      const starts = calls("turn/start").filter((entry) =>
-        keys.some((key) => entry.input.includes(`CALL-OVERLAP-${key}`)),
-      );
-      throw new Error(
-        `Overlapping calls: expected ${specs.length} answers, received ${calls("tool-answer").length - start}; ` +
-          `started ${starts.length} of ${senderIds.length} sender turns.`,
-        { cause: error },
-      );
-    }
-    const answers = calls("tool-answer").slice(start, start + specs.length);
-    const outcomes = answers.flatMap((entry) => entry.outcome ?? []);
+    const deliveryIds = await Promise.all(
+      senderIds.map((senderId, index) => send(senderId, `CALL-OVERLAP-${keys[index]}`)),
+    );
+    const outcomes = (
+      await Promise.all(
+        senderIds.map((senderId, index) => {
+          const deliveryId = deliveryIds[index];
+          const specs = specsBySender[index];
+          assert(deliveryId && specs);
+          return answersFor(senderId, deliveryId, `CALL-OVERLAP-${keys[index]}`, specs);
+        }),
+      )
+    ).flat();
     return { outcomes, stopped: calls("turn/interrupt").length - interruptsBefore };
   };
 
@@ -419,7 +461,7 @@ try {
   await waitFor("the cooling sender's first turn to end", () =>
     agents.listQueue(cooling.id).deliveries.every((item) => item.status === "completed"),
   );
-  await waitFor("the held turn of the target", () => runningTurn(target.id));
+  await waitForHeld(target.id, holdFour, "HOLD-FOUR");
   const sameSender = await overlapping([cooling.id], [[interruptSpec("HOLD-COOL-1"), interruptSpec("HOLD-COOL-2")]]);
   assert.deepEqual(sameSender.outcomes.map((outcome) => outcome.result).sort(), ["interrupted", "queued"]);
   assert.equal(sameSender.stopped, 1);
@@ -448,9 +490,12 @@ try {
   await waitFor("the new senders' first turns to end", () =>
     [second.id, third.id].every((id) => agents.listQueue(id).deliveries.every((item) => item.status === "completed")),
   );
-  const heldBeforeLimit = await waitFor("the held delivery of the target", () =>
-    agents.listQueue(target.id).deliveries.find((item) => item.status === "running"),
+  const heldBeforeLimit = await waitFor("the started cooling delivery", () =>
+    agents
+      .listQueue(target.id)
+      .deliveries.find((item) => ["HOLD-COOL-1", "HOLD-COOL-2"].includes(item.text) && item.status === "running"),
   );
+  await waitForHeld(target.id, heldBeforeLimit.id, heldBeforeLimit.text);
   const secondText = "HOLD-LIMIT-SECOND";
   const thirdText = "HOLD-LIMIT-THIRD";
   const limited = await overlapping([second.id, third.id], [[interruptSpec(secondText)], [interruptSpec(thirdText)]]);
@@ -495,15 +540,9 @@ try {
   await waitFor("the capacity sender's first turn to end", () =>
     agents.listQueue(capacitySender.id).deliveries.every((item) => item.status === "completed"),
   );
-  const capacityTurn = await waitFor("the target provider to hold its running turn", () => {
-    const delivery = agents.listQueue(target.id).deliveries.find((item) => item.status === "running");
-    return delivery?.turnId &&
-      calls("held-ready").some((entry) => entry.turnId === delivery.turnId && entry.input.includes(delivery.text))
-      ? delivery.turnId
-      : null;
-  });
-  const capacityDelivery = agents.listQueue(target.id).deliveries.find((item) => item.turnId === capacityTurn);
-  assert(capacityDelivery);
+  assert(started);
+  const capacityTurn = await waitForHeld(target.id, started.id, started.text);
+  const capacityDelivery = started;
   const capacityText = "CAPACITY-REFUSAL";
   const capacity = await overlapping([capacitySender.id], [[interruptSpec(capacityText)]]);
   assert.deepEqual(capacity.outcomes, [
@@ -520,6 +559,19 @@ try {
     "A running target at interrupt capacity refuses one message with the limit reason and stays running",
   );
 
+  for (const call of calls("tool-call")) {
+    assert.equal(
+      calls("tool-answer").filter(
+        (entry) =>
+          entry.processId === call.processId &&
+          entry.threadId === call.threadId &&
+          entry.turnId === call.turnId &&
+          entry.callId === call.callId,
+      ).length,
+      1,
+      `expected exactly one answer for ${call.callId}`,
+    );
+  }
   report.passed = true;
 } catch (error) {
   report.error = error instanceof Error ? (error.stack ?? error.message) : String(error);
