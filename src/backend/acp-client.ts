@@ -433,6 +433,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   readonly #fleetBackend: "cursor" | "agy" | null;
   readonly #fleetThreads = new Map<string, string>();
   readonly #fleetSent = new Set<string>();
+  readonly #fleetReleases = new Set<Promise<void>>();
   readonly #fleetPendingStarts = new Map<string, AbortController>();
   readonly #serverRequests = new PendingServerRequests((request) => this.emit("request", request));
   #initialized: Deferred.Deferred<void, ProviderClientOperationError> | null = null;
@@ -461,14 +462,17 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         this.#retainFleetTurn(threadId);
         return;
       }
-      void runCauseEffect(this.#fleet.completed(threadId, turnId))
+      const release = runCauseEffect(this.#fleet.completed(threadId, turnId))
         .then(() => {
           if (!this.#fleet?.has(threadId)) {
             this.#fleetThreads.delete(threadId);
             this.#fleetSent.delete(threadId);
           }
         })
-        .catch(() => this.emit("diagnostic", sourceText("error.provider.fleetUnavailable")));
+        .catch(() => this.emit("diagnostic", sourceText("error.provider.fleetUnavailable")))
+        .then(() => undefined);
+      this.#fleetReleases.add(release);
+      void release.finally(() => this.#fleetReleases.delete(release));
     });
     this.#flavor = options.flavor;
     this.#transport = new AcpConnection({
@@ -677,6 +681,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     this: AcpAgentClient,
   ): Effect.fn.Return<void, ProviderClientOperationError> {
     this.#retainFleetTurns();
+    yield* Effect.promise(() => Promise.all([...this.#fleetReleases]).then(() => undefined));
     yield* this.#transport
       .stop(
         Effect.gen({ self: this }, function* () {
