@@ -140,6 +140,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
   readonly #fleet = configuredFleetTurnGate();
   readonly #fleetThreads = new Map<string, string>();
   readonly #fleetSent = new Set<string>();
+  readonly #fleetReleases = new Set<Promise<void>>();
   readonly #fleetPendingStarts = new Map<string, AbortController>();
   readonly #fleetPendingCompactions = new Map<string, AbortController>();
   readonly #compacting = new Set<string>();
@@ -195,6 +196,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
     for (const controller of this.#fleetPendingStarts.values()) controller.abort();
     for (const controller of this.#fleetPendingCompactions.values()) controller.abort();
     for (const threadId of this.#fleetThreads.keys()) yield* this.#cancelOrRetainFleetTurn(threadId);
+    yield* Effect.promise(() => Promise.all([...this.#fleetReleases]).then(() => undefined));
     this.#fleetThreads.clear();
     this.#fleetSent.clear();
     this.#requests.rejectAll(sourceText("error.provider.piStopped"));
@@ -859,15 +861,19 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
   #notify(method: string, thread: PiThread, params: DynamicRecord): void {
     if (method === "turn/completed" && this.#fleetThreads.has(thread.id) && this.#fleet) {
       const turnId = getString(getRecord(params, "turn"), "id");
-      if (turnId)
-        void runCauseEffect(this.#fleet.completed(thread.id, turnId))
+      if (turnId) {
+        const release = runCauseEffect(this.#fleet.completed(thread.id, turnId))
           .then(() => {
             if (!this.#fleet?.has(thread.id)) {
               this.#fleetThreads.delete(thread.id);
               this.#fleetSent.delete(thread.id);
             }
           })
-          .catch(() => this.emit("diagnostic", sourceText("error.provider.fleetUnavailable")));
+          .catch(() => this.emit("diagnostic", sourceText("error.provider.fleetUnavailable")))
+          .then(() => undefined);
+        this.#fleetReleases.add(release);
+        void release.finally(() => this.#fleetReleases.delete(release));
+      }
     }
     // Usage contains only validated numeric counters. Generic secret-name matching masks `*Tokens`.
     const safe = method === "openbot/usage" ? params : redactMcpRecord(params, this.#secretValues());

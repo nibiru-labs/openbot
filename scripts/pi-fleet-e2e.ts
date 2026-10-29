@@ -22,6 +22,7 @@ const timeoutScenario = process.argv.includes("--timeout");
 const interruptScenario = process.argv.includes("--interrupt");
 const idleScenario = process.argv.includes("--idle");
 const stopScenario = process.argv.includes("--stop");
+const releaseStopScenario = process.argv.includes("--release-stop");
 await mkdir(held);
 await writeFile(
   coordinator,
@@ -46,6 +47,10 @@ if (request.op === 'acquire') {
   process.stdout.write(JSON.stringify({ok:true, admitted:true}));
 } else {
   unlinkSync(path);
+  if (existsSync(join(process.argv[2], 'delay-release'))) {
+    writeFileSync(join(process.argv[2], 'release-started'), '');
+    while (!existsSync(join(process.argv[2], 'release-continue'))) await new Promise(resolve => setTimeout(resolve, 20));
+  }
   process.stdout.write(JSON.stringify({ok:true, released:true}));
 }
 `,
@@ -134,7 +139,53 @@ try {
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
   checks.push("Pi compaction releases admission after the RPC acknowledges completion");
-  if (stopScenario) {
+  if (releaseStopScenario) {
+    const completed = new Promise<void>((resolve) => {
+      client.on("notification", (event) => {
+        if (event.method === "turn/completed" && getString(event.params, "threadId") === thread) resolve();
+      });
+    });
+    const started = await runCauseEffect(
+      client.request(
+        "turn/start",
+        {
+          threadId: thread,
+          input: [{ type: "text", text: "work", text_elements: [] }],
+        },
+        (value) => value,
+      ),
+    );
+    const turnId = getString(getRecord(started, "turn"), "id");
+    assert.ok(turnId);
+    await writeFile(join(held, "delay-release"), "");
+    await runCauseEffect(
+      client.request(
+        "turn/steer",
+        {
+          threadId: thread,
+          expectedTurnId: turnId,
+          input: [{ type: "text", text: "finish", text_elements: [] }],
+        },
+        (value) => value,
+      ),
+    );
+    await completed;
+    const deadline = Date.now() + 10_000;
+    while (!(await readdir(held)).includes("release-started")) {
+      if (Date.now() > deadline) throw new Error("Pi release did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    let stopped = false;
+    const stopping = stopClients([client]).then(() => {
+      stopped = true;
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(stopped, false, "shutdown must wait for the blocked release");
+    await writeFile(join(held, "release-continue"), "");
+    await stopping;
+    assert.deepEqual(await readdir(journal), []);
+    checks.push("Pi shutdown waits for the completed turn's release");
+  } else if (stopScenario) {
     await writeFile(join(held, "deny"), "");
     const waiting = runCauseEffect(
       client.request(
@@ -273,15 +324,17 @@ try {
     checks.push("a lost admission response retains its journal and never sends the Pi prompt");
   }
   await mkdir(reportDirectory, { recursive: true });
-  const report = stopScenario
-    ? "stop-report.json"
-    : idleScenario
-      ? "idle-report.json"
-      : interruptScenario
-        ? "interrupt-report.json"
-        : timeoutScenario
-          ? "timeout-report.json"
-          : "report.json";
+  const report = releaseStopScenario
+    ? "release-stop-report.json"
+    : stopScenario
+      ? "stop-report.json"
+      : idleScenario
+        ? "idle-report.json"
+        : interruptScenario
+          ? "interrupt-report.json"
+          : timeoutScenario
+            ? "timeout-report.json"
+            : "report.json";
   await writeFile(join(reportDirectory, report), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   process.stdout.write(`PASS ${join(reportDirectory, report)}\n`);
 } catch (error) {
