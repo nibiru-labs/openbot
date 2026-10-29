@@ -87,7 +87,11 @@ const answer = (message) => {
       if (input.includes("HOLD")) held.set(params.threadId, turnId);
       else if (input.includes("CALL")) {
         // calls sends several tool calls at once, as a model may; call sends one.
-        const specs = control().calls ?? [control().call];
+        const overlap = input.match(/CALL-OVERLAP-(\\d+)/);
+        const selected = overlap
+          ? JSON.parse(fs.readFileSync(process.env.OPENBOT_FAKE_CODEX_CONTROL + "." + overlap[1], "utf8"))
+          : control();
+        const specs = selected.calls ?? [selected.call];
         const shared = { threadId: params.threadId, turnId, remaining: specs.length };
         for (const spec of specs) {
           const id = "call-" + (++calls);
@@ -368,15 +372,29 @@ try {
     expectsReply: false,
     busy: "interrupt",
   });
+  let overlapSequence = 0;
   const overlapping = async (senderIds: string[], specsBySender: unknown[][]) => {
+    assert.equal(senderIds.length, specsBySender.length);
     const start = calls("tool-answer").length;
     const interruptsBefore = calls("turn/interrupt").length;
     const specs = specsBySender.flat();
+    const keys = senderIds.map(() => ++overlapSequence);
     await Promise.all(
-      senderIds.map((_senderId, index) => writeFile(controlPath, JSON.stringify({ calls: specsBySender[index] }))),
+      keys.map((key, index) => writeFile(`${controlPath}.${key}`, JSON.stringify({ calls: specsBySender[index] }))),
     );
-    await Promise.all(senderIds.map((senderId) => send(senderId, "CALL-OVERLAP")));
-    await waitFor("every overlapping tool answer", () => calls("tool-answer").length >= start + specs.length);
+    await Promise.all(senderIds.map((senderId, index) => send(senderId, `CALL-OVERLAP-${keys[index]}`)));
+    try {
+      await waitFor("every overlapping tool answer", () => calls("tool-answer").length >= start + specs.length);
+    } catch (error) {
+      const starts = calls("turn/start").filter((entry) =>
+        keys.some((key) => entry.input.includes(`CALL-OVERLAP-${key}`)),
+      );
+      throw new Error(
+        `Overlapping calls: expected ${specs.length} answers, received ${calls("tool-answer").length - start}; ` +
+          `started ${starts.length} of ${senderIds.length} sender turns.`,
+        { cause: error },
+      );
+    }
     const answers = calls("tool-answer").slice(start, start + specs.length);
     const outcomes = answers.flatMap((entry) => entry.outcome ?? []);
     return { outcomes, stopped: calls("turn/interrupt").length - interruptsBefore };
