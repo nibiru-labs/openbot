@@ -119,6 +119,12 @@ const turn = (message) => {
   const input = JSON.stringify(message);
   const acts = input.includes("act-then-fail");
   fs.appendFileSync(${JSON.stringify(turnLog)}, JSON.stringify({ model, failed: fails, input }) + "\\n");
+  if (input.includes("scoped-partial-limit")) {
+    assistant("Partial answer.");
+    write({ type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: model.includes("opus") ? "seven_day_opus" : "seven_day_sonnet", resetsAt: Math.floor(Date.now() / 1000) + 3600 } });
+    result({ is_error: true, result: "You've hit your limit. Try again later." });
+    return;
+  }
   if ((input.includes("usage-work") || input.includes("usage-chain") || input.includes("usage-exhausted")) &&
       (model === ${JSON.stringify(PRIMARY)} || input.includes("usage-exhausted"))) {
     if (!input.includes("usage-chain-empty")) assistant("Checkpoint saved. Only the final step remains.");
@@ -643,7 +649,7 @@ try {
     });
   }
   await runCauseEffect(service.initialize());
-  const create = (name: string) =>
+  const create = (name: string, model: AgentModelId = PRIMARY) =>
     runCauseEffect(
       service.createAgent({
         name,
@@ -652,7 +658,7 @@ try {
         avatarHue: null,
         initialMessage: "Hello.",
         provider: "claude",
-        model: PRIMARY,
+        model,
       }),
     );
   const mover = await create("Mover");
@@ -1035,6 +1041,27 @@ try {
       return outcome;
     });
   }
+
+  await check("a scoped limit after partial work holds the same model family", async () => {
+    await restart();
+    const first = await create("Scopedfirst", "claude-sonnet-5-5");
+    const second = await create("Scopedsecond", "claude-sonnet-5-5");
+    await waitFor("scoped agents to finish their initial turns", () =>
+      [first.id, second.id].every((id) =>
+        service.listQueue(id).deliveries.every((delivery) => delivery.status === "completed"),
+      ),
+    );
+    const outcome = await send(first.id, "scoped-partial-limit");
+    assert.equal(outcome.status, "failed");
+    const limits = await waitFor("the family limit to hold both agents", () => {
+      const current = service.getRuntimeSnapshot().usageLimits ?? [];
+      return [first.id, second.id].every((id) => current.some((limit) => limit.agentId === id)) ? current : null;
+    });
+    return {
+      status: outcome.status,
+      held: limits.filter((limit) => [first.id, second.id].includes(limit.agentId)).length,
+    };
+  });
 
   report.passed = true;
 } catch (error) {
