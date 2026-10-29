@@ -193,19 +193,57 @@ function busyOutcomes(params: unknown) {
   });
 }
 
+// The fake logs its supported requests and notifications, plus its own lifecycle and tool records.
+const protocolMethods = new Set([
+  "initialize",
+  "initialized",
+  "account/read",
+  "account/rateLimits/read",
+  "model/list",
+  "plugin/list",
+  "config/read",
+  "config/batchWrite",
+  "thread/start",
+  "thread/resume",
+  "thread/unsubscribe",
+  "thread/turns/list",
+  "thread/items/list",
+  "thread/read",
+  "turn/start",
+  "turn/steer",
+  "turn/interrupt",
+  "thread-bound",
+  "turn-ready",
+  "held-ready",
+  "tool-call",
+  "tool-answer",
+]);
+
 function protocol(path = logPath) {
   return readFileSync(path, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((line) => {
-      const entry = recordOf(JSON.parse(line));
+    .map((line, index) => {
+      const entry = JSON.parse(line);
+      assert(isRecord(entry), `invalid synthetic log record at line ${index + 1}: expected an object`);
+      const method = getString(entry, "method");
+      assert(method && protocolMethods.has(method), `invalid synthetic log method at line ${index + 1}`);
+      assert(
+        Number.isSafeInteger(entry.processId) && Number(entry.processId) > 0,
+        `invalid process ID at line ${index + 1}`,
+      );
+      assert(entry.params === null || isRecord(entry.params), `invalid params at line ${index + 1}`);
+      assert(
+        entry.id === undefined || entry.id === null || typeof entry.id === "string" || typeof entry.id === "number",
+        `invalid ID at line ${index + 1}`,
+      );
       const params = isRecord(entry.params) ? entry.params : {};
       return {
-        method: getString(entry, "method"),
+        method,
         input: JSON.stringify(params.input ?? ""),
         threadId: getString(params, "threadId"),
         turnId: getString(params, "turnId"),
-        outcome: getString(entry, "method") === "tool-answer" ? busyOutcomes(params) : null,
+        outcome: method === "tool-answer" ? busyOutcomes(params) : null,
         callId: getString(entry, "id"),
         processId: entry.processId,
         spec: params.spec,
@@ -630,6 +668,13 @@ try {
     const invalidLog = join(root, "invalid-protocol.jsonl");
     writeFileSync(invalidLog, "{invalid\n");
     assert.throws(() => protocol(invalidLog));
+    for (const method of [undefined, null, 42, "", "turn/interupt"]) {
+      writeFileSync(invalidLog, `${JSON.stringify({ method, processId: 1, params: {} })}\n`);
+      assert.throws(
+        () => assert.equal(protocol(invalidLog).filter((entry) => entry.method === "turn/interrupt").length, 0),
+        /invalid synthetic log method/,
+      );
+    }
     assert.throws(() => protocol(join(root, "missing-protocol.jsonl")));
     if (!report.error) report.passed = true;
   } catch (error) {
