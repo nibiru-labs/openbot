@@ -85,11 +85,15 @@ export class FleetTurnGate {
         } finally {
           closeSync(fd);
         }
-        const parent = openSync(this.directory, "r");
-        try {
-          fsyncSync(parent);
-        } finally {
-          closeSync(parent);
+        // Node cannot open directories for fsync on Windows. The journal file is flushed above;
+        // directory-entry durability across a sudden Windows power loss is not guaranteed.
+        if (process.platform !== "win32") {
+          const parent = openSync(this.directory, "r");
+          try {
+            fsyncSync(parent);
+          } finally {
+            closeSync(parent);
+          }
         }
       }).pipe(
         Effect.onError(() =>
