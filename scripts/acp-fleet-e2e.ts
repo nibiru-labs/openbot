@@ -39,6 +39,7 @@ if (request.op === 'acquire') {
   process.stdout.write(JSON.stringify({ok:true, admitted:true}));
 } else {
   unlinkSync(path);
+  if (existsSync(join(process.argv[2], 'delay-release'))) await new Promise(resolve => setTimeout(resolve, 700));
   process.stdout.write(JSON.stringify({ok:true, released:true}));
 }
 `,
@@ -156,8 +157,17 @@ try {
   assert.equal((await readdir(journal)).length, 1);
   checks.push("a locally abandoned Antigravity prompt retains its reservation");
   assert.ok(cursorClient && cursorThread);
+  await writeFile(join(held, "delay-release"), "");
   const cursorAfter = await runTurn(cursorClient, cursorThread, { text: "still available", timeoutMs: 10_000 });
   assert.equal(cursorAfter.status, "completed");
+  await stopClients([cursorClient]);
+  const remaining = await readdir(journal);
+  assert.equal(remaining.length, 1);
+  const remainingFile = remaining[0];
+  assert.ok(remainingFile);
+  const retained = JSON.parse(await readFile(join(journal, remainingFile), "utf8"));
+  assert.equal(retained.backend, "agy");
+  checks.push("stopping waits for a completed Cursor release to finish");
   checks.push("an uncertain Antigravity turn does not block Cursor");
   await mkdir(reportDirectory, { recursive: true });
   await writeFile(join(reportDirectory, "report.json"), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
