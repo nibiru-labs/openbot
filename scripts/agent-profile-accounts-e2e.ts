@@ -32,44 +32,58 @@ type ProfileToolArgs = z.input<typeof updateProfileToolSchema> &
   z.input<typeof listModelsToolSchema>;
 
 const OUT = resolve(import.meta.dirname, "../.openbot-build/agent-profile-accounts-e2e");
+async function disposeResources(cleanup: (() => Promise<void> | void)[]) {
+  let failed = false;
+  for (const dispose of cleanup.reverse()) {
+    try {
+      await dispose();
+    } catch {
+      failed = true;
+    }
+  }
+  if (failed) throw new Error("Resource cleanup failed.");
+}
+
 async function main() {
   const root = await mkdtemp(join(tmpdir(), "openbot-profile-accounts-"));
-  const userData = join(root, "user-data");
-  const home = join(root, "home");
-  const accountsRoot = join(root, "provider-accounts");
-  const fakeCodex = join(root, "codex.cjs");
-  const fakeLog = join(root, "codex.jsonl");
+  const cleanup: (() => Promise<void> | void)[] = [];
+  try {
+    const userData = join(root, "user-data");
+    const home = join(root, "home");
+    const accountsRoot = join(root, "provider-accounts");
+    const fakeCodex = join(root, "codex.cjs");
+    const fakeLog = join(root, "codex.jsonl");
 
-  // Before the service modules load: the Codex process and the stores read the home folder.
-  process.env.HOME = home;
-  process.env.CODEX_HOME = join(home, ".codex");
-  process.env.OPENBOT_CODEX_PATH = fakeCodex;
-  mkdirSync(home, { recursive: true });
+    // Before the service modules load: the Codex process and the stores read the home folder.
+    process.env.HOME = home;
+    process.env.CODEX_HOME = join(home, ".codex");
+    process.env.OPENBOT_CODEX_PATH = fakeCodex;
+    mkdirSync(home, { recursive: true });
 
-  const { AgentService } = await import("../src/backend/agent-service");
-  const { AgentStore } = await import("../src/backend/agent-store");
-  const { ProviderAccountStore } = await import("../src/backend/agent/provider-account-store");
-  const { runCauseEffect } = await import("../src/backend/effect-boundary");
-  const { MailboxStore } = await import("../src/backend/mailbox-store");
-  const { OpenBotDatabase } = await import("../src/backend/openbot-database");
+    const { AgentService } = await import("../src/backend/agent-service");
+    const { AgentStore } = await import("../src/backend/agent-store");
+    const { ProviderAccountStore } = await import("../src/backend/agent/provider-account-store");
+    const { runCauseEffect } = await import("../src/backend/effect-boundary");
+    const { MailboxStore } = await import("../src/backend/mailbox-store");
+    const { OpenBotDatabase } = await import("../src/backend/openbot-database");
 
-  const CALL_MARK = "PROFILE-CALL";
-  const MODEL = "gpt-6-luna";
-  const OTHER_MODEL = "gpt-6-sol";
-  /** More models than the short list of list_models holds: 8 a provider. OTHER_MODEL is last in the catalog. */
-  const EXTRA_MODELS = Array.from({ length: 10 }, (_, index) => `gpt-6-extra-${index + 1}`);
-  const CATALOG = [
-    { model: MODEL, displayName: "GPT-6 Luna" },
-    ...EXTRA_MODELS.map((model, index) => ({ model, displayName: `GPT-6 Extra ${index + 1}` })),
-    { model: OTHER_MODEL, displayName: "GPT-6 Sol" },
-  ];
+    const CALL_MARK = "PROFILE-CALL";
+    const MODEL = "gpt-6-luna";
+    const OTHER_MODEL = "gpt-6-sol";
+    /** More models than the short list of list_models holds: 8 a provider. OTHER_MODEL is last in the catalog. */
+    const EXTRA_MODELS = Array.from({ length: 10 }, (_, index) => `gpt-6-extra-${index + 1}`);
+    const CATALOG = [
+      { model: MODEL, displayName: "GPT-6 Luna" },
+      ...EXTRA_MODELS.map((model, index) => ({ model, displayName: `GPT-6 Extra ${index + 1}` })),
+      { model: OTHER_MODEL, displayName: "GPT-6 Sol" },
+    ];
 
-  /**
-   * A Codex app-server with the methods that the service calls. A turn whose input has
-   * `PROFILE-CALL <<ARGS{json}ARGS>>` calls the `__tool` that the JSON names with the other fields through
-   * `tool_call`, logs the result, and ends. Other turns answer "Done.".
-   */
-  const FAKE_CODEX = `#!/usr/bin/env node
+    /**
+     * A Codex app-server with the methods that the service calls. A turn whose input has
+     * `PROFILE-CALL <<ARGS{json}ARGS>>` calls the `__tool` that the JSON names with the other fields through
+     * `tool_call`, logs the result, and ends. Other turns answer "Done.".
+     */
+    const FAKE_CODEX = `#!/usr/bin/env node
 const { appendFileSync } = require("node:fs");
 if (process.argv.includes("--version")) {
   process.stdout.write("codex-cli 0.160.1\\n");
@@ -162,367 +176,373 @@ process.stdin.on("data", (chunk) => {
 });
 `;
 
-  interface ToolLog {
-    turnId: string;
-    result: { success: boolean; contentItems: { type: string; text: string }[] } | null;
-    error: unknown;
-  }
+    interface ToolLog {
+      turnId: string;
+      result: { success: boolean; contentItems: { type: string; text: string }[] } | null;
+      error: unknown;
+    }
 
-  interface ChoiceBody {
-    provider: string;
-    model: string;
-    providerAccountId: string;
-  }
-
-  /** The fields of a tool result that the check reads. The router sends them as JSON text. */
-  interface ProfileToolBody {
-    providers?: {
+    interface ChoiceBody {
       provider: string;
-      models?: { id: string }[];
-      omittedModels?: number;
-      accounts?: { id: string; label: string | null; state: string }[];
-    }[];
-    model?: string;
-    name?: string;
-    providerAccountId?: string;
-    backupModels?: { automatic: boolean; order: ChoiceBody[] } | null;
-    usageLimitReturn?: unknown;
-  }
-
-  const report: {
-    calls: { name: string; turnId: string; success: boolean | null; text: string }[];
-    stored?: Pick<AgentSummary, "providerAccountId" | "backupModels">;
-    deletedAgent?: { ownProcessStopped: boolean; workspaceRemoved: boolean };
-    checks: { name: string; passed: boolean }[];
-    passed: boolean;
-    error?: string;
-  } = { calls: [], checks: [], passed: false };
-
-  const unused = () => Effect.die(new Error("Not used by this check."));
-  const browser: AgentBrowserHost = {
-    listTabs: () => [],
-    beginTakeover: unused,
-    endTakeover: () => {},
-    resolveUploadTarget: unused,
-    handleDynamicTool: unused,
-    userControlTabFor: () => null,
-    awaitUserControlRelease: unused,
-    onChanged: () => () => {},
-    onControlChanged: () => () => {},
-    onDocumentChanged: () => () => {},
-    clearControls: () => {},
-    endControl: () => {},
-    close: () => Effect.void,
-    clearAgentSession: () => Effect.void,
-  };
-
-  /** Waits for a state of the service or the fake's log. */
-  async function waitFor<T>(label: string, read: () => T | null | undefined | false, timeoutMs = 20_000): Promise<T> {
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-      const value = read();
-      if (value) return value;
-      if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
-      await new Promise((done) => setTimeout(done, 25));
+      model: string;
+      providerAccountId: string;
     }
-  }
 
-  function toolLogs(): ToolLog[] {
-    let text = "";
-    try {
-      text = readFileSync(fakeLog, "utf8");
-    } catch {
-      return [];
+    /** The fields of a tool result that the check reads. The router sends them as JSON text. */
+    interface ProfileToolBody {
+      providers?: {
+        provider: string;
+        models?: { id: string }[];
+        omittedModels?: number;
+        accounts?: { id: string; label: string | null; state: string }[];
+      }[];
+      model?: string;
+      name?: string;
+      providerAccountId?: string;
+      backupModels?: { automatic: boolean; order: ChoiceBody[] } | null;
+      usageLimitReturn?: unknown;
     }
-    return text
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
-  }
 
-  function pass(name: string, condition: boolean, detail?: string) {
-    report.checks.push({ name, passed: condition });
-    assert.ok(condition, detail ? `${name}: ${detail}` : name);
-  }
+    const report: {
+      calls: { name: string; turnId: string; success: boolean | null; text: string }[];
+      stored?: Pick<AgentSummary, "providerAccountId" | "backupModels">;
+      deletedAgent?: { ownProcessStopped: boolean; workspaceRemoved: boolean };
+      checks: { name: string; passed: boolean }[];
+      passed: boolean;
+      error?: string;
+    } = { calls: [], checks: [], passed: false };
 
-  await writeFile(fakeCodex, FAKE_CODEX, { mode: 0o755 });
-  const accounts = new ProviderAccountStore(join(userData, "openbot-provider-accounts-v1.json"), accountsRoot);
-  await runCauseEffect(accounts.load());
-  const second = await runCauseEffect(accounts.create("codex"));
-  assert.ok(second, "The second Codex account was not created.");
-  await runCauseEffect(accounts.rename("codex", second.id, "Team B"));
-  const database = new OpenBotDatabase(userData);
-  const store = new AgentStore(userData, home, database);
-  const mailbox = new MailboxStore(userData, store.sharedRoot, store.database);
-  const agents = new AgentService({
-    store,
-    mailbox,
-    browser,
-    providerAccounts: accounts,
-    preferredProvider: "codex",
-    offProviders: AGENT_PROVIDERS.filter((provider) => provider !== "codex"),
-  });
-
-  const idle = (agentId: string) =>
-    agents
-      .listQueue(agentId)
-      .deliveries.every((delivery) => !["queued", "starting", "running"].includes(delivery.status));
-
-  /** Sends a chat message that makes the fake call the tool, and returns the tool result it logged. */
-  async function callTool(name: string, agentId: string, tool: string, args: Partial<ProfileToolArgs> = {}) {
-    const receipt = await runCauseEffect(
-      agents.sendMessage({ agentId, text: `${CALL_MARK} <<ARGS${JSON.stringify({ __tool: tool, ...args })}ARGS>>` }),
-    );
-    const deliveryId = receipt.deliveries[0]?.id;
-    assert.ok(deliveryId, `${name}: no delivery`);
-    const turnId = await waitFor(`${name} turn`, () => mailbox.getDelivery(deliveryId)?.delivery.turnId);
-    const entry = await waitFor(`${name} tool result`, () => toolLogs().find((log) => log.turnId === turnId));
-    await waitFor(`${name} turn end`, () => {
-      const status = mailbox.getDelivery(deliveryId)?.delivery.status;
-      return status === "completed" || status === "failed" || status === "interrupted";
-    });
-    const text = entry.result?.contentItems.map((item) => item.text).join("\n") ?? "";
-    report.calls.push({ name, turnId: entry.turnId, success: entry.result?.success ?? null, text });
-    let body: ProfileToolBody | null = null;
-    try {
-      body = text ? JSON.parse(text) : null;
-    } catch {
-      // A failure is plain text.
-    }
-    return { success: entry.result?.success === true, text, body };
-  }
-
-  const storedAgent = (agentId: string) => {
-    const agent = store.list().find((candidate) => candidate.id === agentId);
-    assert.ok(agent, "The worker agent is missing.");
-    return agent;
-  };
-
-  try {
-    await runCauseEffect(agents.initialize());
-    const create = (name: string) =>
-      runCauseEffect(
-        agents.createAgent({
-          name,
-          description: name,
-          avatarSeed: name.toLowerCase(),
-          avatarHue: null,
-          initialMessage: "Hello.",
-        }),
-      );
-    const coordinator = await create("Coordinator");
-    const worker = await create("Worker");
-    await waitFor("the first chat turns to end", () => idle(coordinator.id) && idle(worker.id));
-    await waitFor("the second account to connect", () =>
-      agents
-        .getStatus()
-        .providers?.find((row) => row.id === "codex")
-        ?.accounts?.some((account) => account.id === second.id && account.state === "connected"),
-    );
-
-    // 1. list_models lists both accounts, the provider's own sign-in first, without emails or folders.
-    const listed = await callTool("list models", coordinator.id, "list_models", { provider: "codex" });
-    const listedAccounts = listed.body?.providers?.find((row) => row.provider === "codex")?.accounts ?? [];
-    pass("list_models succeeds", listed.success, listed.text);
-    pass(
-      "list_models lists the provider's own sign-in and the second account with their labels",
-      listedAccounts.length === 2 &&
-        listedAccounts[0]?.id === "default" &&
-        listedAccounts[0]?.label === null &&
-        listedAccounts[1]?.id === second.id &&
-        listedAccounts[1]?.label === "Team B" &&
-        listedAccounts[1]?.state === "connected",
-      listed.text,
-    );
-    const codexModels = (call: { body: ProfileToolBody | null }) =>
-      call.body?.providers?.find((row) => row.provider === "codex");
-    pass(
-      "list_models lists the default model and the first models, and counts the others",
-      codexModels(listed)
-        ?.models?.map((model) => model.id)
-        .join(",") === [MODEL, ...EXTRA_MODELS.slice(0, 7)].join(",") && codexModels(listed)?.omittedModels === 4,
-      listed.text,
-    );
-    pass(
-      "list_models has no account email or folder",
-      !listed.text.includes("@") &&
-        !listed.text.includes("redacted") &&
-        !listed.text.includes(accountsRoot) &&
-        !listed.text.includes(home),
-      listed.text,
-    );
-
-    // 2. update_profile sets the account and the backup models. Equal choices are kept once, and the
-    // model and account that the agent has after the call are not a backup.
-    const updated = await callTool("set account and backups", coordinator.id, "update_profile", {
-      agentId: worker.id,
-      providerAccountId: second.id,
-      backupModels: {
-        automatic: true,
-        order: [
-          { provider: "codex", model: MODEL, providerAccountId: "default" },
-          { provider: "codex", model: MODEL },
-          { provider: "codex", model: OTHER_MODEL, providerAccountId: second.id },
-          { provider: "codex", model: MODEL, providerAccountId: second.id },
-        ],
-      },
-    });
-    pass("update_profile succeeds", updated.success, updated.text);
-    const afterUpdate = storedAgent(worker.id);
-    report.stored = {
-      ...(afterUpdate.providerAccountId === undefined ? {} : { providerAccountId: afterUpdate.providerAccountId }),
-      ...(afterUpdate.backupModels === undefined ? {} : { backupModels: afterUpdate.backupModels }),
+    const unused = () => Effect.die(new Error("Not used by this check."));
+    const browser: AgentBrowserHost = {
+      listTabs: () => [],
+      beginTakeover: unused,
+      endTakeover: () => {},
+      resolveUploadTarget: unused,
+      handleDynamicTool: unused,
+      userControlTabFor: () => null,
+      awaitUserControlRelease: unused,
+      onChanged: () => () => {},
+      onControlChanged: () => () => {},
+      onDocumentChanged: () => () => {},
+      clearControls: () => {},
+      endControl: () => {},
+      close: () => Effect.void,
+      clearAgentSession: () => Effect.void,
     };
-    pass("The store has the new account", afterUpdate.providerAccountId === second.id);
-    pass(
-      "The store has the backup models as the settings page writes them",
-      JSON.stringify(afterUpdate.backupModels) ===
-        JSON.stringify({
+
+    /** Waits for a state of the service or the fake's log. */
+    async function waitFor<T>(label: string, read: () => T | null | undefined | false, timeoutMs = 20_000): Promise<T> {
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        const value = read();
+        if (value) return value;
+        if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
+        await new Promise((done) => setTimeout(done, 25));
+      }
+    }
+
+    function toolLogs(): ToolLog[] {
+      let text = "";
+      try {
+        text = readFileSync(fakeLog, "utf8");
+      } catch {
+        return [];
+      }
+      return text
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+    }
+
+    function pass(name: string, condition: boolean, detail?: string) {
+      report.checks.push({ name, passed: condition });
+      assert.ok(condition, detail ? `${name}: ${detail}` : name);
+    }
+
+    await writeFile(fakeCodex, FAKE_CODEX, { mode: 0o755 });
+    const accounts = new ProviderAccountStore(join(userData, "openbot-provider-accounts-v1.json"), accountsRoot);
+    await runCauseEffect(accounts.load());
+    const second = await runCauseEffect(accounts.create("codex"));
+    assert.ok(second, "The second Codex account was not created.");
+    await runCauseEffect(accounts.rename("codex", second.id, "Team B"));
+    const database = new OpenBotDatabase(userData);
+    cleanup.push(() => database.close());
+    const store = new AgentStore(userData, home, database);
+    const mailbox = new MailboxStore(userData, store.sharedRoot, store.database);
+    const agents = new AgentService({
+      store,
+      mailbox,
+      browser,
+      providerAccounts: accounts,
+      preferredProvider: "codex",
+      offProviders: AGENT_PROVIDERS.filter((provider) => provider !== "codex"),
+    });
+    cleanup.push(() => runCauseEffect(agents.stop()).then(() => {}));
+
+    const idle = (agentId: string) =>
+      agents
+        .listQueue(agentId)
+        .deliveries.every((delivery) => !["queued", "starting", "running"].includes(delivery.status));
+
+    /** Sends a chat message that makes the fake call the tool, and returns the tool result it logged. */
+    async function callTool(name: string, agentId: string, tool: string, args: Partial<ProfileToolArgs> = {}) {
+      const receipt = await runCauseEffect(
+        agents.sendMessage({ agentId, text: `${CALL_MARK} <<ARGS${JSON.stringify({ __tool: tool, ...args })}ARGS>>` }),
+      );
+      const deliveryId = receipt.deliveries[0]?.id;
+      assert.ok(deliveryId, `${name}: no delivery`);
+      const turnId = await waitFor(`${name} turn`, () => mailbox.getDelivery(deliveryId)?.delivery.turnId);
+      const entry = await waitFor(`${name} tool result`, () => toolLogs().find((log) => log.turnId === turnId));
+      await waitFor(`${name} turn end`, () => {
+        const status = mailbox.getDelivery(deliveryId)?.delivery.status;
+        return status === "completed" || status === "failed" || status === "interrupted";
+      });
+      const text = entry.result?.contentItems.map((item) => item.text).join("\n") ?? "";
+      report.calls.push({ name, turnId: entry.turnId, success: entry.result?.success ?? null, text });
+      let body: ProfileToolBody | null = null;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        // A failure is plain text.
+      }
+      return { success: entry.result?.success === true, text, body };
+    }
+
+    const storedAgent = (agentId: string) => {
+      const agent = store.list().find((candidate) => candidate.id === agentId);
+      assert.ok(agent, "The worker agent is missing.");
+      return agent;
+    };
+
+    try {
+      await runCauseEffect(agents.initialize());
+      const create = (name: string) =>
+        runCauseEffect(
+          agents.createAgent({
+            name,
+            description: name,
+            avatarSeed: name.toLowerCase(),
+            avatarHue: null,
+            initialMessage: "Hello.",
+          }),
+        );
+      const coordinator = await create("Coordinator");
+      const worker = await create("Worker");
+      await waitFor("the first chat turns to end", () => idle(coordinator.id) && idle(worker.id));
+      await waitFor("the second account to connect", () =>
+        agents
+          .getStatus()
+          .providers?.find((row) => row.id === "codex")
+          ?.accounts?.some((account) => account.id === second.id && account.state === "connected"),
+      );
+
+      // 1. list_models lists both accounts, the provider's own sign-in first, without emails or folders.
+      const listed = await callTool("list models", coordinator.id, "list_models", { provider: "codex" });
+      const listedAccounts = listed.body?.providers?.find((row) => row.provider === "codex")?.accounts ?? [];
+      pass("list_models succeeds", listed.success, listed.text);
+      pass(
+        "list_models lists the provider's own sign-in and the second account with their labels",
+        listedAccounts.length === 2 &&
+          listedAccounts[0]?.id === "default" &&
+          listedAccounts[0]?.label === null &&
+          listedAccounts[1]?.id === second.id &&
+          listedAccounts[1]?.label === "Team B" &&
+          listedAccounts[1]?.state === "connected",
+        listed.text,
+      );
+      const codexModels = (call: { body: ProfileToolBody | null }) =>
+        call.body?.providers?.find((row) => row.provider === "codex");
+      pass(
+        "list_models lists the default model and the first models, and counts the others",
+        codexModels(listed)
+          ?.models?.map((model) => model.id)
+          .join(",") === [MODEL, ...EXTRA_MODELS.slice(0, 7)].join(",") && codexModels(listed)?.omittedModels === 4,
+        listed.text,
+      );
+      pass(
+        "list_models has no account email or folder",
+        !listed.text.includes("@") &&
+          !listed.text.includes("redacted") &&
+          !listed.text.includes(accountsRoot) &&
+          !listed.text.includes(home),
+        listed.text,
+      );
+
+      // 2. update_profile sets the account and the backup models. Equal choices are kept once, and the
+      // model and account that the agent has after the call are not a backup.
+      const updated = await callTool("set account and backups", coordinator.id, "update_profile", {
+        agentId: worker.id,
+        providerAccountId: second.id,
+        backupModels: {
           automatic: true,
           order: [
+            { provider: "codex", model: MODEL, providerAccountId: "default" },
             { provider: "codex", model: MODEL },
             { provider: "codex", model: OTHER_MODEL, providerAccountId: second.id },
+            { provider: "codex", model: MODEL, providerAccountId: second.id },
           ],
-        }),
-      JSON.stringify(afterUpdate.backupModels),
-    );
-    pass("The update_profile result has the account", updated.body?.providerAccountId === second.id, updated.text);
+        },
+      });
+      pass("update_profile succeeds", updated.success, updated.text);
+      const afterUpdate = storedAgent(worker.id);
+      report.stored = {
+        ...(afterUpdate.providerAccountId === undefined ? {} : { providerAccountId: afterUpdate.providerAccountId }),
+        ...(afterUpdate.backupModels === undefined ? {} : { backupModels: afterUpdate.backupModels }),
+      };
+      pass("The store has the new account", afterUpdate.providerAccountId === second.id);
+      pass(
+        "The store has the backup models as the settings page writes them",
+        JSON.stringify(afterUpdate.backupModels) ===
+          JSON.stringify({
+            automatic: true,
+            order: [
+              { provider: "codex", model: MODEL },
+              { provider: "codex", model: OTHER_MODEL, providerAccountId: second.id },
+            ],
+          }),
+        JSON.stringify(afterUpdate.backupModels),
+      );
+      pass("The update_profile result has the account", updated.body?.providerAccountId === second.id, updated.text);
 
-    // 3. list_models lists a backup model that the short list left out, and a query finds the others.
-    const listedInUse = await callTool("list models in use", coordinator.id, "list_models", { provider: "codex" });
-    pass(
-      "list_models lists a model that an agent uses as a backup model",
-      codexModels(listedInUse)?.models?.some((model) => model.id === OTHER_MODEL) === true &&
-        codexModels(listedInUse)?.omittedModels === 4,
-      listedInUse.text,
-    );
-    const searched = await callTool("search models", coordinator.id, "list_models", { query: "extra 9" });
-    pass(
-      "A list_models query searches all models",
-      codexModels(searched)
-        ?.models?.map((model) => model.id)
-        .join(",") === "gpt-6-extra-9" && codexModels(searched)?.omittedModels === undefined,
-      searched.text,
-    );
-    const created = await callTool("create with an omitted model", coordinator.id, "create_agent", {
-      name: "Helper",
-      description: "Helper",
-      initialMessage: "Hello.",
-      provider: "codex",
-      model: "gpt-6-extra-9",
-    });
-    pass(
-      "create_agent accepts a model that the short list leaves out",
-      created.success && created.body?.model === "gpt-6-extra-9",
-      created.text,
-    );
+      // 3. list_models lists a backup model that the short list left out, and a query finds the others.
+      const listedInUse = await callTool("list models in use", coordinator.id, "list_models", { provider: "codex" });
+      pass(
+        "list_models lists a model that an agent uses as a backup model",
+        codexModels(listedInUse)?.models?.some((model) => model.id === OTHER_MODEL) === true &&
+          codexModels(listedInUse)?.omittedModels === 4,
+        listedInUse.text,
+      );
+      const searched = await callTool("search models", coordinator.id, "list_models", { query: "extra 9" });
+      pass(
+        "A list_models query searches all models",
+        codexModels(searched)
+          ?.models?.map((model) => model.id)
+          .join(",") === "gpt-6-extra-9" && codexModels(searched)?.omittedModels === undefined,
+        searched.text,
+      );
+      const created = await callTool("create with an omitted model", coordinator.id, "create_agent", {
+        name: "Helper",
+        description: "Helper",
+        initialMessage: "Hello.",
+        provider: "codex",
+        model: "gpt-6-extra-9",
+      });
+      pass(
+        "create_agent accepts a model that the short list leaves out",
+        created.success && created.body?.model === "gpt-6-extra-9",
+        created.text,
+      );
 
-    // 4. read_agent returns the account, the backup models and no usage limit return.
-    const read = await callTool("read worker", coordinator.id, "read_agent", { agentId: worker.id });
-    pass(
-      "read_agent returns the account and the backup models",
-      read.body?.providerAccountId === second.id &&
-        read.body.backupModels?.automatic === true &&
-        read.body.backupModels.order.map((choice) => choice.providerAccountId).join(",") === `default,${second.id}` &&
-        read.body.usageLimitReturn === null,
-      read.text,
-    );
+      // 4. read_agent returns the account, the backup models and no usage limit return.
+      const read = await callTool("read worker", coordinator.id, "read_agent", { agentId: worker.id });
+      pass(
+        "read_agent returns the account and the backup models",
+        read.body?.providerAccountId === second.id &&
+          read.body.backupModels?.automatic === true &&
+          read.body.backupModels.order.map((choice) => choice.providerAccountId).join(",") === `default,${second.id}` &&
+          read.body.usageLimitReturn === null,
+        read.text,
+      );
 
-    // 5. An unknown account, an unknown backup account or an unknown backup model changes nothing.
-    const unknownAccount = await callTool("unknown account", coordinator.id, "update_profile", {
-      agentId: worker.id,
-      name: "Renamed",
-      providerAccountId: "a0123456789abcdef",
-    });
-    const unknownBackupAccount = await callTool("unknown backup account", coordinator.id, "update_profile", {
-      agentId: worker.id,
-      name: "Renamed",
-      backupModels: {
-        automatic: false,
-        order: [{ provider: "codex", model: MODEL, providerAccountId: "a0123456789abcdef" }],
-      },
-    });
-    const unknownBackupModel = await callTool("unknown backup model", coordinator.id, "update_profile", {
-      agentId: worker.id,
-      name: "Renamed",
-      backupModels: { automatic: false, order: [{ provider: "codex", model: "gpt-0" }] },
-    });
-    const badId = await callTool("bad account id", coordinator.id, "update_profile", {
-      agentId: worker.id,
-      providerAccountId: "../other",
-    });
-    const refused = (call: { success: boolean; text: string }, reason: string) =>
-      !call.success && call.text.includes(reason);
-    pass(
-      "Unknown accounts, models and ids are tool failures that name the reason",
-      refused(unknownAccount, "account is not on this computer") &&
-        refused(unknownBackupAccount, "account is not on this computer") &&
-        refused(unknownBackupModel, `Available models: ${[MODEL, ...EXTRA_MODELS.slice(0, 7), "…"].join(", ")}.`) &&
-        refused(badId, "Use an account id from list_models"),
-      [unknownAccount, unknownBackupAccount, unknownBackupModel, badId].map((call) => call.text).join("\n"),
-    );
-    const afterFailures = storedAgent(worker.id);
-    pass(
-      "A refused request changes nothing, the name in the same call included",
-      afterFailures.name === "Worker" &&
-        afterFailures.providerAccountId === second.id &&
-        JSON.stringify(afterFailures.backupModels) === JSON.stringify(afterUpdate.backupModels),
-    );
+      // 5. An unknown account, an unknown backup account or an unknown backup model changes nothing.
+      const unknownAccount = await callTool("unknown account", coordinator.id, "update_profile", {
+        agentId: worker.id,
+        name: "Renamed",
+        providerAccountId: "a0123456789abcdef",
+      });
+      const unknownBackupAccount = await callTool("unknown backup account", coordinator.id, "update_profile", {
+        agentId: worker.id,
+        name: "Renamed",
+        backupModels: {
+          automatic: false,
+          order: [{ provider: "codex", model: MODEL, providerAccountId: "a0123456789abcdef" }],
+        },
+      });
+      const unknownBackupModel = await callTool("unknown backup model", coordinator.id, "update_profile", {
+        agentId: worker.id,
+        name: "Renamed",
+        backupModels: { automatic: false, order: [{ provider: "codex", model: "gpt-0" }] },
+      });
+      const badId = await callTool("bad account id", coordinator.id, "update_profile", {
+        agentId: worker.id,
+        providerAccountId: "../other",
+      });
+      const refused = (call: { success: boolean; text: string }, reason: string) =>
+        !call.success && call.text.includes(reason);
+      pass(
+        "Unknown accounts, models and ids are tool failures that name the reason",
+        refused(unknownAccount, "account is not on this computer") &&
+          refused(unknownBackupAccount, "account is not on this computer") &&
+          refused(unknownBackupModel, `Available models: ${[MODEL, ...EXTRA_MODELS.slice(0, 7), "…"].join(", ")}.`) &&
+          refused(badId, "Use an account id from list_models"),
+        [unknownAccount, unknownBackupAccount, unknownBackupModel, badId].map((call) => call.text).join("\n"),
+      );
+      const afterFailures = storedAgent(worker.id);
+      pass(
+        "A refused request changes nothing, the name in the same call included",
+        afterFailures.name === "Worker" &&
+          afterFailures.providerAccountId === second.id &&
+          JSON.stringify(afterFailures.backupModels) === JSON.stringify(afterUpdate.backupModels),
+      );
 
-    // 6. A null account returns the agent to the provider's own sign-in. An order that asks first with
-    // no model is no saved backup models, as the settings page saves it.
-    const reset = await callTool("reset", coordinator.id, "update_profile", {
-      agentId: worker.id,
-      providerAccountId: null,
-      backupModels: { automatic: false, order: [] },
-    });
-    const afterReset = storedAgent(worker.id);
-    pass(
-      "The reset clears the account and the backup models",
-      reset.success &&
-        afterReset.providerAccountId === undefined &&
-        afterReset.backupModels === undefined &&
-        reset.body?.providerAccountId === "default" &&
-        reset.body.backupModels === null,
-      reset.text,
-    );
+      // 6. A null account returns the agent to the provider's own sign-in. An order that asks first with
+      // no model is no saved backup models, as the settings page saves it.
+      const reset = await callTool("reset", coordinator.id, "update_profile", {
+        agentId: worker.id,
+        providerAccountId: null,
+        backupModels: { automatic: false, order: [] },
+      });
+      const afterReset = storedAgent(worker.id);
+      pass(
+        "The reset clears the account and the backup models",
+        reset.success &&
+          afterReset.providerAccountId === undefined &&
+          afterReset.backupModels === undefined &&
+          reset.body?.providerAccountId === "default" &&
+          reset.body.backupModels === null,
+        reset.text,
+      );
 
-    // 7. A delete stops the agent's own process. On Windows a live process in the workspace makes the
-    // folder removal fail with EBUSY until the app restarts (#3205).
-    const reassigned = await callTool("set account again", coordinator.id, "update_profile", {
-      agentId: worker.id,
-      providerAccountId: second.id,
-    });
-    pass("update_profile sets the account again", reassigned.success, reassigned.text);
-    const receipt = await runCauseEffect(agents.sendMessage({ agentId: worker.id, text: "Hello again." }));
-    const deliveryId = receipt.deliveries[0]?.id;
-    assert.ok(deliveryId, "own process turn: no delivery");
-    await waitFor("the worker's turn to end", () => mailbox.getDelivery(deliveryId)?.delivery.status === "completed");
-    // The fake names each turn `turn-<pid>-<n>`.
-    const ownPid = Number(mailbox.getDelivery(deliveryId)?.delivery.turnId?.split("-")[1]);
-    pass("The worker's turn ran on a live process of its own", Number.isInteger(ownPid) && isProcessAlive(ownPid));
-    const { workspacePath } = storedAgent(worker.id);
-    await runCauseEffect(agents.deleteAgent(worker.id));
-    // The delete waits for the stop: on Windows the folder removal after it needs the process gone.
-    const stopped = !isProcessAlive(ownPid);
-    report.deletedAgent = { ownProcessStopped: stopped, workspaceRemoved: !existsSync(workspacePath) };
-    pass("The delete stops the agent's own process", stopped);
-    pass(
-      "The delete removes the workspace and the record",
-      report.deletedAgent.workspaceRemoved && !store.list().some((candidate) => candidate.id === worker.id),
-    );
-    report.passed = true;
-  } catch (error) {
-    report.error = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    process.exitCode = 1;
+      // 7. A delete stops the agent's own process. On Windows a live process in the workspace makes the
+      // folder removal fail with EBUSY until the app restarts (#3205).
+      const reassigned = await callTool("set account again", coordinator.id, "update_profile", {
+        agentId: worker.id,
+        providerAccountId: second.id,
+      });
+      pass("update_profile sets the account again", reassigned.success, reassigned.text);
+      const receipt = await runCauseEffect(agents.sendMessage({ agentId: worker.id, text: "Hello again." }));
+      const deliveryId = receipt.deliveries[0]?.id;
+      assert.ok(deliveryId, "own process turn: no delivery");
+      await waitFor("the worker's turn to end", () => mailbox.getDelivery(deliveryId)?.delivery.status === "completed");
+      // The fake names each turn `turn-<pid>-<n>`.
+      const ownPid = Number(mailbox.getDelivery(deliveryId)?.delivery.turnId?.split("-")[1]);
+      pass("The worker's turn ran on a live process of its own", Number.isInteger(ownPid) && isProcessAlive(ownPid));
+      const { workspacePath } = storedAgent(worker.id);
+      await runCauseEffect(agents.deleteAgent(worker.id));
+      // The delete waits for the stop: on Windows the folder removal after it needs the process gone.
+      const stopped = !isProcessAlive(ownPid);
+      report.deletedAgent = { ownProcessStopped: stopped, workspaceRemoved: !existsSync(workspacePath) };
+      pass("The delete stops the agent's own process", stopped);
+      pass(
+        "The delete removes the workspace and the record",
+        report.deletedAgent.workspaceRemoved && !store.list().some((candidate) => candidate.id === worker.id),
+      );
+      report.passed = true;
+    } catch (error) {
+      report.error = error instanceof Error ? (error.stack ?? error.message) : String(error);
+      process.exitCode = 1;
+    } finally {
+      mkdirSync(OUT, { recursive: true });
+      writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+      process.stdout.write(`${report.passed ? "PASS" : "FAIL"} ${join(OUT, "report.json")}\n`);
+      if (report.error) process.stdout.write(`${report.error}\n`);
+    }
   } finally {
-    await runCauseEffect(agents.stop()).catch(() => {});
-    database.close();
-    mkdirSync(OUT, { recursive: true });
-    writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
-    await rm(root, { recursive: true, force: true });
-    process.stdout.write(`${report.passed ? "PASS" : "FAIL"} ${join(OUT, "report.json")}\n`);
-    if (report.error) process.stdout.write(`${report.error}\n`);
+    try {
+      await disposeResources(cleanup);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   }
 }
 

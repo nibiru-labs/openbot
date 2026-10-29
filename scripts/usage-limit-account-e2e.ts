@@ -35,198 +35,218 @@ const agents: FixtureAgent[] = [
 
 const store = { list: () => agents };
 
-const gate = new UsageLimitGate({
-  store,
-  hooks: {
-    emit: () => {},
-    emitRuntimeSnapshot: () => {},
-    scheduleDrain: () => {},
-    readUsage: () => Effect.succeed(null),
-    held: () => Effect.void,
-    released: () => Effect.void,
-  },
-});
-
 const cases: { name: string; passed: boolean; detail: string }[] = [];
+const gates: UsageLimitGate[] = [];
 
-function check(name: string, condition: () => void): void {
-  try {
-    condition();
-    cases.push({ name, passed: true, detail: "ok" });
-  } catch (error) {
-    cases.push({ name, passed: false, detail: error instanceof Error ? error.message : String(error) });
+try {
+  const gate = new UsageLimitGate({
+    store,
+    hooks: {
+      emit: () => {},
+      emitRuntimeSnapshot: () => {},
+      scheduleDrain: () => {},
+      readUsage: () => Effect.succeed(null),
+      held: () => Effect.void,
+      released: () => Effect.void,
+    },
+  });
+
+  gates.push(gate);
+
+  function check(name: string, condition: () => void): void {
+    try {
+      condition();
+      cases.push({ name, passed: true, detail: "ok" });
+    } catch (error) {
+      cases.push({ name, passed: false, detail: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  const resetInSeconds = Math.floor(Date.now() / 1_000) + 3_600;
+
+  check("every agent may drain before any refusal", () => {
+    for (const agent of agents) assert.equal(gate.mayDrain(agent.id), true, agent.id);
+  });
+
+  await Effect.runPromise(gate.reached("a-fast", resetInSeconds, "model-fast", null));
+
+  check("refusal on one model holds the other model on the same account", () => {
+    assert.equal(gate.mayDrain("a-large"), false);
+  });
+  check("refusal holds the agent that was refused", () => {
+    assert.equal(gate.mayDrain("a-fast"), false);
+  });
+  check("another provider account is not held", () => {
+    assert.equal(gate.mayDrain("a-other-account"), true);
+  });
+  check("another provider is not held", () => {
+    assert.equal(gate.mayDrain("a-other-provider"), true);
+  });
+
+  await Effect.runPromise(gate.completed("a-large"));
+
+  check("a completed turn on the account ends the account hold", () => {
+    assert.equal(gate.mayDrain("a-fast"), true);
+    assert.equal(gate.mayDrain("a-large"), true);
+  });
+
+  await Effect.runPromise(gate.reached("c-opus", resetInSeconds, "claude-opus-4-5", "opus"));
+
+  check("a family window holds its own family", () => {
+    assert.equal(gate.mayDrain("c-opus"), false);
+  });
+  check("a family window does not hold the other family on the account", () => {
+    assert.equal(gate.mayDrain("c-sonnet"), true);
+  });
+  check("a family window does not hold a model with no family", () => {
+    assert.equal(gate.mayDrain("a-other-provider"), true);
+  });
+  check("the snapshot lists only the held family agent", () => {
+    const ids = gate.limitedAgents().map((entry) => entry.agentId);
+    assert.ok(ids.includes("c-opus") && !ids.includes("c-sonnet") && !ids.includes("a-other-provider"));
+  });
+
+  await Effect.runPromise(gate.completed("c-sonnet"));
+
+  check("a completed turn of the other family does not end the family hold", () => {
+    assert.equal(gate.mayDrain("c-opus"), false);
+  });
+
+  await Effect.runPromise(gate.reached("c-sonnet", resetInSeconds, "claude-sonnet-4-5", null));
+
+  check("an account-wide window holds every family on the account", () => {
+    assert.equal(gate.mayDrain("c-opus"), false);
+    assert.equal(gate.mayDrain("c-sonnet"), false);
+    assert.equal(gate.mayDrain("a-other-provider"), false);
+  });
+
+  await Effect.runPromise(gate.completed("c-sonnet"));
+
+  check("a completed turn ends the account hold and leaves the family hold", () => {
+    assert.equal(gate.mayDrain("c-sonnet"), true);
+    assert.equal(gate.mayDrain("a-other-provider"), true);
+    assert.equal(gate.mayDrain("c-opus"), false);
+  });
+
+  await Effect.runPromise(gate.completed("c-opus"));
+
+  check("a completed turn of the held family ends the family hold", () => {
+    assert.equal(gate.mayDrain("c-opus"), true);
+  });
+
+  await Effect.runPromise(gate.reached("c-opus", null, "claude-opus-4-5"));
+  check("unknown scope holds the refused model and blocks automatic backup", () => {
+    assert.equal(gate.mayDrain("c-opus"), false);
+    assert.equal(gate.mayDrain("c-opus-peer"), false);
+    assert.equal(gate.hasUnknownLimit("c-opus-peer"), true);
+    assert.equal(gate.hasUnknownLimit("c-opus"), true);
+    assert.equal(gate.mayDrain("c-sonnet"), true);
+    assert.equal(gate.hasUnknownLimit("c-sonnet"), false);
+  });
+  await Effect.runPromise(gate.completed("c-opus"));
+  check("an unrelated successful turn keeps the unknown hold", () => {
+    assert.equal(gate.hasUnknownLimit("c-opus"), true);
+  });
+  await Effect.runPromise(gate.accountReset("claude", "acc-1"));
+
+  // The clock controls the ten-minute wait without making a provider request.
+  const clock: { scheduled: (() => void) | null } = { scheduled: null };
+  let cleared = 0;
+  let now = 0;
+  const wakes: string[] = [];
+  const timedGate = new UsageLimitGate({
+    store,
+    timers: {
+      now: () => now,
+      set: (callback, delay) => {
+        assert.equal(delay, 600_000);
+        clock.scheduled = callback;
+        const timer = setTimeout(() => {}, delay);
+        timer.unref();
+        return timer;
+      },
+      clear: (timer) => {
+        clearTimeout(timer);
+        cleared++;
+        clock.scheduled = null;
+      },
+    },
+    hooks: {
+      emit: () => {},
+      emitRuntimeSnapshot: () => {},
+      scheduleDrain: (id) => wakes.push(id),
+      readUsage: () => Effect.succeed(null),
+      held: () => Effect.void,
+      released: () => Effect.void,
+    },
+  });
+  gates.push(timedGate);
+  await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
+  await Effect.runPromise(timedGate.reached("c-opus-peer", null, "claude-opus-4-5"));
+  check("unknown hold waits before reservation", () =>
+    assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), false),
+  );
+  const fireTimer = () => {
+    now += 600_000;
+    clock.scheduled?.();
+  };
+  fireTimer();
+  check("timer wakes same-model agents once", () => assert.deepEqual(wakes, ["c-opus", "c-opus-peer"]));
+  check("only one agent reserves the probe", () => {
+    assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), true);
+    assert.equal(timedGate.reserveUnknownProbe("c-opus-peer", "delivery-2"), false);
+  });
+  timedGate.bindUnknownProbe("c-opus", "delivery-2", "wrong-turn");
+  timedGate.finishUnknownProbe("c-opus", { deliveryId: "delivery-2" });
+  timedGate.bindUnknownProbe("c-opus", "delivery-1", "turn-1");
+  timedGate.finishUnknownProbe("c-opus", { turnId: "wrong-turn" });
+  await Effect.runPromise(timedGate.completed("c-opus", null, "wrong-turn"));
+  check("a wrong turn cannot settle the probe", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), true));
+  timedGate.finishUnknownProbe("c-opus", { turnId: "turn-1" });
+  check("attention is visible", () =>
+    assert.equal(timedGate.limitedAgents().find((item) => item.agentId === "c-opus")?.attention, true),
+  );
+  check("a second refusal does not reserve again", () =>
+    assert.equal(timedGate.reserveUnknownProbe("c-opus-peer", "delivery-2"), false),
+  );
+  await Effect.runPromise(timedGate.completed("c-opus"));
+  check("a stale success does not clear a refused probe", () =>
+    assert.equal(timedGate.hasUnknownLimit("c-opus"), true),
+  );
+  await Effect.runPromise(timedGate.accountReset("claude", "acc-1"));
+  await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
+  fireTimer();
+  check("a ready probe can be reserved", () =>
+    assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), true),
+  );
+  timedGate.bindUnknownProbe("c-opus", "delivery-1", "turn-1");
+  await Effect.runPromise(timedGate.completed("c-opus", null, "turn-1"));
+  check("a successful reserved probe releases the hold", () =>
+    assert.equal(timedGate.hasUnknownLimit("c-opus"), false),
+  );
+  await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
+  fireTimer();
+  timedGate.reserveUnknownProbe("c-opus", "delivery-1");
+  timedGate.finishUnknownProbe("c-opus", { deliveryId: "delivery-1" });
+  check("a cancelled probe stays held", () =>
+    assert.equal(timedGate.reserveUnknownProbe("c-opus-peer", "delivery-2"), false),
+  );
+  await Effect.runPromise(timedGate.accountReset("claude", "acc-1"));
+  await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
+  const clearedBeforeDispose = cleared;
+  await Effect.runPromise(timedGate.dispose());
+  check("disposal cancels the pending timer", () => assert.equal(cleared, clearedBeforeDispose + 1));
+} catch {
+  cases.push({ name: "setup or operation", passed: false, detail: "Unexpected failure" });
+} finally {
+  for (const gate of gates) {
+    try {
+      await Effect.runPromise(gate.dispose());
+    } catch {
+      cases.push({ name: "cleanup", passed: false, detail: "Could not dispose gate" });
+    }
   }
 }
-
-const resetInSeconds = Math.floor(Date.now() / 1_000) + 3_600;
-
-check("every agent may drain before any refusal", () => {
-  for (const agent of agents) assert.equal(gate.mayDrain(agent.id), true, agent.id);
-});
-
-await Effect.runPromise(gate.reached("a-fast", resetInSeconds, "model-fast", null));
-
-check("refusal on one model holds the other model on the same account", () => {
-  assert.equal(gate.mayDrain("a-large"), false);
-});
-check("refusal holds the agent that was refused", () => {
-  assert.equal(gate.mayDrain("a-fast"), false);
-});
-check("another provider account is not held", () => {
-  assert.equal(gate.mayDrain("a-other-account"), true);
-});
-check("another provider is not held", () => {
-  assert.equal(gate.mayDrain("a-other-provider"), true);
-});
-
-await Effect.runPromise(gate.completed("a-large"));
-
-check("a completed turn on the account ends the account hold", () => {
-  assert.equal(gate.mayDrain("a-fast"), true);
-  assert.equal(gate.mayDrain("a-large"), true);
-});
-
-await Effect.runPromise(gate.reached("c-opus", resetInSeconds, "claude-opus-4-5", "opus"));
-
-check("a family window holds its own family", () => {
-  assert.equal(gate.mayDrain("c-opus"), false);
-});
-check("a family window does not hold the other family on the account", () => {
-  assert.equal(gate.mayDrain("c-sonnet"), true);
-});
-check("a family window does not hold a model with no family", () => {
-  assert.equal(gate.mayDrain("a-other-provider"), true);
-});
-check("the snapshot lists only the held family agent", () => {
-  const ids = gate.limitedAgents().map((entry) => entry.agentId);
-  assert.ok(ids.includes("c-opus") && !ids.includes("c-sonnet") && !ids.includes("a-other-provider"));
-});
-
-await Effect.runPromise(gate.completed("c-sonnet"));
-
-check("a completed turn of the other family does not end the family hold", () => {
-  assert.equal(gate.mayDrain("c-opus"), false);
-});
-
-await Effect.runPromise(gate.reached("c-sonnet", resetInSeconds, "claude-sonnet-4-5", null));
-
-check("an account-wide window holds every family on the account", () => {
-  assert.equal(gate.mayDrain("c-opus"), false);
-  assert.equal(gate.mayDrain("c-sonnet"), false);
-  assert.equal(gate.mayDrain("a-other-provider"), false);
-});
-
-await Effect.runPromise(gate.completed("c-sonnet"));
-
-check("a completed turn ends the account hold and leaves the family hold", () => {
-  assert.equal(gate.mayDrain("c-sonnet"), true);
-  assert.equal(gate.mayDrain("a-other-provider"), true);
-  assert.equal(gate.mayDrain("c-opus"), false);
-});
-
-await Effect.runPromise(gate.completed("c-opus"));
-
-check("a completed turn of the held family ends the family hold", () => {
-  assert.equal(gate.mayDrain("c-opus"), true);
-});
-
-await Effect.runPromise(gate.reached("c-opus", null, "claude-opus-4-5"));
-check("unknown scope holds the refused model and blocks automatic backup", () => {
-  assert.equal(gate.mayDrain("c-opus"), false);
-  assert.equal(gate.mayDrain("c-opus-peer"), false);
-  assert.equal(gate.hasUnknownLimit("c-opus-peer"), true);
-  assert.equal(gate.hasUnknownLimit("c-opus"), true);
-  assert.equal(gate.mayDrain("c-sonnet"), true);
-  assert.equal(gate.hasUnknownLimit("c-sonnet"), false);
-});
-await Effect.runPromise(gate.completed("c-opus"));
-check("an unrelated successful turn keeps the unknown hold", () => {
-  assert.equal(gate.hasUnknownLimit("c-opus"), true);
-});
-await Effect.runPromise(gate.accountReset("claude", "acc-1"));
-
-// The clock controls the ten-minute wait without making a provider request.
-const clock: { scheduled: (() => void) | null } = { scheduled: null };
-let cleared = 0;
-let now = 0;
-const wakes: string[] = [];
-const timedGate = new UsageLimitGate({
-  store,
-  timers: {
-    now: () => now,
-    set: (callback, delay) => {
-      assert.equal(delay, 600_000);
-      clock.scheduled = callback;
-      const timer = setTimeout(() => {}, delay);
-      timer.unref();
-      return timer;
-    },
-    clear: (timer) => {
-      clearTimeout(timer);
-      cleared++;
-      clock.scheduled = null;
-    },
-  },
-  hooks: {
-    emit: () => {},
-    emitRuntimeSnapshot: () => {},
-    scheduleDrain: (id) => wakes.push(id),
-    readUsage: () => Effect.succeed(null),
-    held: () => Effect.void,
-    released: () => Effect.void,
-  },
-});
-await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
-await Effect.runPromise(timedGate.reached("c-opus-peer", null, "claude-opus-4-5"));
-check("unknown hold waits before reservation", () =>
-  assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), false),
-);
-const fireTimer = () => {
-  now += 600_000;
-  clock.scheduled?.();
-};
-fireTimer();
-check("timer wakes same-model agents once", () => assert.deepEqual(wakes, ["c-opus", "c-opus-peer"]));
-check("only one agent reserves the probe", () => {
-  assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), true);
-  assert.equal(timedGate.reserveUnknownProbe("c-opus-peer", "delivery-2"), false);
-});
-timedGate.bindUnknownProbe("c-opus", "delivery-2", "wrong-turn");
-timedGate.finishUnknownProbe("c-opus", { deliveryId: "delivery-2" });
-timedGate.bindUnknownProbe("c-opus", "delivery-1", "turn-1");
-timedGate.finishUnknownProbe("c-opus", { turnId: "wrong-turn" });
-await Effect.runPromise(timedGate.completed("c-opus", null, "wrong-turn"));
-check("a wrong turn cannot settle the probe", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), true));
-timedGate.finishUnknownProbe("c-opus", { turnId: "turn-1" });
-check("attention is visible", () =>
-  assert.equal(timedGate.limitedAgents().find((item) => item.agentId === "c-opus")?.attention, true),
-);
-check("a second refusal does not reserve again", () =>
-  assert.equal(timedGate.reserveUnknownProbe("c-opus-peer", "delivery-2"), false),
-);
-await Effect.runPromise(timedGate.completed("c-opus"));
-check("a stale success does not clear a refused probe", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), true));
-await Effect.runPromise(timedGate.accountReset("claude", "acc-1"));
-await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
-fireTimer();
-check("a ready probe can be reserved", () => assert.equal(timedGate.reserveUnknownProbe("c-opus", "delivery-1"), true));
-timedGate.bindUnknownProbe("c-opus", "delivery-1", "turn-1");
-await Effect.runPromise(timedGate.completed("c-opus", null, "turn-1"));
-check("a successful reserved probe releases the hold", () => assert.equal(timedGate.hasUnknownLimit("c-opus"), false));
-await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
-fireTimer();
-timedGate.reserveUnknownProbe("c-opus", "delivery-1");
-timedGate.finishUnknownProbe("c-opus", { deliveryId: "delivery-1" });
-check("a cancelled probe stays held", () =>
-  assert.equal(timedGate.reserveUnknownProbe("c-opus-peer", "delivery-2"), false),
-);
-await Effect.runPromise(timedGate.accountReset("claude", "acc-1"));
-await Effect.runPromise(timedGate.reached("c-opus", null, "claude-opus-4-5"));
-const clearedBeforeDispose = cleared;
-await Effect.runPromise(timedGate.dispose());
-check("disposal cancels the pending timer", () => assert.equal(cleared, clearedBeforeDispose + 1));
-
-await Effect.runPromise(gate.dispose());
 
 const passed = cases.every((item) => item.passed);
 await mkdir(OUT, { recursive: true });

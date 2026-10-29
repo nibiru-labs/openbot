@@ -88,11 +88,11 @@ const folder = join(root, "OpenBot Backup");
 const CONTENT = "synthetic backup content\n".repeat(400);
 const MANIFEST = '{"schemaVersion":4,"synthetic":true}\n';
 
-await mkdir(join(folder, "attachments"), { recursive: true });
-await writeFile(join(folder, "openbot-data.json"), MANIFEST, "utf8");
-await writeFile(join(folder, "attachments", "note.txt"), CONTENT, "utf8");
-
 try {
+  await mkdir(join(folder, "attachments"), { recursive: true });
+  await writeFile(join(folder, "openbot-data.json"), MANIFEST, "utf8");
+  await writeFile(join(folder, "attachments", "note.txt"), CONTENT, "utf8");
+
   await step(
     "the old write left the archive short",
     async () => {
