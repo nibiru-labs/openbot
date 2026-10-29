@@ -82,11 +82,28 @@ try {
   await assert.rejects(runCauseEffect(gate.begin("lost", "codex", null)), /response lost/);
   assert.equal((await readdir(reservations)).length, 1);
   assert.equal((await readdir(journal)).length, 1);
+  mode = "normal";
+  assert.equal(await runCauseEffect(gate.begin("unrelated", "cursor", null)), true);
+  await runCauseEffect(gate.cancelBeforeSend("unrelated"));
   const restarted = await runCauseEffect(FleetTurnGate.open(journal, transport));
   assert.equal(restarted.recoveryRequired, true);
+  assert.equal(restarted.requiresRecovery("codex"), true);
+  assert.equal(restarted.requiresRecovery("cursor"), false);
   await assert.rejects(runCauseEffect(restarted.begin("other", "codex", null)), /requires recovery/);
+  assert.equal(await runCauseEffect(restarted.begin("unrelated-after-restart", "cursor", null)), true);
+  await runCauseEffect(restarted.cancelBeforeSend("unrelated-after-restart"));
   assert.equal((await readdir(reservations)).length, 1);
-  checks.push("lost admission response retains the slot after restart");
+  checks.push(
+    "lost admission response retains its backend slot without blocking unrelated backends, including after restart",
+  );
+
+  const corrupt = join(root, "corrupt-journal");
+  await mkdir(corrupt);
+  await writeFile(join(corrupt, "broken.json"), "{}");
+  const corruptGate = await runCauseEffect(FleetTurnGate.open(corrupt, transport));
+  assert.equal(corruptGate.requiresRecovery("codex"), true);
+  assert.equal(corruptGate.requiresRecovery("cursor"), true);
+  checks.push("an unreadable journal fails closed for every backend");
 
   await mkdir(join(process.cwd(), ".openbot-build", "fleet-turn-gate-e2e"), { recursive: true });
   await writeFile(output, `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);

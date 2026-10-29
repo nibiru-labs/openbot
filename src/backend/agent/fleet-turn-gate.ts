@@ -1,7 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { Effect, Schema } from "effect";
+import { z } from "zod";
 import { causeHelpers } from "../effect-boundary";
 
 class FleetTurnGateFailed extends Schema.TaggedError<FleetTurnGateFailed>()("FleetTurnGateFailed", {
@@ -30,6 +41,13 @@ interface Slot {
   turnId: string | null;
   earlyCompletions: Set<string>;
 }
+const journalSchema = z.object({
+  backend: z.enum(["codex", "pi", "cursor", "agy", "copilot"]),
+  threadId: z.string().min(1),
+  run_id: z.string().min(1),
+  token: z.string().regex(/^[0-9a-f]{32}$/u),
+  provider: z.enum(["minimax-cn"]).nullable(),
+});
 
 /**
  * A local boundary for an external coordinator. The journal precedes every
@@ -38,7 +56,8 @@ interface Slot {
  */
 export class FleetTurnGate {
   readonly #slots = new Map<string, Slot>();
-  #recoveryRequired = false;
+  #storageRecoveryRequired = false;
+  readonly #blockedBackends = new Set<FleetTurnReservation["backend"]>();
 
   private constructor(
     readonly directory: string,
@@ -50,18 +69,29 @@ export class FleetTurnGate {
       mkdirSync(directory, { recursive: true, mode: 0o700 });
       chmodSync(directory, 0o700);
       const gate = new FleetTurnGate(directory, transport);
-      gate.#recoveryRequired = readdirSync(directory).some((name) => name.endsWith(".json"));
+      for (const name of readdirSync(directory).filter((entry) => entry.endsWith(".json"))) {
+        try {
+          const value = journalSchema.parse(JSON.parse(readFileSync(join(directory, name), "utf8")));
+          gate.#blockedBackends.add(value.backend);
+        } catch {
+          gate.#storageRecoveryRequired = true;
+        }
+      }
       return gate;
     });
   }
 
   get recoveryRequired(): boolean {
-    return this.#recoveryRequired;
+    return this.#storageRecoveryRequired || this.#blockedBackends.size > 0;
+  }
+
+  requiresRecovery(backend: FleetTurnReservation["backend"]): boolean {
+    return this.#storageRecoveryRequired || this.#blockedBackends.has(backend);
   }
 
   begin(threadId: string, backend: FleetTurnReservation["backend"], provider: FleetTurnReservation["provider"]) {
     return Effect.gen({ self: this }, function* () {
-      if (this.#recoveryRequired)
+      if (this.requiresRecovery(backend))
         return yield* Effect.fail(new FleetTurnGateFailed({ cause: new Error("Fleet admission requires recovery.") }));
       if (!threadId || this.#slots.has(threadId))
         return yield* Effect.fail(
@@ -101,7 +131,7 @@ export class FleetTurnGate {
             this.#slots.delete(threadId);
             // The journal might have been created before the failure. Do not send
             // an acquire request and require inspection before another attempt.
-            this.#recoveryRequired = true;
+            this.#storageRecoveryRequired = true;
           }),
         ),
       );
@@ -120,7 +150,7 @@ export class FleetTurnGate {
         Effect.onError(() =>
           Effect.sync(() => {
             slot.state = "uncertain";
-            this.#recoveryRequired = true;
+            this.#blockedBackends.add(slot.reservation.backend);
           }),
         ),
       );
@@ -170,7 +200,7 @@ export class FleetTurnGate {
   uncertain(threadId: string): void {
     const slot = this.#require(threadId);
     slot.state = "uncertain";
-    this.#recoveryRequired = true;
+    this.#blockedBackends.add(slot.reservation.backend);
   }
 
   #require(threadId: string): Slot {
@@ -190,7 +220,7 @@ export class FleetTurnGate {
         Effect.onError(() =>
           Effect.sync(() => {
             slot.state = "uncertain";
-            this.#recoveryRequired = true;
+            this.#blockedBackends.add(slot.reservation.backend);
           }),
         ),
       );
