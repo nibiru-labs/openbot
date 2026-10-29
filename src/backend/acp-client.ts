@@ -1978,10 +1978,12 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     turn: AcpTurn,
     prompt: ContentBlock[],
   ): Effect.fn.Return<void, ProviderClientOperationError> {
+    let responseConfirmed = false;
     try {
       const response = providerResult(
         yield* Effect.result(providerCall(() => this.#requireConnection().prompt({ sessionId: thread.id, prompt }))),
       );
+      responseConfirmed = true;
       if (thread.activeTurn !== turn || turn.completing) return;
       // `promptId` names this result: a delivery that runs again keeps its turn ID.
       if (response.usage)
@@ -2028,6 +2030,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         status === "failed" ? (turn.providerError ?? response.stopReason) : null,
       );
     } catch (error) {
+      // A broken ACP stream does not prove the provider stopped its in-flight prompt.
+      if (!responseConfirmed && !(error instanceof RequestError)) turn.abandoned = true;
       yield* this.#completeTurn(thread, turn, turn.stopped ? "interrupted" : "failed", turn.stopped ? null : error);
     }
   });
