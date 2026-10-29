@@ -3,6 +3,7 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 import os
+import subprocess
 
 ROOT = Path(__file__).resolve().parent
 os.chdir(ROOT)
@@ -12,7 +13,7 @@ class LocalOnlyHandler(SimpleHTTPRequestHandler):
         if self.headers.get('Host') not in ('127.0.0.1:8765', 'localhost:8765'):
             self.send_error(403)
             return None
-        if self.path.split('?', 1)[0] not in ('/', '/index.html', '/app.js', '/styles.css', '/data/diagnosis.json'):
+        if self.path.split('?', 1)[0] not in ('/', '/index.html', '/app.bundle.js', '/styles.css', '/data/diagnosis.json'):
             self.send_error(404)
             return None
         return super().send_head()
@@ -26,6 +27,7 @@ class LocalOnlyHandler(SimpleHTTPRequestHandler):
         pass
 
 if __name__ == '__main__':
+    subprocess.run(['bun', 'build', 'app.js', '--target=browser', '--outfile=app.bundle.js'], check=True)
     address = ('127.0.0.1', 8765)
     print(f'组织健康诊断网站: http://{address[0]}:{address[1]}')
     ThreadingHTTPServer(address, LocalOnlyHandler).serve_forever()
