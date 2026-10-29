@@ -375,7 +375,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       Effect.gen({ self: this }, function* () {
         while (true) {
           if (!this.running) return yield* providerFailure(new Error(sourceText("error.provider.piStopped")));
-          if (gate.recoveryRequired)
+          if (gate.requiresRecovery("pi"))
             return yield* providerFailure(new Error(sourceText("error.provider.fleetUnavailable")));
           // Pi is conservatively counted against MiniMax as well until the active provider is verified.
           if (
