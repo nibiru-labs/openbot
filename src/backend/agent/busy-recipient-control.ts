@@ -32,19 +32,19 @@ export interface BusyRecipientControlHooks {
  * A refused or failed request leaves the message queued, and the sender reads why.
  */
 export class BusyRecipientControls {
-  readonly #mailbox: MailboxStore;
+  readonly #mailbox: Pick<MailboxStore, "findDeliveriesByTurn">;
   readonly #hooks: BusyRecipientControlHooks;
   readonly #logger: Logger;
   readonly #now: () => number;
-  /** `sender\0recipient` -> the time of the last interrupt. */
-  readonly #lastInterrupt = new Map<string, number>();
+  /** `sender\0recipient` -> reservations that can still affect the cooldown. */
+  readonly #pairInterrupts = new Map<string, Array<{ at: number }>>();
   /** recipient -> the times others interrupted it, newest last. Each entry is its own object, so a rollback removes exactly its own. */
   readonly #interruptsOf = new Map<string, Array<{ at: number }>>();
   /** The deliveries that started a turn by an interrupt. A turn that runs one cannot interrupt. */
   readonly #interruptDeliveries = new Set<string>();
 
   constructor(options: {
-    mailbox: MailboxStore;
+    mailbox: Pick<MailboxStore, "findDeliveriesByTurn">;
     hooks: BusyRecipientControlHooks;
     logger: Logger;
     now?: () => number;
@@ -114,11 +114,13 @@ export class BusyRecipientControls {
     const reservation: Reservation = {
       pair,
       recipient: input.recipientAgentId,
-      previousLast: this.#lastInterrupt.get(pair),
       entry: { at: now },
       deliveryId: input.deliveryId,
     };
-    this.#lastInterrupt.set(pair, now);
+    this.#pairInterrupts.set(pair, [
+      ...(this.#pairInterrupts.get(pair) ?? []).filter((entry) => now - entry.at < INTERRUPT_COOLDOWN_MS),
+      reservation.entry,
+    ]);
     this.#interruptsOf.set(input.recipientAgentId, [
       ...this.#recentInterrupts(input.recipientAgentId),
       reservation.entry,
@@ -129,8 +131,9 @@ export class BusyRecipientControls {
   }
 
   #release(reservation: Reservation): void {
-    if (reservation.previousLast === undefined) this.#lastInterrupt.delete(reservation.pair);
-    else this.#lastInterrupt.set(reservation.pair, reservation.previousLast);
+    const remaining = (this.#pairInterrupts.get(reservation.pair) ?? []).filter((entry) => entry !== reservation.entry);
+    if (remaining.length === 0) this.#pairInterrupts.delete(reservation.pair);
+    else this.#pairInterrupts.set(reservation.pair, remaining);
     this.#interruptsOf.set(
       reservation.recipient,
       (this.#interruptsOf.get(reservation.recipient) ?? []).filter((entry) => entry !== reservation.entry),
@@ -140,8 +143,8 @@ export class BusyRecipientControls {
 
   #refusal(input: BusyRecipientControl): string | null {
     const now = this.#now();
-    const last = this.#lastInterrupt.get(pairKey(input.senderAgentId, input.recipientAgentId));
-    if (last !== undefined && now - last < INTERRUPT_COOLDOWN_MS)
+    const reservations = this.#pairInterrupts.get(pairKey(input.senderAgentId, input.recipientAgentId)) ?? [];
+    if (reservations.some((entry) => now - entry.at < INTERRUPT_COOLDOWN_MS))
       return sourceText("error.backend.agentControlCooldown");
     if (this.#recentInterrupts(input.recipientAgentId).length >= INTERRUPT_LIMIT)
       return sourceText("error.backend.agentControlLimit");
@@ -161,7 +164,6 @@ export class BusyRecipientControls {
 interface Reservation {
   pair: string;
   recipient: string;
-  previousLast: number | undefined;
   entry: { at: number };
   deliveryId: string;
 }
