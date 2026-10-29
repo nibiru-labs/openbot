@@ -943,21 +943,20 @@ export class DrainScheduler {
               yield* this.#usageLimits.reached(delivery.recipientAgentId, null, requestedModel);
               return;
             }
-            // Before the requeue, so the channel does not assign the task to this agent again at once.
+            // An unknown limit holds all backups until its scope is known. Commit the assignment,
+            // delivery, and hold before the channel can publish or wake another queue.
+            const requeued = yield* drainStep(() =>
+              this.#mailbox.requeueWithHold(
+                [{ id: delivery.id }],
+                (database) => this.#usageLimits.prepareUnknown(delivery.recipientAgentId, requestedModel, database),
+                () => {
+                  const finish = this.#channels?.prepareRequeueForLimit(delivery.id);
+                  return finish ? { status: "interrupted" as const, publish: () => Effect.runSync(finish) } : null;
+                },
+              ),
+            );
             yield* this.#usageLimits.reached(delivery.recipientAgentId, null, requestedModel);
-            // A ready backup continues earlier work in the same assignment, so the work is not lost.
-            if (
-              context.resumeAfterUsageLimit &&
-              this.#hooks.mayFailOver(delivery.recipientAgentId) &&
-              (yield* this.#hooks.requeueChannelDelivery(delivery.id, true))
-            ) {
-              yield* this.#mailbox.restoreQueued(delivery.id).pipe(toDeliveryStartFailed);
-              this.#mailboxSync.emitQueue(delivery.recipientAgentId);
-              this.#requeuedAtLimit.add(delivery.recipientAgentId);
-              return;
-            }
-            if (yield* this.#hooks.requeueChannelDelivery(delivery.id)) {
-              yield* this.#mailbox.markTerminal(delivery.id, "interrupted", null).pipe(toDeliveryStartFailed);
+            if (requeued) {
               this.#mailboxSync.emitQueue(delivery.recipientAgentId);
               this.#requeuedAtLimit.add(delivery.recipientAgentId);
               return;
