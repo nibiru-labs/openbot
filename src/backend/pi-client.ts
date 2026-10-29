@@ -142,6 +142,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
   readonly #fleetSent = new Set<string>();
   readonly #fleetPendingStarts = new Map<string, AbortController>();
   readonly #fleetPendingCompactions = new Map<string, AbortController>();
+  readonly #compacting = new Set<string>();
   #scope = Scope.makeUnsafe();
   #running = false;
   constructor(
@@ -160,7 +161,8 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       this.#running = true;
     }
   }
-  canReleaseProcess = (): boolean => [...this.#threads.values()].every((thread) => thread.turn === null);
+  canReleaseProcess = (): boolean =>
+    this.#compacting.size === 0 && [...this.#threads.values()].every((thread) => thread.turn === null);
   notify(): void {
     /* Pi has no post-initialize notification. */
   }
@@ -222,7 +224,8 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       this.#released.delete(id);
       return;
     }
-    if (thread.turn) return yield* providerFailure(new Error(sourceText("error.provider.piSessionBusy")));
+    if (thread.turn || this.#compacting.has(id))
+      return yield* providerFailure(new Error(sourceText("error.provider.piSessionBusy")));
     yield* this.#close(thread);
     this.#threads.delete(id);
     this.#released.delete(id);
@@ -230,7 +233,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
 
   readonly releaseIdleThreads = Effect.fn("PiAgentClient.releaseIdleThreads")(function* (this: PiAgentClient) {
     for (const [id, thread] of this.#threads) {
-      if (thread.turn) continue;
+      if (thread.turn || this.#compacting.has(id)) continue;
       if (thread.configured) this.#released.set(id, thread.params);
       yield* this.#close(thread);
       this.#threads.delete(id);
@@ -350,6 +353,9 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       }
       case "thread/compact/start": {
         const id = yield* providerSync(() => requiredString(params, "threadId"));
+        if (this.#compacting.has(id))
+          return yield* providerFailure(new Error(sourceText("error.provider.piSessionBusy")));
+        this.#compacting.add(id);
         const controller = this.#fleet ? new AbortController() : null;
         if (controller) this.#fleetPendingCompactions.set(id, controller);
         yield* Effect.gen({ self: this }, function* () {
@@ -371,6 +377,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
           Effect.onError(() => this.#cancelOrRetainFleetTurn(id)),
           Effect.ensuring(
             Effect.sync(() => {
+              this.#compacting.delete(id);
               if (controller && this.#fleetPendingCompactions.get(id) === controller)
                 this.#fleetPendingCompactions.delete(id);
             }),
