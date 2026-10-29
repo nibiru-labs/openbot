@@ -34,7 +34,7 @@ import { type DynamicRecord, isNumber, isOneOf, isString } from "@openbot/contra
 import { QueueEditRejectedError } from "@openbot/contracts/team-protocol/queue-edit-v1";
 import { sourceText } from "@openbot/i18n/source";
 import { redactText } from "@openbot/logging";
-import { Effect, Result } from "effect";
+import { Effect, Result, Semaphore } from "effect";
 import {
   AttachmentFiles,
   type ExportedAttachmentFile,
@@ -251,6 +251,7 @@ export class MailboxStore {
   /** Queued deliveries the user ran now: each starts while its queue is paused. Not persisted. */
   readonly #runNow = new Set<string>();
   readonly #deliveryGate = new MailboxDeliveryGate();
+  readonly #enqueueLocks = new Map<string, { semaphore: Semaphore.Semaphore; users: number }>();
   readonly #stagedGeneratedAttachments = new Map<string, StoredGeneratedAttachment>();
   #state: StoredState = structuredClone(EMPTY_STATE);
   /** The rows changed, added or removed, since the last committed write. `#persist` writes only these. */
@@ -262,9 +263,14 @@ export class MailboxStore {
     reactionKeys: new Set<string>(),
   };
 
-  constructor(userDataPath: string, sharedRoot: string, database = new OpenBotDatabase(userDataPath)) {
+  constructor(
+    userDataPath: string,
+    sharedRoot: string,
+    database = new OpenBotDatabase(userDataPath),
+    files = new AttachmentFiles({ userDataPath, sharedRoot }),
+  ) {
     this.#statePath = join(userDataPath, "mailbox.json");
-    this.#files = new AttachmentFiles({ userDataPath, sharedRoot });
+    this.#files = files;
     this.#database = database;
   }
 
@@ -489,7 +495,29 @@ export class MailboxStore {
     );
   }
 
-  enqueue = Effect.fn("MailboxStore.enqueue")(function* (
+  enqueue = (input: EnqueueInput): Effect.Effect<QueuedMessageReceipt, StoredStateFailure> => {
+    if (!input.idempotencyKey) return this.#enqueue(input);
+    const key = input.idempotencyKey;
+    return Effect.suspend(() => {
+      let lock = this.#enqueueLocks.get(key);
+      if (!lock) {
+        lock = { semaphore: Semaphore.makeUnsafe(1), users: 0 };
+        this.#enqueueLocks.set(key, lock);
+      }
+      lock.users += 1;
+      const held = lock;
+      return held.semaphore.withPermit(this.#enqueue(input)).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            held.users -= 1;
+            if (held.users === 0) this.#enqueueLocks.delete(key);
+          }),
+        ),
+      );
+    });
+  };
+
+  #enqueue = Effect.fn("MailboxStore.enqueue")(function* (
     this: MailboxStore,
     input: EnqueueInput,
   ): Effect.fn.Return<QueuedMessageReceipt, StoredStateFailure> {
