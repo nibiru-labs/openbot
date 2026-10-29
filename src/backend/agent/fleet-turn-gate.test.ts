@@ -58,7 +58,8 @@ describe("FleetTurnGate", () => {
 
   it("retains the journal for a malformed coordinator response", async () => {
     const { gate, transport, dir } = fixture();
-    vi.mocked(transport.acquire).mockResolvedValueOnce(JSON.parse("{}"));
+    const malformed = Object.defineProperty({ admitted: true }, "admitted", { get: () => undefined });
+    vi.mocked(transport.acquire).mockResolvedValueOnce(malformed);
     await expect(gate.begin("thread", "codex", null)).rejects.toThrow("Invalid fleet admission response");
     expect(gate.recoveryRequired).toBe(true);
     expect(readdirSync(dir)).toHaveLength(1);
