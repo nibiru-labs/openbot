@@ -532,7 +532,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
           return yield* new ProviderClientOperationError({
             cause: new Error("Codex stopped while waiting for fleet admission."),
           });
-        if (gate.recoveryRequired) throw new Error("Fleet admission requires operator recovery.");
+        if (gate.requiresRecovery("codex")) throw new Error("Fleet admission requires operator recovery.");
         if (!gate.has(threadId) && (yield* gate.begin(threadId, "codex", null))) {
           if (signal.aborted || compactionSignal?.aborted || this.#process !== child || !this.running) {
             yield* gate.cancelBeforeSend(threadId);
