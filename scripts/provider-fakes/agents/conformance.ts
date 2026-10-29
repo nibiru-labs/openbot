@@ -114,6 +114,7 @@ serveFakeAcpAgent(
   {
     onNotification: (method, params) => {
       if (method !== "session/cancel") return;
+      if (process.env.FAKE_IGNORE_CANCEL === "1") return;
       const sessionId = params.sessionId ?? "";
       logEntry({ event: "cancel", sessionId });
       waiting.get(sessionId)?.();
