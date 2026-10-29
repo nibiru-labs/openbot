@@ -268,6 +268,8 @@ export const OPENBOT_ACP_CLIENT_INFO = { name: "openbot", title: "OpenBot", vers
 
 export interface AcpProviderOptions {
   provider: AgentProvider;
+  /** Explicit fleet mapping for a known custom ACP executable. */
+  fleetBackend?: "copilot";
   /** Durable history supplied by the database. ACP never owns a full conversation snapshot. */
   history?: AcpHistoryPersistence | undefined;
   /** The name in error text. The provider name when absent; a custom agent gives its own. */
@@ -430,7 +432,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #privateAnswer: string[] | null = null;
   readonly #privatePromptLock = Semaphore.makeUnsafe(1);
   readonly #fleet: ReturnType<typeof configuredFleetTurnGate>;
-  readonly #fleetBackend: "cursor" | "agy" | null;
+  readonly #fleetBackend: "cursor" | "agy" | "copilot" | null;
   readonly #fleetThreads = new Map<string, string>();
   readonly #fleetSent = new Set<string>();
   readonly #serverRequests = new PendingServerRequests((request) => this.emit("request", request));
@@ -449,7 +451,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     private readonly options: AcpProviderOptions,
   ) {
     super();
-    this.#fleetBackend = options.provider === "cursor" ? "cursor" : options.provider === "antigravity" ? "agy" : null;
+    this.#fleetBackend =
+      options.fleetBackend ??
+      (options.provider === "cursor" ? "cursor" : options.provider === "antigravity" ? "agy" : null);
     this.#fleet = this.#fleetBackend ? configuredFleetTurnGate() : null;
     this.on("notification", (notification) => {
       if (notification.method !== "turn/completed" || !this.#fleet) return;

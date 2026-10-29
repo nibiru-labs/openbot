@@ -488,6 +488,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun scripts/acp-fleet-e2e.ts
 
+      - name: Run the Copilot fleet admission E2E test
+        if: ${{ !cancelled() }}
+        run: bun scripts/copilot-fleet-e2e.ts
+
       - name: Run the ZIP attachment E2E test
         if: ${{ !cancelled() }}
         run: bun run test:zip-attachments
@@ -601,6 +605,7 @@ jobs:
             .openbot-build/app-server-fleet-e2e/
             .openbot-build/pi-fleet-e2e/
             .openbot-build/acp-fleet-e2e/
+            .openbot-build/copilot-fleet-e2e/
             .openbot-build/fleet-turn-config-e2e/
             .openbot-build/zip-attachment-e2e/
             .openbot-build/mp4-attachment-e2e/
