@@ -17,9 +17,11 @@ import { getString, isRecord } from "../src/backend/protocol";
 
 const OUT = resolve(
   import.meta.dirname,
-  process.argv.includes("--fleet-late")
-    ? "../.openbot-build/codex-compaction-fleet-late-e2e"
-    : "../.openbot-build/codex-compaction-queue-e2e",
+  process.argv.includes("--fleet-no-start")
+    ? "../.openbot-build/codex-compaction-fleet-no-start-e2e"
+    : process.argv.includes("--fleet-late")
+      ? "../.openbot-build/codex-compaction-fleet-late-e2e"
+      : "../.openbot-build/codex-compaction-queue-e2e",
 );
 const root = await mkdtemp(join(tmpdir(), "openbot-compaction-queue-"));
 const userData = join(root, "user-data");
@@ -28,7 +30,8 @@ const logPath = join(root, "protocol.jsonl");
 const controlPath = join(root, "control.json");
 const fakeCodex = join(root, "codex");
 const COMPACTION_TIMEOUT_MS = 1_500;
-const fleetLate = process.argv.includes("--fleet-late");
+const fleetNoStart = process.argv.includes("--fleet-no-start");
+const fleetLate = process.argv.includes("--fleet-late") || fleetNoStart;
 
 // Before the service modules load: the Codex process and the stores read the home folder.
 process.env.HOME = home;
@@ -273,7 +276,7 @@ try {
         {
           name: "late compaction is stopped after admission",
           compactionMs: 60_000,
-          delayStartMs: 2_000,
+          delayStartMs: fleetNoStart ? 60_000 : 2_000,
           ignoreInterrupt: false,
           end: "interrupted",
         },
@@ -342,6 +345,12 @@ try {
     };
     report.cases.push(result);
     assert.equal(result.statusWhileCompacting, "queued", `${entry.name}: the message did not wait`);
+    if (fleetNoStart) {
+      assert.equal(result.finalStatus, "failed", "stalled provider was stopped");
+      assert.equal(result.interruptSent, false, "no unknown turn id was interrupted");
+      result.passed = true;
+      continue;
+    }
     assert.equal(result.finalStatus, "completed", `${entry.name}: ${result.finalError ?? result.finalStatus}`);
     assert.equal(result.compactionEnd, entry.end, `${entry.name}: the compaction did not end as expected`);
     assert.equal(result.interruptSent, entry.compactionMs > COMPACTION_TIMEOUT_MS, `${entry.name}: turn/interrupt`);
