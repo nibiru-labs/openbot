@@ -75,6 +75,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   readonly #fleet: FleetTurnGate | null;
   readonly #fleetThreads = new Map<string, string>();
   readonly #fleetCompactions = new Map<string, { turnId: string | null; confirmed: boolean }>();
+  readonly #fleetStarts = new Map<string, { observed: string | null; confirmed: string | null }>();
 
   constructor(
     executable: string,
@@ -294,6 +295,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
       }
       fleetReservation = yield* this.#admitFleetTurn(threadId).pipe(toProviderClientOperationError);
       if (method === "thread/compact/start") this.#fleetCompactions.set(threadId, { turnId: null, confirmed: false });
+      else this.#fleetStarts.set(threadId, { observed: null, confirmed: null });
     }
     const id = this.#nextId++;
     const child = this.#process;
@@ -357,13 +359,28 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
               return;
             }
             const turnId = value.turn.id;
+            const start = this.#fleetStarts.get(threadId);
+            if (!start || (start.observed && start.observed !== turnId)) {
+              gate.uncertain(threadId);
+              if (this.#process) this.#fail(new Error("Codex turn identity is uncertain."), this.#process);
+              resume(
+                Effect.fail(
+                  new ProviderClientOperationError({ cause: new Error("Codex turn identity is uncertain.") }),
+                ),
+              );
+              return;
+            }
+            start.confirmed = turnId;
             resume(
               gate.started(threadId, turnId).pipe(
                 toProviderClientOperationError,
                 Effect.andThen(
                   Effect.try({
                     try: () => {
-                      if (!gate.has(threadId)) this.#fleetThreads.delete(threadId);
+                      if (!gate.has(threadId)) {
+                        this.#fleetThreads.delete(threadId);
+                        this.#fleetStarts.delete(threadId);
+                      }
                       return decoder(value);
                     },
                     catch: (cause) => new ProviderClientOperationError({ cause }),
@@ -437,6 +454,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     }
     this.#fleetThreads.clear();
     this.#fleetCompactions.clear();
+    this.#fleetStarts.clear();
   }
 
   notify(method: string, params: unknown = {}): void {
@@ -520,6 +538,18 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
                     if (this.#process)
                       this.#fail(new Error("Codex compaction turn identity is uncertain."), this.#process);
                   });
+              } else {
+                const start = this.#fleetStarts.get(threadId);
+                if (
+                  !start ||
+                  (start.observed && start.observed !== turnId) ||
+                  (start.confirmed && start.confirmed !== turnId)
+                ) {
+                  this.#fleet.uncertain(threadId);
+                  if (this.#process) this.#fail(new Error("Codex started an unadmitted turn."), this.#process);
+                  return;
+                }
+                start.observed = turnId;
               }
             }
             if (message.method === "turn/completed") {
@@ -528,6 +558,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
                   if (!this.#fleet?.has(threadId)) {
                     this.#fleetThreads.delete(threadId);
                     this.#fleetCompactions.delete(threadId);
+                    this.#fleetStarts.delete(threadId);
                   }
                 })
                 .catch(() => this.emit("diagnostic", "Fleet turn reservation requires operator recovery."));
