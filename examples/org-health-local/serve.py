@@ -8,6 +8,16 @@ ROOT = Path(__file__).resolve().parent
 os.chdir(ROOT)
 
 class LocalOnlyHandler(SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.headers.get('Host') not in ('127.0.0.1:8765', 'localhost:8765'):
+            self.send_error(403)
+            return
+        super().do_GET()
+
+    def list_directory(self, path):
+        self.send_error(404)
+        return None
+
     def log_message(self, format, *args):
         # Keep requests local and avoid writing request details to a log.
         pass

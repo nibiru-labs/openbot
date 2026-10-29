@@ -1,5 +1,9 @@
 const $ = (selector) => document.querySelector(selector);
-const safe = (value) => String(value ?? "");
+const safe = (value) =>
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+  );
 const fmt = (value, digits = 2) =>
   value == null
     ? "数据未提供"
@@ -102,7 +106,7 @@ function render(data) {
   ].join("");
   $("#insight-grid").innerHTML = data.insights
     .map((item) => {
-      const type = item["类型"];
+      const type = String(item["类型"] ?? "");
       const tagClass = type.includes("推断")
         ? "inference"
         : type.includes("边界")
@@ -117,25 +121,25 @@ function render(data) {
           : type.includes("事实")
             ? "事实"
             : "待核实";
-      return `<article class="insight-card"><span class="tag ${tagClass}">${label}</span><h3>${item["标题"]}</h3><p>${item["内容"]}</p></article>`;
+      return `<article class="insight-card"><span class="tag ${tagClass}">${label}</span><h3>${safe(item["标题"])}</h3><p>${safe(item["内容"])}</p></article>`;
     })
     .join("");
   $("#definitions-grid").innerHTML = data.definitions
     .map(
       (text, index) =>
-        `<div class="definition"><span class="definition-no">${String(index + 1).padStart(2, "0")}</span><p>${text}</p></div>`,
+        `<div class="definition"><span class="definition-no">${String(index + 1).padStart(2, "0")}</span><p>${safe(text)}</p></div>`,
     )
     .join("");
   $("#risk-grid").innerHTML = data.risks
     .map(
       (item) =>
-        `<article class="risk-card"><h3><span class="risk-mark">!</span>${item["标题"]}</h3><p>${item["内容"]}</p><span class="missing">待补证据</span></article>`,
+        `<article class="risk-card"><h3><span class="risk-mark">!</span>${safe(item["标题"])}</h3><p>${safe(item["内容"])}</p><span class="missing">待补证据</span></article>`,
     )
     .join("");
   $("#recommendations").innerHTML = data.recommendations
     .map(
       (item) =>
-        `<article class="recommendation"><div><span class="priority ${item["优先级"]}">${item["优先级"]}</span></div><div><h3>${item["标题"]}</h3><span class="rec-label">建议</span></div><div><span class="rec-label">依据与缺失</span><p>${item["依据"]} ${item["缺失证据"]}</p></div><div><span class="rec-label">核实方式</span><p>${item["验证方式"]}</p></div></article>`,
+        `<article class="recommendation"><div><span class="priority ${safe(item["优先级"])}">${safe(item["优先级"])}</span></div><div><h3>${safe(item["标题"])}</h3><span class="rec-label">建议</span></div><div><span class="rec-label">依据与缺失</span><p>${safe(item["依据"])} ${safe(item["缺失证据"])}</p></div><div><span class="rec-label">核实方式</span><p>${safe(item["验证方式"])}</p></div></article>`,
     )
     .join("");
 }
