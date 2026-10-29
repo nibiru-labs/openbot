@@ -76,6 +76,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   readonly #fleetThreads = new Map<string, string>();
   readonly #fleetCompactions = new Map<string, { turnId: string | null; confirmed: boolean }>();
   readonly #fleetStarts = new Map<string, { observed: string | null; confirmed: string | null }>();
+  #fleetWaitAbort = new AbortController();
 
   constructor(
     executable: string,
@@ -98,6 +99,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     if (this.running) return;
 
     this.#stopping = false;
+    this.#fleetWaitAbort = new AbortController();
     this.#decoder = new JsonLineDecoder();
     const target = cliSpawnTarget(this.#executable, ["app-server", "--listen", "stdio://"]);
     const child = spawn(target.command, target.args, {
@@ -140,6 +142,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   }
 
   readonly stop = Effect.fn("CodexAppServer.stop")(function* (this: CodexAppServerClient) {
+    this.#fleetWaitAbort.abort();
     const child = this.#process;
     if (!child) {
       if (this.#ending) yield* Fiber.join(this.#ending);
@@ -397,7 +400,33 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
             );
           }
         },
-        reject: (cause) => resume(Effect.fail(new ProviderClientOperationError({ cause }))),
+        reject: (cause) => {
+          if (
+            method === "turn/start" &&
+            fleetThread &&
+            fleetReservation &&
+            this.#fleet?.owns(fleetThread, fleetReservation) &&
+            cause instanceof AppServerError &&
+            /\bis archived\b/i.test(cause.message) &&
+            !this.#fleetStarts.get(fleetThread)?.observed
+          ) {
+            const threadId = fleetThread;
+            resume(
+              this.#fleet.rejectedBeforeTurn(threadId).pipe(
+                toProviderClientOperationError,
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    this.#fleetThreads.delete(threadId);
+                    this.#fleetStarts.delete(threadId);
+                  }),
+                ),
+                Effect.andThen(Effect.fail(new ProviderClientOperationError({ cause }))),
+              ),
+            );
+            return;
+          }
+          resume(Effect.fail(new ProviderClientOperationError({ cause })));
+        },
       });
       try {
         this.#write({ method, id, params: method === "thread/resume" ? metadataOnlyResumeParams(params) : params });
@@ -434,16 +463,43 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     return Effect.gen({ self: this }, function* () {
       const gate = this.#fleet;
       if (!gate) throw new Error("Fleet admission is not configured.");
+      const child = this.#process;
+      const signal = this.#fleetWaitAbort.signal;
       while (true) {
+        if (signal.aborted || !child || this.#process !== child || !this.running)
+          return yield* new ProviderClientOperationError({
+            cause: new Error("Codex stopped while waiting for fleet admission."),
+          });
         if (gate.recoveryRequired) throw new Error("Fleet admission requires operator recovery.");
         if (!gate.has(threadId) && (yield* gate.begin(threadId, "codex", null))) {
+          if (signal.aborted || this.#process !== child || !this.running) {
+            yield* gate.cancelBeforeSend(threadId);
+            return yield* new ProviderClientOperationError({
+              cause: new Error("Codex stopped while waiting for fleet admission."),
+            });
+          }
           gate.sent(threadId);
           const reservationId = gate.reservationId(threadId);
           if (!reservationId) throw new Error("Fleet reservation disappeared before provider start.");
           this.#fleetThreads.set(threadId, reservationId);
           return reservationId;
         }
-        yield* Effect.sleep(1_000);
+        yield* Effect.raceFirst(
+          Effect.sleep(1_000),
+          Effect.callback<void, ProviderClientOperationError>((resume) => {
+            const aborted = () =>
+              resume(
+                Effect.fail(
+                  new ProviderClientOperationError({
+                    cause: new Error("Codex stopped while waiting for fleet admission."),
+                  }),
+                ),
+              );
+            if (signal.aborted) aborted();
+            else signal.addEventListener("abort", aborted, { once: true });
+            return Effect.sync(() => signal.removeEventListener("abort", aborted));
+          }),
+        );
       }
     });
   }
@@ -637,6 +693,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
 
   #fail(error: Error, child: ChildProcessWithoutNullStreams): void {
     if (this.#process !== child) return;
+    this.#fleetWaitAbort.abort();
     this.#retainFleetReservations();
     this.#cancelToolRequests();
     this.#process = null;
