@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>组织健康诊断｜聚合证据看板</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="组织健康诊断首页"><span class="brand-mark">O</span><span>组织健康诊断</span></a>
+      <div class="topmeta"><span class="local-pill"><i></i>本机数据</span><span id="asof-short">读取中</span></div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="eyebrow-line"></span>ORGANIZATION HEALTH · EVIDENCE REVIEW</div>
+          <h1>先看证据，<br><em>再谈健康。</em></h1>
+          <p class="hero-lead" id="conclusion">正在读取本地诊断数据…</p>
+        </div>
+        <aside class="scope-card">
+          <div class="scope-head"><span class="scope-icon">◎</span><span>诊断边界</span></div>
+          <div class="scope-row"><span>观察月份</span><strong id="scope-month">—</strong></div>
+          <div class="scope-row"><span>数据截止</span><strong id="scope-date">—</strong></div>
+          <div class="scope-row"><span>来源</span><strong id="scope-source">—</strong></div>
+          <div class="scope-foot">仅描述聚合信号；不作个人、薪酬或编制判断。</div>
+        </aside>
+      </section>
+
+      <section class="time-strip" aria-label="时间口径">
+        <div class="time-label">时间口径</div>
+        <div class="time-point"><span class="time-dot actual"></span><div><b>2026-01</b><small>年初实际</small></div></div>
+        <div class="time-connector"></div>
+        <div class="time-point"><span class="time-dot frozen"></span><div><b>2026-05</b><small>H1 冻结参考</small></div></div>
+        <div class="time-connector"></div>
+        <div class="time-point"><span class="time-dot actual"></span><div><b>2026-09</b><small>9 月实际</small></div></div>
+        <div class="time-connector dashed"></div>
+        <div class="time-point"><span class="time-dot forecast"></span><div><b>年末</b><small>目标 / 测算</small></div></div>
+        <div class="time-note">年末值不是已发生实际；5 月缺少同口径整体成本与人头值。</div>
+      </section>
+
+      <section class="section" id="metrics-section">
+        <div class="section-heading"><div><span class="section-kicker">01 / SNAPSHOT</span><h2>聚合指标快照</h2></div><div class="section-note">成本为人民币万元/月，不含运维与设施；折算人头不等于自然人数。</div></div>
+        <div class="metric-grid" id="metric-grid"></div>
+        <div class="metric-foot"><span class="legend-dot"></span>实际 <span class="legend-dot frozen-dot"></span>H1 冻结参考 <span class="legend-dot forecast-dot"></span>年末目标 / 测算 <span class="metric-foot-note">技术人力成本率 = 技术人力成本 ÷ 同期收入折人民币（示例口径）</span></div>
+      </section>
+
+      <section class="section split-section">
+        <div class="section-heading"><div><span class="section-kicker">02 / EVIDENCE</span><h2>事实与判断分开看</h2></div><div class="section-note">规则筛查标签不代表整体组织健康结论。</div></div>
+        <div class="insight-grid" id="insight-grid"></div>
+      </section>
+
+      <section class="section" id="rules-section">
+        <div class="section-heading"><div><span class="section-kicker">03 / RULES & LIMITS</span><h2>来源口径与规则边界</h2></div></div>
+        <div class="definitions-grid" id="definitions-grid"></div>
+        <div class="stage-card">
+          <div class="stage-title"><span class="mini-icon">⌘</span><div><b>业务分档使用不同判定规则</b><small>分类规则用于钱效筛查，不可横向等同，也不能替代组织结果证据。</small></div></div>
+          <div class="stage-list">
+            <div><span class="stage-index">A</span><b>成熟型</b><p>比较成本与收入增速关系；年末标签属于前瞻测算。</p></div>
+            <div><span class="stage-index">B</span><b>成长型</b><p>按成本与收入增速规则判断，结果受目标与测算假设影响。</p></div>
+            <div><span class="stage-index">C</span><b>孵化型</b><p>按月度技术成本上限观察；阈值预警不能单独决定项目价值或去留。</p></div>
+            <div><span class="stage-index">D</span><b>共享平台</b><p>不单独判业务钱效；成本计入营收业务整体口径。</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section risk-section">
+        <div class="section-heading"><div><span class="section-kicker">04 / OPEN QUESTIONS</span><h2>证据缺口与风险</h2></div><div class="section-note">没有数据的领域显示为缺失，不以成本或人数代替。</div></div>
+        <div class="risk-grid" id="risk-grid"></div>
+      </section>
+
+      <section class="section recommendations-section">
+        <div class="section-heading"><div><span class="section-kicker">05 / NEXT STEPS</span><h2>建议的核实顺序</h2></div></div>
+        <div class="recommendation-list" id="recommendations"></div>
+      </section>
+      <footer><span>组织健康聚合诊断</span><span id="footer-source">本机静态数据 · 不发送网络请求</span></footer>
+    </main>
+  </div>
+  <noscript>请启用浏览器 JavaScript 以读取本机 JSON 数据。</noscript>
+</body>
+</html>
