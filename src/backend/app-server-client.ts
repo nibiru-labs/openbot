@@ -7,6 +7,7 @@ import { configuredFleetTurnGate } from "./agent/fleet-turn-config";
 import type { FleetTurnGate } from "./agent/fleet-turn-gate";
 import { type AgentProvider, RequestTimeoutError } from "./agent-client";
 import { cliSpawnTarget } from "./cli";
+import { runCauseEffect } from "./effect-boundary";
 import { JsonLineDecoder, LineTooLongError } from "./jsonl";
 import {
   type AppServerNotification,
@@ -19,7 +20,7 @@ import {
   type RpcMessage,
   type ThreadItem,
 } from "./protocol";
-import { ProviderClientOperationError } from "./provider-client-effects";
+import { ProviderClientOperationError, toProviderClientOperationError } from "./provider-client-effects";
 import {
   PROVIDER_HISTORY_PAGE_SIZE,
   type ProviderHistoryConsumer,
@@ -295,10 +296,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
       if (!this.running) {
         return yield* new ProviderClientOperationError({ cause: new Error("Codex App Server is not running.") });
       }
-      fleetReservation = yield* Effect.tryPromise({
-        try: (signal) => this.#admitFleetTurn(threadId, signal),
-        catch: (cause) => new ProviderClientOperationError({ cause }),
-      });
+      fleetReservation = yield* this.#admitFleetTurn(threadId).pipe(toProviderClientOperationError);
     }
     const id = this.#nextId++;
     const child = this.#process;
@@ -329,14 +327,18 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
             }
             const turnId = value.turn.id;
             resume(
-              Effect.tryPromise({
-                try: async () => {
-                  await gate.started(threadId, turnId);
-                  if (!gate.has(threadId)) this.#fleetThreads.delete(threadId);
-                  return decoder(value);
-                },
-                catch: (cause) => new ProviderClientOperationError({ cause }),
-              }),
+              gate.started(threadId, turnId).pipe(
+                toProviderClientOperationError,
+                Effect.andThen(
+                  Effect.try({
+                    try: () => {
+                      if (!gate.has(threadId)) this.#fleetThreads.delete(threadId);
+                      return decoder(value);
+                    },
+                    catch: (cause) => new ProviderClientOperationError({ cause }),
+                  }),
+                ),
+              ),
             );
           } else {
             resume(
@@ -380,25 +382,22 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     );
   });
 
-  async #admitFleetTurn(threadId: string, signal: AbortSignal): Promise<string> {
-    const gate = this.#fleet;
-    if (!gate) throw new Error("Fleet admission is not configured.");
-    while (!signal.aborted) {
-      if (gate.recoveryRequired) throw new Error("Fleet admission requires operator recovery.");
-      if (!gate.has(threadId) && (await gate.begin(threadId, "codex", null))) {
-        if (signal.aborted) {
-          await gate.cancelBeforeSend(threadId);
-          throw new Error("Fleet admission was cancelled.");
+  #admitFleetTurn(threadId: string) {
+    return Effect.gen({ self: this }, function* () {
+      const gate = this.#fleet;
+      if (!gate) throw new Error("Fleet admission is not configured.");
+      while (true) {
+        if (gate.recoveryRequired) throw new Error("Fleet admission requires operator recovery.");
+        if (!gate.has(threadId) && (yield* gate.begin(threadId, "codex", null))) {
+          gate.sent(threadId);
+          const reservationId = gate.reservationId(threadId);
+          if (!reservationId) throw new Error("Fleet reservation disappeared before provider start.");
+          this.#fleetThreads.set(threadId, reservationId);
+          return reservationId;
         }
-        gate.sent(threadId);
-        const reservationId = gate.reservationId(threadId);
-        if (!reservationId) throw new Error("Fleet reservation disappeared before provider start.");
-        this.#fleetThreads.set(threadId, reservationId);
-        return reservationId;
+        yield* Effect.sleep(1_000);
       }
-      await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
-    }
-    throw new Error("Fleet admission was cancelled.");
+    });
   }
 
   #retainFleetReservations(): void {
@@ -475,8 +474,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
             }
           } else {
             if (message.method === "turn/completed") {
-              void this.#fleet
-                .completed(threadId, turnId)
+              void runCauseEffect(this.#fleet.completed(threadId, turnId))
                 .then(() => {
                   if (!this.#fleet?.has(threadId)) this.#fleetThreads.delete(threadId);
                 })

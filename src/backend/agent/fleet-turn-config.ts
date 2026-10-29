@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
+import { Effect } from "effect";
 import { z } from "zod";
 import { FleetTurnGate } from "./fleet-turn-gate";
 import { FleetTurnCommandTransport } from "./fleet-turn-transport";
@@ -27,7 +28,9 @@ export function configuredFleetTurnGate(): FleetTurnGate | null {
   if (cachedGate) throw new Error("Fleet capacity configuration cannot change while OpenBot is running.");
   const config = configSchema.parse(JSON.parse(readFileSync(path, "utf8")));
   const [command, ...args] = config.command;
-  const gate = new FleetTurnGate(config.journalDirectory, new FleetTurnCommandTransport(command, args));
+  const gate = Effect.runSync(
+    FleetTurnGate.open(config.journalDirectory, new FleetTurnCommandTransport(command, args)),
+  );
   cachedPath = path;
   cachedGate = gate;
   return gate;
