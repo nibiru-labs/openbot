@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { isDynamicRecord, type DynamicRecord as RpcRecord } from "@openbot/contracts/runtime-values";
 
-const sessionFile = join(process.env.FAKE_DIR ?? process.cwd(), `pi-${process.pid}.jsonl`);
+let sessionFile = join(process.env.FAKE_DIR ?? process.cwd(), `pi-${process.pid}.jsonl`);
 let streaming = false;
 /** The steers that Pi has queued and not read. */
 let queue: string[] = [];
@@ -42,7 +42,10 @@ function settle(text: string): void {
 
 const handlers: Record<string, (command: RpcRecord) => void> = {
   get_state: (command) => answer(command, { sessionFile, isStreaming: streaming, isCompacting: false }),
-  switch_session: (command) => answer(command, { cancelled: false }),
+  switch_session: (command) => {
+    if (typeof command.sessionPath === "string") sessionFile = command.sessionPath;
+    answer(command, { cancelled: false });
+  },
   get_session_stats: (command) => refuse(command, "No stats."),
   compact: (command) => {
     log({ event: "compact" });

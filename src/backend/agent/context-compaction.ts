@@ -307,7 +307,11 @@ export class ContextCompaction {
       );
       const turnId = budget.compactionTurnId;
       if (budget.phase === "running" && turnId) this.#stop(agentId, threadId, client, turnId);
-      else this.#abandon(agentId, threadId);
+      else {
+        // A sent request may still start later; retain its lane until its outcome is known.
+        if (client.cancelPendingCompaction?.(threadId) === false) return;
+        this.#abandon(agentId, threadId);
+      }
     }, this.#timeoutMs);
     timer.unref?.();
     this.#timers.set(threadId, timer);
