@@ -74,8 +74,14 @@ const answer = (message) => {
     case "plugin/list": return write({ id: message.id, result: { marketplaces: [] } });
     case "config/read": return write({ id: message.id, result: config });
     case "config/batchWrite": return write({ id: message.id, result: {} });
-    case "thread/start": return write({ id: message.id, result: { thread: { id: "thread-" + (++threads), turns: [] } } });
-    case "thread/resume": return write({ id: message.id, result: { thread: { id: params.threadId, turns: [] } } });
+    case "thread/start": {
+      const threadId = "thread-" + (++threads);
+      log({ method: "thread-bound", params: { threadId } });
+      return write({ id: message.id, result: { thread: { id: threadId, turns: [] } } });
+    }
+    case "thread/resume":
+      log({ method: "thread-bound", params: { threadId: params.threadId } });
+      return write({ id: message.id, result: { thread: { id: params.threadId, turns: [] } } });
     case "thread/unsubscribe": return write({ id: message.id, result: { status: "Unsubscribed" } });
     case "thread/turns/list":
     case "thread/items/list": return write({ id: message.id, result: { data: [], nextCursor: null } });
@@ -134,10 +140,10 @@ process.stdin.on("data", (chunk) => {
       if (message.method) {
         log({ method: message.method, id: message.id ?? null, params: message.params ?? null });
         if (message.id !== undefined) answer(message);
-      } else if (pending.has(message.id)) {
+      } else {
         const call = pending.get(message.id);
-        log({ method: "tool-answer", id: message.id, params: { threadId: call.threadId, turnId: call.turnId, spec: call.spec, result: message.result ?? null, error: message.error ?? null } });
-        if (!call.answered) {
+        log({ method: "tool-answer", id: message.id ?? null, params: { threadId: call?.threadId, turnId: call?.turnId, spec: call?.spec, result: message.result ?? null, error: message.error ?? null } });
+        if (call && !call.answered) {
           call.answered = true;
           if (--call.shared.remaining === 0) finish(call.threadId, call.turnId, "completed");
         }
@@ -187,27 +193,40 @@ function busyOutcomes(params: unknown) {
   });
 }
 
-function protocol() {
-  try {
-    return readFileSync(logPath, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => {
-        const entry = recordOf(JSON.parse(line));
-        const params = isRecord(entry.params) ? entry.params : {};
-        return {
-          method: getString(entry, "method"),
-          input: JSON.stringify(params.input ?? ""),
-          threadId: getString(params, "threadId"),
-          turnId: getString(params, "turnId"),
-          outcome: getString(entry, "method") === "tool-answer" ? busyOutcomes(params) : null,
-          callId: getString(entry, "id"),
-          processId: entry.processId,
-          spec: params.spec,
-        };
-      });
-  } catch {
-    return [];
+function protocol(path = logPath) {
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const entry = recordOf(JSON.parse(line));
+      const params = isRecord(entry.params) ? entry.params : {};
+      return {
+        method: getString(entry, "method"),
+        input: JSON.stringify(params.input ?? ""),
+        threadId: getString(params, "threadId"),
+        turnId: getString(params, "turnId"),
+        outcome: getString(entry, "method") === "tool-answer" ? busyOutcomes(params) : null,
+        callId: getString(entry, "id"),
+        processId: entry.processId,
+        spec: params.spec,
+      };
+    });
+}
+
+function assertAnswerCardinality(entries: ReturnType<typeof protocol>) {
+  const toolCalls = entries.filter((entry) => entry.method === "tool-call");
+  const answers = entries.filter((entry) => entry.method === "tool-answer");
+  const matches = (call: (typeof entries)[number], answer: (typeof entries)[number]) =>
+    typeof call.callId === "string" &&
+    answer.callId === call.callId &&
+    answer.processId === call.processId &&
+    answer.threadId === call.threadId &&
+    answer.turnId === call.turnId;
+  for (const call of toolCalls) {
+    assert.equal(answers.filter((answer) => matches(call, answer)).length, 1, `expected one answer for ${call.callId}`);
+  }
+  for (const answer of answers) {
+    assert.equal(toolCalls.filter((call) => matches(call, answer)).length, 1, `unknown answer ${answer.callId}`);
   }
 }
 
@@ -224,6 +243,7 @@ async function waitFor<T>(label: string, read: () => T | null | undefined | fals
   }
 }
 
+await writeFile(logPath, "");
 await writeFile(fakeCodex, FAKE_CODEX, { mode: 0o755 });
 await writeFile(controlPath, JSON.stringify({ call: null }));
 const database = new OpenBotDatabase(userData);
@@ -251,10 +271,28 @@ const runningTurn = (agentId: string) =>
 const waitForHeld = (agentId: string, deliveryId: string, text: string) =>
   waitFor(`${text} to run and be held by the provider`, () => {
     const delivery = mailbox.getDelivery(deliveryId)?.delivery;
+    const threadId = store.activeProviderSession(agentId)?.externalSessionId;
+    const binding = calls("thread-bound").findLast((entry) => entry.threadId === threadId);
+    if (binding && typeof binding.processId === "number") {
+      try {
+        process.kill(binding.processId, 0);
+      } catch (error) {
+        if (isRecord(error) && error.code === "ESRCH") return null;
+        throw error;
+      }
+    } else return null;
     return delivery?.status === "running" &&
       agents.listQueue(agentId).deliveries.some((item) => item.id === deliveryId && item.status === "running") &&
       delivery.turnId &&
-      calls("held-ready").some((entry) => entry.turnId === delivery.turnId && entry.input.includes(text))
+      threadId &&
+      binding &&
+      calls("held-ready").some(
+        (entry) =>
+          entry.processId === binding.processId &&
+          entry.threadId === threadId &&
+          entry.turnId === delivery.turnId &&
+          entry.input.includes(text),
+      )
       ? delivery.turnId
       : null;
   });
@@ -464,6 +502,10 @@ try {
   await waitForHeld(target.id, holdFour, "HOLD-FOUR");
   const sameSender = await overlapping([cooling.id], [[interruptSpec("HOLD-COOL-1"), interruptSpec("HOLD-COOL-2")]]);
   assert.deepEqual(sameSender.outcomes.map((outcome) => outcome.result).sort(), ["interrupted", "queued"]);
+  assert.equal(
+    sameSender.outcomes.find((outcome) => outcome.result === "queued")?.reason,
+    sourceText("error.backend.agentControlCooldown"),
+  );
   assert.equal(sameSender.stopped, 1);
   report.checks.push("Two overlapping interrupts from one sender stop the turn once; the second waits on the cooldown");
 
@@ -558,26 +600,45 @@ try {
   report.checks.push(
     "A running target at interrupt capacity refuses one message with the limit reason and stays running",
   );
-
-  for (const call of calls("tool-call")) {
-    assert.equal(
-      calls("tool-answer").filter(
-        (entry) =>
-          entry.processId === call.processId &&
-          entry.threadId === call.threadId &&
-          entry.turnId === call.turnId &&
-          entry.callId === call.callId,
-      ).length,
-      1,
-      `expected exactly one answer for ${call.callId}`,
-    );
-  }
-  report.passed = true;
 } catch (error) {
   report.error = error instanceof Error ? (error.stack ?? error.message) : String(error);
   process.exitCode = 1;
 } finally {
-  await runCauseEffect(agents.stop()).catch(() => {});
+  try {
+    await runCauseEffect(agents.stop());
+    const processIds = [...new Set(protocol().map((entry) => entry.processId))];
+    await waitFor("provider processes to exit", () =>
+      processIds.every((pid) => {
+        assert(typeof pid === "number", "invalid provider process ID");
+        try {
+          process.kill(pid, 0);
+          return false;
+        } catch (error) {
+          if (isRecord(error) && error.code === "ESRCH") return true;
+          throw error;
+        }
+      }),
+    );
+    const entries = protocol();
+    assertAnswerCardinality(entries);
+    const answer = entries.find((entry) => entry.method === "tool-answer");
+    assert(answer, "no tool answer to check");
+    assert.throws(() => assertAnswerCardinality(entries.filter((entry) => entry !== answer)));
+    assert.throws(() => assertAnswerCardinality([...entries, answer]));
+    assert.throws(() => assertAnswerCardinality([...entries, { ...answer, callId: "unknown" }]));
+    assert.throws(() => assertAnswerCardinality([...entries, { ...answer, callId: null }]));
+    const invalidLog = join(root, "invalid-protocol.jsonl");
+    writeFileSync(invalidLog, "{invalid\n");
+    assert.throws(() => protocol(invalidLog));
+    assert.throws(() => protocol(join(root, "missing-protocol.jsonl")));
+    if (!report.error) report.passed = true;
+  } catch (error) {
+    report.passed = false;
+    report.error = [report.error, error instanceof Error ? (error.stack ?? error.message) : String(error)]
+      .filter(Boolean)
+      .join("\n");
+    process.exitCode = 1;
+  }
   database.close();
   mkdirSync(OUT, { recursive: true });
   writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
