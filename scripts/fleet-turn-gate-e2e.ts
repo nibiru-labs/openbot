@@ -21,7 +21,7 @@ await mkdir(reservations);
 await writeFile(
   coordinator,
   `
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 const { operation, reservation, mode, directory } = JSON.parse(readFileSync(0, 'utf8'));
 const path = join(directory, reservation.run_id);
@@ -31,6 +31,10 @@ if (operation === 'acquire') {
   if (mode === 'lost') process.exit(1);
   process.stdout.write(JSON.stringify({ admitted: true }));
 } else {
+  if (mode === 'delay-release') {
+    writeFileSync(join(directory, 'release-pending'), '');
+    while (!existsSync(join(directory, 'release-allowed'))) await new Promise(resolve => setTimeout(resolve, 20));
+  }
   unlinkSync(path);
   process.stdout.write('{}');
 }
@@ -77,6 +81,25 @@ try {
   assert.equal(await runCauseEffect(gate.begin("denied", "codex", null)), false);
   assert.deepEqual(await readdir(journal), []);
   checks.push("denial removes the local journal");
+
+  mode = "normal";
+  assert.equal(await runCauseEffect(gate.begin("completed", "agy", null)), true);
+  gate.sent("completed");
+  await runCauseEffect(gate.started("completed", "completed-turn"));
+  mode = "delay-release";
+  const release = runCauseEffect(gate.completed("completed", "completed-turn"));
+  const deadline = Date.now() + 10_000;
+  while (!(await readdir(reservations)).includes("release-pending")) {
+    if (Date.now() > deadline) throw new Error("Coordinator release did not start.");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  gate.uncertain("completed");
+  await writeFile(join(reservations, "release-allowed"), "");
+  await release;
+  assert.equal(gate.requiresRecovery("agy"), false);
+  await rm(join(reservations, "release-pending"));
+  await rm(join(reservations, "release-allowed"));
+  checks.push("shutdown during a confirmed completion does not block later turns");
 
   mode = "lost";
   await assert.rejects(runCauseEffect(gate.begin("lost", "codex", null)), /response lost/);
