@@ -74,6 +74,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   readonly #extraEnv: Readonly<Record<string, string>> | undefined;
   readonly #fleet: FleetTurnGate | null;
   readonly #fleetThreads = new Map<string, string>();
+  readonly #fleetReleases = new Set<Promise<void>>();
   readonly #fleetCompactions = new Map<string, { turnId: string | null; confirmed: boolean }>();
   readonly #fleetStarts = new Map<string, { observed: string | null; confirmed: string | null }>();
   #fleetWaitAbort = new AbortController();
@@ -147,10 +148,12 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     const child = this.#process;
     if (!child) {
       if (this.#ending) yield* Fiber.join(this.#ending);
+      yield* Effect.promise(() => Promise.all([...this.#fleetReleases]).then(() => undefined));
       return;
     }
     this.#stopping = true;
     this.#retainFleetReservations();
+    yield* Effect.promise(() => Promise.all([...this.#fleetReleases]).then(() => undefined));
     this.#cancelToolRequests();
     this.#process = null;
     for (const pending of this.#pending.values()) pending.reject(new Error("Codex App Server stopped."));
@@ -684,7 +687,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
               }
             }
             if (message.method === "turn/completed") {
-              void runCauseEffect(this.#fleet.completed(threadId, turnId))
+              const release = runCauseEffect(this.#fleet.completed(threadId, turnId))
                 .then(() => {
                   if (!this.#fleet?.has(threadId)) {
                     this.#fleetThreads.delete(threadId);
@@ -692,7 +695,10 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
                     this.#fleetStarts.delete(threadId);
                   }
                 })
-                .catch(() => this.emit("diagnostic", "Fleet turn reservation requires operator recovery."));
+                .catch(() => this.emit("diagnostic", "Fleet turn reservation requires operator recovery."))
+                .then(() => undefined);
+              this.#fleetReleases.add(release);
+              void release.finally(() => this.#fleetReleases.delete(release));
             }
           }
         }
