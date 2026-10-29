@@ -2291,25 +2291,40 @@ export class MailboxStore {
     }
   }, Effect.uninterruptible).bind(this);
 
-  /** Commit a refused batch and its usage hold together. */
+  /** Commit a refused batch, its usage hold, and optional related writes together. */
   requeueWithHold(
     deliveries: readonly { id: string; continuation?: UsageLimitContinuation }[],
     prepareHold: (database: import("node:sqlite").DatabaseSync) => () => void,
-  ): void {
+    prepareRelated?: (database: import("node:sqlite").DatabaseSync) => {
+      status: "queued" | "interrupted";
+      publish: () => void;
+    } | null,
+  ): boolean {
     const db = this.#database.connection;
     if (db.isTransaction) throw new Error("Mailbox transaction is already active.");
     const state = structuredClone(this.#state);
     const changes = Object.fromEntries(Object.entries(this.#changes).map(([key, ids]) => [key, new Set(ids)]));
     db.exec("BEGIN IMMEDIATE");
     let publish: () => void;
+    let publishRelated: (() => void) | undefined;
     try {
+      const related = prepareRelated?.(db);
+      if (prepareRelated && !related) {
+        db.exec("ROLLBACK");
+        return false;
+      }
+      publishRelated = related?.publish;
       for (const { id, continuation } of deliveries) {
         const delivery = this.#state.deliveries.find((candidate) => candidate.id === id);
         if (!delivery) throw new Error(`Unknown delivery: ${id}`);
         if (!["starting", "running"].includes(delivery.status)) continue;
         Object.assign(
           delivery,
-          { status: "queued", turnId: null, error: null },
+          {
+            status: related?.status ?? "queued",
+            turnId: related?.status === "interrupted" ? delivery.turnId : null,
+            error: null,
+          },
           continuation ? { resumeAfterUsageLimit: continuation } : {},
         );
         delete delivery.steeredAt;
@@ -2332,6 +2347,8 @@ export class MailboxStore {
     }
     this.#clearChanges();
     publish();
+    publishRelated?.();
+    return true;
   }
 
   /** A refused delivery, or unfinished work that a backup continues, back at its place in the queue. */

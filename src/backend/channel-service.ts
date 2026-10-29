@@ -1387,32 +1387,40 @@ export class ChannelService {
     deliveryId: string,
     continueWork = false,
   ) {
+    const finish = this.prepareRequeueForLimit(deliveryId, continueWork);
+    if (!finish) return false;
+    yield* finish;
+    return true;
+  });
+
+  /** Write the assignment now; run the returned effects only after the enclosing transaction commits. */
+  prepareRequeueForLimit(deliveryId: string, continueWork = false): Effect.Effect<void> | null {
     const assignment = this.store.assignmentForDelivery(deliveryId);
-    if (!assignment || !activeAssignment(assignment) || assignment.pendingRevision !== null) return false;
+    if (!assignment || !activeAssignment(assignment) || assignment.pendingRevision !== null) return null;
     const task = this.store.tasks(assignment.channelId).find((item) => item.id === assignment.taskId);
     const current = task?.revision === assignment.taskRevision && (task.state === "queued" || task.state === "running");
     const skipped = task && current && this.hooks.skipAtLimit?.(task) ? this.#skippedTasks(task) : null;
     if (continueWork) {
-      if (!task || !current || skipped) return false;
+      if (!task || !current || skipped) return null;
       // The ready backup keeps this assignment and its delivery, including the interrupted work.
       this.store.update(this.store.get(assignment.channelId), {
         assignments: [{ ...assignment, state: "queued", turnId: null }],
         tasks: [{ ...task, state: "queued", error: null }],
       });
-      this.publish(assignment.channelId);
-      return true;
+      return Effect.sync(() => this.publish(assignment.channelId));
     }
     this.store.update(this.store.get(assignment.channelId), {
       assignments: [{ ...assignment, state: "interrupted" }],
       tasks:
         skipped ?? (task && current ? [{ ...task, state: "queued", revision: task.revision + 1, error: null }] : []),
     });
-    this.resolveAssignmentTerminal(assignment.id);
-    this.publish(assignment.channelId);
-    // The drain that calls this must not wait for the release.
-    yield* this.#forkEvent(this.#releaseHeldAgents([assignment.agentId]));
-    return true;
-  });
+    return Effect.gen({ self: this }, function* () {
+      this.resolveAssignmentTerminal(assignment.id);
+      this.publish(assignment.channelId);
+      // The drain that calls this must not wait for the release.
+      yield* this.#forkEvent(this.#releaseHeldAgents([assignment.agentId]));
+    });
+  }
 
   /**
    * The user hid this agent. Each assignment of its own whose delivery still waits in its queue goes
