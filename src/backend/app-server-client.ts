@@ -77,6 +77,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   readonly #fleetCompactions = new Map<string, { turnId: string | null; confirmed: boolean }>();
   readonly #fleetStarts = new Map<string, { observed: string | null; confirmed: string | null }>();
   #fleetWaitAbort = new AbortController();
+  readonly #pendingCompactionAdmissions = new Map<string, AbortController>();
 
   constructor(
     executable: string,
@@ -287,6 +288,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   ) {
     let fleetThread: string | null = null;
     let fleetReservation: string | null = null;
+    let fleetCompactionAbort: AbortController | null = null;
     if (this.#fleet && (method === "turn/start" || method === "thread/compact/start")) {
       if (!isRecord(params) || !isString(params.threadId) || !params.threadId) {
         return yield* new ProviderClientOperationError({ cause: new Error("Fleet admission needs a thread ID.") });
@@ -296,7 +298,18 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
       if (!this.running) {
         return yield* new ProviderClientOperationError({ cause: new Error("Codex App Server is not running.") });
       }
-      fleetReservation = yield* this.#admitFleetTurn(threadId).pipe(toProviderClientOperationError);
+      const compactionAbort = method === "thread/compact/start" ? new AbortController() : null;
+      fleetCompactionAbort = compactionAbort;
+      if (compactionAbort) this.#pendingCompactionAdmissions.set(threadId, compactionAbort);
+      fleetReservation = yield* this.#admitFleetTurn(threadId, compactionAbort?.signal).pipe(
+        toProviderClientOperationError,
+        Effect.onError(() =>
+          Effect.sync(() => {
+            if (compactionAbort && this.#pendingCompactionAdmissions.get(threadId) === compactionAbort)
+              this.#pendingCompactionAdmissions.delete(threadId);
+          }),
+        ),
+      );
       if (method === "thread/compact/start") this.#fleetCompactions.set(threadId, { turnId: null, confirmed: false });
       else this.#fleetStarts.set(threadId, { observed: null, confirmed: null });
     }
@@ -429,7 +442,38 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
         },
       });
       try {
+        if (
+          fleetCompactionAbort?.signal.aborted &&
+          fleetThread &&
+          fleetReservation &&
+          this.#fleet?.owns(fleetThread, fleetReservation)
+        ) {
+          const threadId = fleetThread;
+          resume(
+            this.#fleet.rejectedBeforeTurn(threadId).pipe(
+              toProviderClientOperationError,
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  this.#fleetThreads.delete(threadId);
+                  this.#fleetCompactions.delete(threadId);
+                }),
+              ),
+              Effect.andThen(
+                Effect.fail(
+                  new ProviderClientOperationError({ cause: new Error("Compaction admission was cancelled.") }),
+                ),
+              ),
+            ),
+          );
+          return Effect.sync(() => this.#pending.delete(id));
+        }
         this.#write({ method, id, params: method === "thread/resume" ? metadataOnlyResumeParams(params) : params });
+        if (
+          fleetCompactionAbort &&
+          fleetThread &&
+          this.#pendingCompactionAdmissions.get(fleetThread) === fleetCompactionAbort
+        )
+          this.#pendingCompactionAdmissions.delete(fleetThread);
         if (method === "turn/interrupt" && isRecord(params) && isString(params.threadId) && isString(params.turnId)) {
           this.#interruptedTurns.add(JSON.stringify([params.threadId, params.turnId]));
           this.#cancelToolRequests(params.threadId, params.turnId);
@@ -448,7 +492,17 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
             ),
           ),
       }),
-      Effect.ensuring(Effect.sync(() => this.#pending.delete(id))),
+      Effect.ensuring(
+        Effect.sync(() => {
+          this.#pending.delete(id);
+          if (
+            fleetCompactionAbort &&
+            fleetThread &&
+            this.#pendingCompactionAdmissions.get(fleetThread) === fleetCompactionAbort
+          )
+            this.#pendingCompactionAdmissions.delete(fleetThread);
+        }),
+      ),
       Effect.tapError(() =>
         Effect.sync(() => {
           if (fleetThread && fleetReservation && this.#fleet?.owns(fleetThread, fleetReservation)) {
@@ -459,20 +513,28 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     );
   });
 
-  #admitFleetTurn(threadId: string) {
+  cancelPendingCompaction(threadId: string): boolean | undefined {
+    if (!this.#fleet) return undefined;
+    const pending = this.#pendingCompactionAdmissions.get(threadId);
+    if (!pending) return false;
+    pending.abort();
+    return true;
+  }
+
+  #admitFleetTurn(threadId: string, compactionSignal?: AbortSignal) {
     return Effect.gen({ self: this }, function* () {
       const gate = this.#fleet;
       if (!gate) throw new Error("Fleet admission is not configured.");
       const child = this.#process;
       const signal = this.#fleetWaitAbort.signal;
       while (true) {
-        if (signal.aborted || !child || this.#process !== child || !this.running)
+        if (signal.aborted || compactionSignal?.aborted || !child || this.#process !== child || !this.running)
           return yield* new ProviderClientOperationError({
             cause: new Error("Codex stopped while waiting for fleet admission."),
           });
         if (gate.recoveryRequired) throw new Error("Fleet admission requires operator recovery.");
         if (!gate.has(threadId) && (yield* gate.begin(threadId, "codex", null))) {
-          if (signal.aborted || this.#process !== child || !this.running) {
+          if (signal.aborted || compactionSignal?.aborted || this.#process !== child || !this.running) {
             yield* gate.cancelBeforeSend(threadId);
             return yield* new ProviderClientOperationError({
               cause: new Error("Codex stopped while waiting for fleet admission."),
@@ -495,9 +557,15 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
                   }),
                 ),
               );
-            if (signal.aborted) aborted();
-            else signal.addEventListener("abort", aborted, { once: true });
-            return Effect.sync(() => signal.removeEventListener("abort", aborted));
+            if (signal.aborted || compactionSignal?.aborted) aborted();
+            else {
+              signal.addEventListener("abort", aborted, { once: true });
+              compactionSignal?.addEventListener("abort", aborted, { once: true });
+            }
+            return Effect.sync(() => {
+              signal.removeEventListener("abort", aborted);
+              compactionSignal?.removeEventListener("abort", aborted);
+            });
           }),
         );
       }
