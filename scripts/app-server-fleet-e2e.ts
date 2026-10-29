@@ -39,6 +39,14 @@ const send = (value) => process.stdout.write(JSON.stringify(value) + '\\n');
 readline.createInterface({input:process.stdin}).on('line', line => {
   const request = JSON.parse(line), threadId = request.params.threadId;
   if (threadId === 'missing') return send({id:request.id, result:{}});
+  if (threadId === 'wrong-before') {
+    send({method:'turn/started', params:{threadId, turn:{id:'other'}}});
+    return send({id:request.id, result:{turn:{id:'current'}}});
+  }
+  if (threadId === 'wrong-after') {
+    send({id:request.id, result:{turn:{id:'current'}}});
+    return send({method:'turn/started', params:{threadId, turn:{id:'other'}}});
+  }
   if (threadId === 'compact') {
     send({method:'turn/started', params:{threadId, turn:{id:'compact-turn'}}});
     send({method:'turn/completed', params:{threadId, turn:{id:'compact-turn'}}});
@@ -75,6 +83,36 @@ try {
   assert.equal((await readdir(held)).length, 1);
   assert.equal((await readdir(journal)).length, 1);
   checks.push("missing provider confirmation retains the coordinator slot");
+
+  for (const scenario of ["wrong-before", "wrong-after"]) {
+    const scenarioHeld = join(root, `${scenario}-held`);
+    const scenarioJournal = join(root, `${scenario}-journal`);
+    await mkdir(scenarioHeld);
+    const scenarioGate = await runCauseEffect(
+      FleetTurnGate.open(scenarioJournal, new FleetTurnCommandTransport(process.execPath, [coordinator, scenarioHeld])),
+    );
+    const scenarioClient = new CodexAppServerClient(executable, 5_000, undefined, scenarioGate);
+    scenarioClient.start();
+    const exited = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Provider did not stop after a mismatched start.")), 5_000);
+      scenarioClient.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+    try {
+      await Effect.runPromise(scenarioClient.request("turn/start", { threadId: scenario }, decodeRecordResponse)).catch(
+        () => {},
+      );
+      await exited;
+      assert.equal(scenarioGate.recoveryRequired, true);
+      assert.equal((await readdir(scenarioHeld)).length, 1);
+      assert.equal((await readdir(scenarioJournal)).length, 1);
+    } finally {
+      await Effect.runPromise(scenarioClient.stop());
+    }
+  }
+  checks.push("a mismatched start before or after the response stops the provider and retains admission");
 
   const directory = join(process.cwd(), ".openbot-build", "app-server-fleet-e2e");
   await mkdir(directory, { recursive: true });
