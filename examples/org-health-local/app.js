@@ -16,7 +16,7 @@ function metricCard(title, unit, series, delta, options = {}) {
     ["2026-09实际", "09 实际", "actual"],
     [options.forecastKey || "年末测算", options.forecastLabel || "年末测算", "forecast"],
   ];
-  // Three columns with May retained as an explicit unavailable anchor, and forecast visually separated.
+  // May is retained as an explicit unavailable anchor; forecast is visually separated.
   return `<article class="metric-card"><div class="metric-name">${title}</div><div class="metric-unit">${unit}</div><div class="metric-values">${points
     .map(([key, label, type]) => {
       const v = valueFor(series, key);
@@ -27,7 +27,13 @@ function metricCard(title, unit, series, delta, options = {}) {
 }
 function render(data) {
   const expected = ["整体技术人力成本", "整体折算人头", "营收业务（含共享平台）技术人力成本与折算人头", "收入与成本率"];
-  if (data.scope?.["schema版本"] !== 4 || expected.some((title, i) => data.metrics?.[i]?.["标题"] !== title)) {
+  if (
+    data.scope?.["schema版本"] !== 4 ||
+    data.scope?.["观察月份"] !== "2026-09" ||
+    !data.scope?.["数据截止"] ||
+    expected.some((title, i) => data.metrics?.[i]?.["标题"] !== title) ||
+    !["insights", "definitions", "risks", "recommendations"].every((key) => Array.isArray(data[key]))
+  ) {
     throw new Error("诊断数据结构或指标顺序已变化，请重新生成和核对页面。");
   }
   const scope = data.scope;
@@ -45,7 +51,25 @@ function render(data) {
   const costRates = m[3].数值["整体技术人力成本率"];
   const revRates = m[3].数值["营收业务技术人力成本率"];
   const fullRates = m[3].数值["全口径技术成本率含运维设施"];
-  const asPercent = (x) => (x == null ? null : safe(x));
+  const numericSeries = [overallCost, overallHeads, revenueOps?.成本, revenueOps?.折算人头, revenue];
+  const dates = ["2026-01实际", "2026-05H1参考", "2026-09实际"];
+  if (
+    numericSeries.some(
+      (series, i) =>
+        !series ||
+        [...dates, i === 4 ? "年末目标" : "年末测算"].some(
+          (key) =>
+            !(key in series) ||
+            (series[key] !== null && (typeof series[key] !== "number" || !Number.isFinite(series[key]))),
+        ),
+    ) ||
+    !costRates ||
+    !revRates ||
+    !fullRates
+  ) {
+    throw new Error("诊断数据的期次或数值格式已变化，请重新生成和核对页面。");
+  }
+  const asPercent = (x) => (x == null ? "未提供" : String(x));
   const difference = (series, digits = 2) => {
     const start = series["2026-01实际"],
       end = series["2026-09实际"];
@@ -65,7 +89,7 @@ function render(data) {
       "整体技术人力成本",
       "万元 / 月 · 不含运维与设施",
       overallCost,
-      `1—9 月变化 <strong>${difference(overallCost)} 万元 / 月 · ${percentChange(overallCost)}</strong>`,
+      `1—9 月变化 <strong>${difference(overallCost, 1)} 万元 / 月 · ${percentChange(overallCost)}</strong>`,
       { digits: 1 },
     ),
     metricCard(
@@ -79,14 +103,14 @@ function render(data) {
       "营收业务技术人力成本",
       "含共享平台 · 万元 / 月",
       revenueOps.成本,
-      `1—9 月变化 <strong>${difference(revenueOps.成本)} 万元 / 月</strong>`,
+      `1—9 月变化 <strong>${difference(revenueOps.成本, 1)} 万元 / 月</strong>`,
       { digits: 1 },
     ),
     metricCard(
       "营收业务折算人头",
       "含共享平台 · 折算值",
       revenueOps.折算人头,
-      `1—9 月变化 <strong>${difference(revenueOps.折算人头)}</strong>`,
+      `1—9 月变化 <strong>${difference(revenueOps.折算人头, 1)}</strong>`,
       { digits: 1 },
     ),
     metricCard(
@@ -100,7 +124,7 @@ function render(data) {
       "整体技术人力成本率",
       "不含运维 / 设施 · 成本 ÷ 收入折人民币",
       costRates,
-      `营收业务技术人力率 ${asPercent(revRates["2026-01实际"])} → ${asPercent(revRates["2026-09实际"])}；全口径整体率（含运维 / 设施）${asPercent(fullRates["整体2026-01实际"])} → ${asPercent(fullRates["整体2026-09实际"])}，分摊流程待确认。`,
+      `营收业务技术人力率 ${safe(asPercent(revRates["2026-01实际"]))} → ${safe(asPercent(revRates["2026-09实际"]))}；全口径整体率（含运维 / 设施）${safe(asPercent(fullRates["整体2026-01实际"]))} → ${safe(asPercent(fullRates["整体2026-09实际"]))}，分摊流程待确认。`,
       { format: asPercent, warn: true },
     ),
   ].join("");
@@ -150,5 +174,9 @@ fetch("./data/diagnosis.json", { cache: "no-store" })
   })
   .then(render)
   .catch((error) => {
+    ["metric-grid", "insight-grid", "definitions-grid", "risk-grid", "recommendations"].forEach((id) => {
+      document.getElementById(id).replaceChildren();
+    });
+    $("#asof-short").textContent = "加载失败";
     $("#conclusion").textContent = error.message || "无法加载本地诊断数据，请检查本机服务。";
   });
