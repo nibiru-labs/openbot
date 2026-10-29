@@ -932,8 +932,12 @@ export class DrainScheduler {
           // a channel task goes back to its channel, so that its assignment does not reserve the host.
           if (!messagingDelivery && isPlanLimitDiagnostic(reason)) {
             if (!channelDelivery) {
-              for (const item of batch)
-                yield* this.#mailbox.restoreQueued(item.delivery.id).pipe(toDeliveryStartFailed);
+              yield* drainStep(() =>
+                this.#mailbox.requeueWithHold(
+                  batch.map((item) => ({ id: item.delivery.id })),
+                  (database) => this.#usageLimits.prepareUnknown(delivery.recipientAgentId, requestedModel, database),
+                ),
+              );
               this.#mailboxSync.emitQueue(delivery.recipientAgentId);
               // After the restore, so a routine set to skip finds its run back in the queue.
               yield* this.#usageLimits.reached(delivery.recipientAgentId, null, requestedModel);

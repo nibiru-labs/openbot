@@ -1032,6 +1032,7 @@ export class TurnLifecycle {
                 ),
               }
             : undefined,
+          family === undefined ? model : undefined,
         );
         // After the requeue, so a routine set to skip finds its run back in the queue.
         yield* this.#usageLimits.reached(agentId, resetsAt, model, family);
@@ -1316,7 +1317,9 @@ export class TurnLifecycle {
     snapshot: ConversationSnapshot,
     deliveries: readonly DeliveryContext[],
     resumeAfterUsageLimit?: UsageLimitContinuation,
+    unknownHoldModel?: string | null,
   ) {
+    const queued: { id: string; continuation?: UsageLimitContinuation }[] = [];
     for (const context of deliveries) {
       const { delivery } = context;
       const continuation = resumeAfterUsageLimit
@@ -1334,7 +1337,19 @@ export class TurnLifecycle {
               .slice(-6000),
           }
         : undefined;
-      yield* this.#mailbox.requeueRefused(delivery.id, continuation).pipe(toTurnOperationFailed);
+      queued.push({ id: delivery.id, continuation });
+    }
+    if (unknownHoldModel !== undefined) {
+      yield* turnStep(() =>
+        this.#mailbox.requeueWithHold(queued, (database) =>
+          this.#usageLimits.prepareUnknown(agentId, unknownHoldModel, database),
+        ),
+      );
+    } else {
+      for (const { id, continuation } of queued)
+        yield* this.#mailbox.requeueRefused(id, continuation).pipe(toTurnOperationFailed);
+    }
+    for (const { delivery } of deliveries) {
       this.#mailboxSync.syncDeliveryMessage(snapshot, delivery.id);
     }
     this.#conversation.emitConversation(snapshot, "turn.completed", { turnId, status: "interrupted" });

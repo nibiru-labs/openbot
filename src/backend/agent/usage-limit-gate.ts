@@ -183,6 +183,34 @@ export class UsageLimitGate {
       );
   }
 
+  /** Persist a new unknown hold in the mailbox transaction and publish it after commit. */
+  prepareUnknown(agentId: string, model: string | null, database: DatabaseSync): () => void {
+    const agent = this.#agent(agentId);
+    if (!agent) throw new Error("Agent for usage hold is missing.");
+    if (!this.#database || this.#database() !== database) throw new Error("Usage hold database differs from mailbox.");
+    const turnModel = model ?? agent.model;
+    const provider = providerForAgent(agent);
+    const accountId = accountOf(agent);
+    const family = `unknown:${turnModel}`;
+    const key = limitKey(provider, accountId, family);
+    if (this.#limits.has(key)) return () => {};
+    const limit: UsageLimit = {
+      provider,
+      accountId,
+      model: turnModel,
+      family,
+      resetsAt: null,
+      timer: null,
+      unknownPhase: "waiting",
+      deadline: (this.#timers.now?.() ?? Date.now()) + UNKNOWN_PROBE_DELAY_MS,
+    };
+    this.#persist(limit);
+    return () => {
+      this.#limits.set(key, limit);
+      this.#armUnknown(key, limit);
+    };
+  }
+
   #armUnknown(key: string, limit: UsageLimit): void {
     const now = this.#timers.now?.() ?? Date.now();
     const delay = Math.max(0, (limit.deadline ?? now + UNKNOWN_PROBE_DELAY_MS) - now);

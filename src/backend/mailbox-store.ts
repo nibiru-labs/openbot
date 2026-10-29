@@ -2291,8 +2291,50 @@ export class MailboxStore {
     }
   }, Effect.uninterruptible).bind(this);
 
-  /** A refused delivery, or unfinished work that a backup continues, back at its place in the queue. */
+  /** Commit a refused batch and its usage hold together. */
+  requeueWithHold(
+    deliveries: readonly { id: string; continuation?: UsageLimitContinuation }[],
+    prepareHold: (database: import("node:sqlite").DatabaseSync) => () => void,
+  ): void {
+    const db = this.#database.connection;
+    if (db.isTransaction) throw new Error("Mailbox transaction is already active.");
+    const state = structuredClone(this.#state);
+    const changes = Object.fromEntries(Object.entries(this.#changes).map(([key, ids]) => [key, new Set(ids)]));
+    db.exec("BEGIN IMMEDIATE");
+    let publish: () => void;
+    try {
+      for (const { id, continuation } of deliveries) {
+        const delivery = this.#state.deliveries.find((candidate) => candidate.id === id);
+        if (!delivery) throw new Error(`Unknown delivery: ${id}`);
+        if (!["starting", "running"].includes(delivery.status)) continue;
+        Object.assign(
+          delivery,
+          { status: "queued", turnId: null, error: null },
+          continuation ? { resumeAfterUsageLimit: continuation } : {},
+        );
+        delete delivery.steeredAt;
+        this.#changes.deliveryIds.add(id);
+      }
+      this.#persist("delivery.updated");
+      publish = prepareHold(db);
+      db.exec("COMMIT");
+    } catch (error) {
+      try {
+        if (db.isTransaction) db.exec("ROLLBACK");
+      } finally {
+        this.#state = state;
+        for (const [key, ids] of Object.entries(this.#changes)) {
+          ids.clear();
+          for (const id of changes[key] ?? []) ids.add(id);
+        }
+      }
+      throw error;
+    }
+    this.#clearChanges();
+    publish();
+  }
 
+  /** A refused delivery, or unfinished work that a backup continues, back at its place in the queue. */
   requeueRefused = Effect.fn("MailboxStore.requeueRefused")(function* (
     this: MailboxStore,
     deliveryId: string,
