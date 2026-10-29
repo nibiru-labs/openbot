@@ -10,6 +10,8 @@ import { AGENT_PROVIDERS, type BusyMessageMode, DEFAULT_BUSY_MESSAGE_MODE } from
 import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import type { AgentBrowserHost } from "../src/backend/agent/turn-lifecycle";
+import { CodexAppServerClient } from "../src/backend/app-server-client";
+import { cliPathEnvironment } from "../src/backend/cli";
 import { getString, isRecord } from "../src/backend/protocol";
 
 const OUT = resolve(import.meta.dirname, "../.openbot-build/steer-interrupt-pause-e2e");
@@ -53,6 +55,7 @@ const config = { config: { mcp_servers: {} }, layers: [{ name: { type: "user", f
 let buffer = "";
 let threads = 0;
 let calls = 0;
+let generation = 0;
 /** threadId -> turnId of the held turn. */
 const held = new Map();
 /** request id -> the turn whose tool calls wait for it, shared by the calls of one turn. */
@@ -91,13 +94,14 @@ const answer = (message) => {
     case "thread/read": return write({ id: message.id, result: { thread: { id: params.threadId, turns: [] } } });
     case "turn/start": {
       const turnId = "turn-" + randomUUID();
+      const turnGeneration = ++generation;
       const input = JSON.stringify(params.input);
       write({ id: message.id, result: { turn: { id: turnId, status: "inProgress", items: [] } } });
-      write({ method: "turn/started", params: { threadId: params.threadId, turn: { id: turnId } } });
-      log({ method: "turn-ready", params: { threadId: params.threadId, turnId, input: params.input } });
+      write({ method: "turn/started", params: { threadId: params.threadId, turn: { id: turnId }, processInstance, turnGeneration } });
+      log({ method: "turn-ready", params: { threadId: params.threadId, turnId, turnGeneration, input: params.input } });
       if (input.includes("HOLD")) {
         held.set(params.threadId, turnId);
-        log({ method: "held-ready", params: { threadId: params.threadId, turnId, input: params.input } });
+        log({ method: "held-ready", params: { threadId: params.threadId, turnId, turnGeneration, input: params.input } });
       }
       else if (input.includes("CALL")) {
         // calls sends several tool calls at once, as a model may; call sends one.
@@ -253,6 +257,7 @@ function protocol(path = logPath) {
         input: JSON.stringify(params.input ?? ""),
         threadId: getString(params, "threadId"),
         turnId: getString(params, "turnId"),
+        turnGeneration: params.turnGeneration,
         outcome: method === "tool-answer" ? busyOutcomes(params) : null,
         callId: getString(entry, "id"),
         processId: entry.processId,
@@ -299,12 +304,42 @@ const database = new OpenBotDatabase(userData);
 const store = new AgentStore(userData, home, database);
 const mailbox = new MailboxStore(userData, store.sharedRoot, store.database);
 let busyMode: BusyMessageMode = "queue";
+// Capture the generation on the client that received the actual provider notification.
+const activeTurns = new Map<
+  string,
+  { client: CodexAppServerClient; processInstance: string; turnGeneration: number; turnId: string }
+>();
 const agents = new AgentService({
   store,
   mailbox,
   browser,
   preferredProvider: "codex",
   offProviders: AGENT_PROVIDERS.filter((provider) => provider !== "codex"),
+  clientFactory: (provider, cli, _confinement, accountEnvironment) => {
+    assert.equal(provider, "codex");
+    const client = new CodexAppServerClient(cli.executable, 30_000, {
+      ...cliPathEnvironment(cli),
+      ...accountEnvironment,
+    });
+    client.on("notification", (notification) => {
+      if (notification.method !== "turn/started") return;
+      const params = recordOf(notification.params);
+      const threadId = getString(params, "threadId");
+      const turnId = getString(recordOf(params.turn), "id");
+      const processInstance = getString(params, "processInstance");
+      const turnGeneration = params.turnGeneration;
+      if (
+        threadId &&
+        turnId &&
+        processInstance &&
+        typeof turnGeneration === "number" &&
+        Number.isSafeInteger(turnGeneration)
+      ) {
+        activeTurns.set(threadId, { client, processInstance, turnGeneration, turnId });
+      }
+    });
+    return client;
+  },
   busyMessageMode: () => busyMode,
 });
 
@@ -317,12 +352,20 @@ const status = (deliveryId: string | undefined) =>
   deliveryId ? mailbox.getDelivery(deliveryId)?.delivery.status : null;
 const runningTurn = (agentId: string) =>
   agents.listQueue(agentId).deliveries.find((item) => item.status === "running")?.turnId;
-function heldEvidence(entries: ReturnType<typeof protocol>, threadId: string, turnId: string, text: string) {
+function heldEvidence(
+  entries: ReturnType<typeof protocol>,
+  threadId: string,
+  turnId: string,
+  text: string,
+  current: { processInstance: string; turnGeneration: number },
+) {
   const turns = entries.filter(
     (entry) =>
       entry.method === "turn-ready" &&
       entry.threadId === threadId &&
       entry.turnId === turnId &&
+      entry.processInstance === current.processInstance &&
+      entry.turnGeneration === current.turnGeneration &&
       entry.input.includes(text),
   );
   if (turns.length !== 1) return false;
@@ -340,6 +383,7 @@ function heldEvidence(entries: ReturnType<typeof protocol>, threadId: string, tu
         entry.processInstance === turn?.processInstance &&
         entry.threadId === threadId &&
         entry.turnId === turnId &&
+        entry.turnGeneration === current.turnGeneration &&
         entry.input.includes(text),
     )
   );
@@ -348,11 +392,14 @@ const waitForHeld = (agentId: string, deliveryId: string, text: string) =>
   waitFor(`${text} to run and be held by the provider`, () => {
     const delivery = mailbox.getDelivery(deliveryId)?.delivery;
     const threadId = store.activeProviderSession(agentId)?.externalSessionId;
+    const current = threadId ? activeTurns.get(threadId) : undefined;
     return delivery?.status === "running" &&
       agents.listQueue(agentId).deliveries.some((item) => item.id === deliveryId && item.status === "running") &&
       delivery.turnId &&
       threadId &&
-      heldEvidence(protocol(), threadId, delivery.turnId, text)
+      current?.client.running &&
+      current.turnId === delivery.turnId &&
+      heldEvidence(protocol(), threadId, delivery.turnId, text, current)
       ? delivery.turnId
       : null;
   });
@@ -700,41 +747,75 @@ try {
     const staleFixture = join(root, "stale-protocol.jsonl");
     const current = "00000000-0000-4000-8000-000000000001";
     const stale = "00000000-0000-4000-8000-000000000002";
-    const record = (method: string, processInstance: string) => ({
+    const record = (method: string, processInstance: string, turnGeneration: number) => ({
       method,
       processId: processInstance === current ? 1 : 2,
       processInstance,
-      params: { threadId: "thread-1", turnId: "turn-1", input: "HOLD" },
+      params: { threadId: "thread-1", turnId: "turn-1", turnGeneration, input: "HOLD" },
     });
+    // This is the previous matcher, kept here to prove each counterexample reaches it.
+    const oldHeldEvidence = (entries: ReturnType<typeof protocol>) => {
+      const turns = entries.filter(
+        (entry) =>
+          entry.method === "turn-ready" &&
+          entry.threadId === "thread-1" &&
+          entry.turnId === "turn-1" &&
+          entry.input.includes("HOLD"),
+      );
+      if (turns.length !== 1) return false;
+      const turn = turns[0];
+      return (
+        entries.some(
+          (entry) =>
+            entry.method === "thread-bound" &&
+            entry.processInstance === turn?.processInstance &&
+            entry.threadId === "thread-1",
+        ) &&
+        entries.some(
+          (entry) =>
+            entry.method === "held-ready" &&
+            entry.processInstance === turn?.processInstance &&
+            entry.threadId === "thread-1" &&
+            entry.turnId === "turn-1" &&
+            entry.input.includes("HOLD"),
+        )
+      );
+    };
+    const currentTurn = { processInstance: current, turnGeneration: 2 };
+    for (const records of [
+      [
+        record("thread-bound", stale, 1),
+        record("turn-ready", stale, 1),
+        record("held-ready", stale, 1),
+        record("thread-bound", current, 2),
+      ],
+      [record("thread-bound", current, 1), record("turn-ready", current, 1), record("held-ready", current, 1)],
+    ]) {
+      writeFileSync(staleFixture, `${records.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+      const fixture = protocol(staleFixture);
+      assert.equal(oldHeldEvidence(fixture), true);
+      assert.equal(heldEvidence(fixture, "thread-1", "turn-1", "HOLD", currentTurn), false);
+    }
     writeFileSync(
       staleFixture,
       `${[
-        record("thread-bound", current),
-        record("turn-ready", current),
-        record("thread-bound", stale),
-        record("held-ready", stale),
+        record("thread-bound", current, 2),
+        record("turn-ready", current, 2),
+        record("thread-bound", stale, 2),
+        record("held-ready", stale, 2),
       ]
         .map((entry) => JSON.stringify(entry))
         .join("\n")}\n`,
     );
-    const fixture = protocol(staleFixture);
-    const oldBinding = fixture.findLast((entry) => entry.method === "thread-bound" && entry.threadId === "thread-1");
-    assert(
-      fixture.some(
-        (entry) =>
-          entry.method === "held-ready" &&
-          entry.processId === oldBinding?.processId &&
-          entry.threadId === "thread-1" &&
-          entry.turnId === "turn-1" &&
-          entry.input.includes("HOLD"),
-      ),
+    assert.equal(heldEvidence(protocol(staleFixture), "thread-1", "turn-1", "HOLD", currentTurn), false);
+    writeFileSync(
+      staleFixture,
+      `${[record("thread-bound", current, 2), record("turn-ready", current, 2), record("held-ready", current, 2)].map((entry) => JSON.stringify(entry)).join("\n")}\n`,
     );
-    assert.equal(heldEvidence(fixture, "thread-1", "turn-1", "HOLD"), false);
-    writeFileSync(staleFixture, `${JSON.stringify(record("held-ready", current))}\n`, { flag: "a" });
-    assert.equal(heldEvidence(protocol(staleFixture), "thread-1", "turn-1", "HOLD"), true);
+    assert.equal(heldEvidence(protocol(staleFixture), "thread-1", "turn-1", "HOLD", currentTurn), true);
     writeFileSync(invalidLog, `${JSON.stringify({ method: "held-ready", processId: 1, params: {} })}\n`);
     assert.throws(() => protocol(invalidLog), /invalid process instance/);
-    report.checks.push("Stale held evidence from another fake process is rejected when thread and turn IDs match");
+    report.checks.push("Old-process and old-generation held evidence is rejected when thread and turn IDs match");
     assert.throws(() => protocol(join(root, "missing-protocol.jsonl")));
     if (!report.error) report.passed = true;
   } catch (error) {
