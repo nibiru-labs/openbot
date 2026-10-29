@@ -55,6 +55,10 @@ async function step<T>(
 const realFs = await import("node:fs/promises");
 const realOpen = realFs.open;
 let writeLimit = Number.POSITIVE_INFINITY;
+let failSourceClose = false;
+let releaseWrite: (() => void) | undefined;
+let writeStarted: (() => void) | undefined;
+let archiveClosed = false;
 
 mock.module("node:fs/promises", () => ({
   ...realFs,
@@ -67,6 +71,12 @@ mock.module("node:fs/promises", () => ({
         length?: number,
         position?: number | null,
       ): Promise<{ bytesWritten: number; buffer: Uint8Array }> => {
+        if (failSourceClose && !releaseWrite) {
+          await new Promise<void>((resolve) => {
+            releaseWrite = resolve;
+            writeStarted?.();
+          });
+        }
         const start = offset ?? 0;
         const count = Math.min(length ?? buffer.length - start, writeLimit);
         if (count <= 0) return { bytesWritten: 0, buffer };
@@ -74,8 +84,14 @@ mock.module("node:fs/promises", () => ({
         return { bytesWritten: count, buffer: result.buffer };
       },
       read: (buffer: Uint8Array, offset?: number, length?: number, position?: number | null) =>
-        handle.read(buffer, offset, length, position),
-      close: () => handle.close(),
+        failSourceClose && args[1] === "r"
+          ? Promise.resolve({ bytesRead: 0, buffer })
+          : handle.read(buffer, offset, length, position),
+      close: async () => {
+        if (failSourceClose && args[1] === "w") archiveClosed = true;
+        await handle.close();
+        if (failSourceClose && args[1] === "r") throw new Error("Synthetic source close failure.");
+      },
     };
   },
 }));
@@ -83,15 +99,39 @@ mock.module("node:fs/promises", () => ({
 // The module under the fault reads the file system when it loads, so it loads after the fault.
 const { createBackupArchive } = await import("../src/main/backup-archive");
 
-const root = await mkdtemp(join(tmpdir(), "openbot-backup-archive-e2e-"));
-const folder = join(root, "OpenBot Backup");
 const CONTENT = "synthetic backup content\n".repeat(400);
 const MANIFEST = '{"schemaVersion":4,"synthetic":true}\n';
 
+let temporaryRoot: string | undefined;
 try {
+  const root = await step(
+    "create a temporary profile",
+    () => mkdtemp(join(tmpdir(), "openbot-backup-archive-e2e-")),
+    () => ({ created: true }),
+  );
+  temporaryRoot = root;
+  const folder = join(root, "OpenBot Backup");
   await mkdir(join(folder, "attachments"), { recursive: true });
   await writeFile(join(folder, "openbot-data.json"), MANIFEST, "utf8");
   await writeFile(join(folder, "attachments", "note.txt"), CONTENT, "utf8");
+
+  await step("the archive waits for a pending write when source close fails", async () => {
+    failSourceClose = true;
+    const started = new Promise<void>((resolve) => {
+      writeStarted = resolve;
+    });
+    const result = runCauseEffect(createBackupArchive("linux", folder, join(root, "open-failure.zip")));
+    const rejected = assert.rejects(result, /Synthetic source close failure/);
+    await started;
+    await Promise.resolve();
+    assert.equal(archiveClosed, false, "The output closed before the pending write finished.");
+    assert.ok(releaseWrite);
+    releaseWrite();
+    await rejected;
+    assert.equal(archiveClosed, true);
+    failSourceClose = false;
+    return { failed: true, closedAfterWrite: true };
+  });
 
   await step(
     "the old write left the archive short",
@@ -234,7 +274,7 @@ try {
 
   report.passed = true;
 } finally {
-  await rm(root, { recursive: true, force: true });
+  if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
   writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
   process.stdout.write(`Report: ${join(OUT, "report.json")}\n`);

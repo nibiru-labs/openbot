@@ -562,12 +562,12 @@ process.stdout.on("error", (error) => { if (error.code === "EPIPE") process.exit
           return client;
         },
       });
+      cleanup.push(() => runCauseEffect(service.stop()).then(() => {}));
       service.on("event", (event) => events.push(event));
       return { store, mailbox, service };
     }
 
     let { store, mailbox, service } = startService();
-    cleanup.push(() => runCauseEffect(service.stop()).then(() => {}));
 
     function agentOf(agentId: string) {
       const agent = store.list().find((candidate) => candidate.id === agentId);

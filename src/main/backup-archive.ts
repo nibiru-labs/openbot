@@ -59,8 +59,8 @@ export const createBackupArchive = Effect.fn("Archive.createBackupArchive")(func
  */
 async function writeArchive(exportRoot: string, destination: string): Promise<void> {
   const handle = await open(destination, "w", 0o600);
+  let pending = Promise.resolve();
   try {
-    let pending = Promise.resolve();
     let failure: unknown = null;
     let position = 0;
     const zip = new Zip((error, chunk) => {
@@ -107,6 +107,7 @@ async function writeArchive(exportRoot: string, destination: string): Promise<vo
     await pending;
     if (failure) throw failure;
   } finally {
+    await pending;
     await handle.close();
   }
 }

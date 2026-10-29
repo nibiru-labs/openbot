@@ -215,7 +215,15 @@ const CONTROL_SESSIONS: BrowserControlSession[] = [
   },
 ];
 
-const root = await mkdtemp(join(tmpdir(), "openbot-diagnostics-export-e2e-"));
+const root = await step(
+  "create a temporary profile",
+  () => mkdtemp(join(tmpdir(), "openbot-diagnostics-export-e2e-")),
+  () => ({ created: true }),
+).catch((error: unknown) => {
+  mkdirSync(OUT, { recursive: true });
+  writeFileSync(join(OUT, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+  throw error;
+});
 const userData = join(root, "user-data");
 const home = join(root, "home");
 const savePath = join(root, "diagnostics.json");
