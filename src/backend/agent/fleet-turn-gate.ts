@@ -46,6 +46,18 @@ export class FleetTurnGate {
     return this.#recoveryRequired;
   }
 
+  has(threadId: string): boolean {
+    return this.#slots.has(threadId);
+  }
+
+  reservationId(threadId: string): string | null {
+    return this.#slots.get(threadId)?.reservation.run_id ?? null;
+  }
+
+  owns(threadId: string, reservationId: string): boolean {
+    return this.reservationId(threadId) === reservationId;
+  }
+
   async begin(
     threadId: string,
     backend: FleetTurnReservation["backend"],

@@ -3,6 +3,8 @@ import { EventEmitter } from "node:events";
 import { type DynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-values";
 import { sourceText } from "@openbot/i18n/source";
 import { Effect, Fiber } from "effect";
+import { configuredFleetTurnGate } from "./agent/fleet-turn-config";
+import type { FleetTurnGate } from "./agent/fleet-turn-gate";
 import { type AgentProvider, RequestTimeoutError } from "./agent-client";
 import { cliSpawnTarget } from "./cli";
 import { JsonLineDecoder, LineTooLongError } from "./jsonl";
@@ -69,12 +71,20 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
 
   /** Added to the inherited environment, such as the `CODEX_HOME` of an account after the first. */
   readonly #extraEnv: Readonly<Record<string, string>> | undefined;
+  readonly #fleet: FleetTurnGate | null;
+  readonly #fleetThreads = new Map<string, string>();
 
-  constructor(executable: string, requestTimeoutMs = 30_000, extraEnv?: Readonly<Record<string, string>>) {
+  constructor(
+    executable: string,
+    requestTimeoutMs = 30_000,
+    extraEnv?: Readonly<Record<string, string>>,
+    fleet?: FleetTurnGate | null,
+  ) {
     super();
     this.#executable = executable;
     this.#requestTimeoutMs = requestTimeoutMs;
     this.#extraEnv = extraEnv;
+    this.#fleet = fleet === undefined ? configuredFleetTurnGate() : fleet;
   }
 
   get running(): boolean {
@@ -133,6 +143,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
       return;
     }
     this.#stopping = true;
+    this.#retainFleetReservations();
     this.#cancelToolRequests();
     this.#process = null;
     for (const pending of this.#pending.values()) pending.reject(new Error("Codex App Server stopped."));
@@ -268,17 +279,74 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     decoder: ResponseDecoder<T>,
     timeoutMs = this.#requestTimeoutMs,
   ) {
+    let fleetThread: string | null = null;
+    let fleetReservation: string | null = null;
+    if (this.#fleet && method === "thread/compact/start") {
+      return yield* new ProviderClientOperationError({
+        cause: new Error("Codex compaction is unavailable while fleet admission is enabled."),
+      });
+    }
+    if (this.#fleet && method === "turn/start") {
+      if (!isRecord(params) || !isString(params.threadId) || !params.threadId) {
+        return yield* new ProviderClientOperationError({ cause: new Error("Fleet admission needs a thread ID.") });
+      }
+      fleetThread = params.threadId;
+      const threadId = fleetThread;
+      if (!this.running) {
+        return yield* new ProviderClientOperationError({ cause: new Error("Codex App Server is not running.") });
+      }
+      fleetReservation = yield* Effect.tryPromise({
+        try: (signal) => this.#admitFleetTurn(threadId, signal),
+        catch: (cause) => new ProviderClientOperationError({ cause }),
+      });
+    }
     const id = this.#nextId++;
     const child = this.#process;
     return yield* Effect.callback<T, ProviderClientOperationError>((resume) => {
       this.#pending.set(id, {
-        resolve: (value) =>
-          resume(
-            Effect.try({
-              try: () => decoder(value),
-              catch: (cause) => new ProviderClientOperationError({ cause }),
-            }),
-          ),
+        resolve: (value) => {
+          if (fleetThread && fleetReservation && this.#fleet) {
+            const gate = this.#fleet;
+            const threadId = fleetThread;
+            if (!gate.owns(threadId, fleetReservation)) {
+              resume(
+                Effect.fail(
+                  new ProviderClientOperationError({
+                    cause: new Error("Fleet reservation changed before Codex confirmed the turn."),
+                  }),
+                ),
+              );
+              return;
+            }
+            if (!isRecord(value) || !isRecord(value.turn) || !isString(value.turn.id)) {
+              gate.uncertain(threadId);
+              resume(
+                Effect.fail(
+                  new ProviderClientOperationError({ cause: new Error("Codex did not confirm the fleet turn ID.") }),
+                ),
+              );
+              return;
+            }
+            const turnId = value.turn.id;
+            resume(
+              Effect.tryPromise({
+                try: async () => {
+                  await gate.started(threadId, turnId);
+                  if (!gate.has(threadId)) this.#fleetThreads.delete(threadId);
+                  return decoder(value);
+                },
+                catch: (cause) => new ProviderClientOperationError({ cause }),
+              }),
+            );
+          } else {
+            resume(
+              Effect.try({
+                try: () => decoder(value),
+                catch: (cause) => new ProviderClientOperationError({ cause }),
+              }),
+            );
+          }
+        },
         reject: (cause) => resume(Effect.fail(new ProviderClientOperationError({ cause }))),
       });
       try {
@@ -302,8 +370,43 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
           ),
       }),
       Effect.ensuring(Effect.sync(() => this.#pending.delete(id))),
+      Effect.tapError(() =>
+        Effect.sync(() => {
+          if (fleetThread && fleetReservation && this.#fleet?.owns(fleetThread, fleetReservation)) {
+            this.#fleet.uncertain(fleetThread);
+          }
+        }),
+      ),
     );
   });
+
+  async #admitFleetTurn(threadId: string, signal: AbortSignal): Promise<string> {
+    const gate = this.#fleet;
+    if (!gate) throw new Error("Fleet admission is not configured.");
+    while (!signal.aborted) {
+      if (gate.recoveryRequired) throw new Error("Fleet admission requires operator recovery.");
+      if (!gate.has(threadId) && (await gate.begin(threadId, "codex", null))) {
+        if (signal.aborted) {
+          await gate.cancelBeforeSend(threadId);
+          throw new Error("Fleet admission was cancelled.");
+        }
+        gate.sent(threadId);
+        const reservationId = gate.reservationId(threadId);
+        if (!reservationId) throw new Error("Fleet reservation disappeared before provider start.");
+        this.#fleetThreads.set(threadId, reservationId);
+        return reservationId;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+    }
+    throw new Error("Fleet admission was cancelled.");
+  }
+
+  #retainFleetReservations(): void {
+    for (const [threadId, reservationId] of this.#fleetThreads) {
+      if (this.#fleet?.owns(threadId, reservationId)) this.#fleet.uncertain(threadId);
+    }
+    this.#fleetThreads.clear();
+  }
 
   notify(method: string, params: unknown = {}): void {
     this.#write({ method, params });
@@ -355,6 +458,32 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
           params: message.params,
         });
       } else {
+        if (
+          this.#fleet &&
+          (message.method === "turn/started" || message.method === "turn/completed") &&
+          isRecord(message.params) &&
+          isString(message.params.threadId) &&
+          isRecord(message.params.turn) &&
+          isString(message.params.turn.id)
+        ) {
+          const threadId = message.params.threadId;
+          const turnId = message.params.turn.id;
+          if (!this.#fleetThreads.has(threadId)) {
+            if (message.method === "turn/started" && this.#process) {
+              this.#fail(new Error("Codex started a turn without fleet admission."), this.#process);
+              return;
+            }
+          } else {
+            if (message.method === "turn/completed") {
+              void this.#fleet
+                .completed(threadId, turnId)
+                .then(() => {
+                  if (!this.#fleet?.has(threadId)) this.#fleetThreads.delete(threadId);
+                })
+                .catch(() => this.emit("diagnostic", "Fleet turn reservation requires operator recovery."));
+            }
+          }
+        }
         if (
           message.method === "turn/completed" &&
           isRecord(message.params) &&
@@ -427,6 +556,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
 
   #fail(error: Error, child: ChildProcessWithoutNullStreams): void {
     if (this.#process !== child) return;
+    this.#retainFleetReservations();
     this.#cancelToolRequests();
     this.#process = null;
 
