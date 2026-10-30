@@ -60,7 +60,7 @@ try {
     const result = await runTurn(client, thread, { model: `${id}/fake-alpha`, text: "hello", timeoutMs: 10_000 });
     assert.equal(result.status, "completed");
     const deadline = Date.now() + 10_000;
-    while ((await readdir(held)).length) {
+    while ((await readdir(held)).length || (await readdir(journal)).length) {
       if (Date.now() > deadline) throw new Error("Copilot reservation did not release.");
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
