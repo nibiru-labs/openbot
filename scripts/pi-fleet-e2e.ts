@@ -108,6 +108,16 @@ try {
   const turnId = getString(getRecord(response, "turn"), "id");
   assert.ok(turnId);
   assert.equal((await readdir(held)).length, 1);
+  const competing = Effect.runFork(
+    client.request(
+      "turn/start",
+      { threadId: thread, input: [{ type: "text", text: "competing", text_elements: [] }] },
+      (value) => value,
+    ),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  await Effect.runPromise(Fiber.interrupt(competing));
+  assert.equal((await readdir(held)).length, 1, "interrupting a waiting start must preserve the active turn's slot");
   await runCauseEffect(
     client.request(
       "turn/steer",
@@ -126,6 +136,7 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   checks.push("Pi holds admission throughout a real adapter turn and steer");
+  checks.push("interrupting another start does not retain or block the active turn's reservation");
   const compact = runCauseEffect(client.request("thread/compact/start", { threadId: thread }, (value) => value));
   const compactDeadline = Date.now() + 10_000;
   while (!(await readFile(join(root, "pi.log"), "utf8")).includes('"event":"compact"')) {
