@@ -297,7 +297,9 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     let fleetCompactionAbort: AbortController | null = null;
     if (this.#fleet && (method === "turn/start" || method === "thread/compact/start")) {
       if (!isRecord(params) || !isString(params.threadId) || !params.threadId) {
-        return yield* new ProviderClientOperationError({ cause: new Error("Fleet admission needs a thread ID.") });
+        return yield* new ProviderClientOperationError({
+          cause: new Error(sourceText("error.provider.fleetUnavailable")),
+        });
       }
       fleetThread = params.threadId;
       const threadId = fleetThread;
@@ -348,7 +350,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
               resume(
                 Effect.fail(
                   new ProviderClientOperationError({
-                    cause: new Error("Fleet reservation changed before Codex confirmed the turn."),
+                    cause: new Error(sourceText("error.provider.fleetIdentityUnconfirmed")),
                   }),
                 ),
               );
@@ -360,7 +362,9 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
                 gate.uncertain(threadId);
                 resume(
                   Effect.fail(
-                    new ProviderClientOperationError({ cause: new Error("Fleet compaction state is missing.") }),
+                    new ProviderClientOperationError({
+                      cause: new Error(sourceText("error.provider.fleetIdentityUnconfirmed")),
+                    }),
                   ),
                 );
                 return;
@@ -372,7 +376,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
               });
               resume(
                 compaction.turnId
-                  ? gate.started(threadId, compaction.turnId).pipe(
+                  ? this.#trackFleetResponse(gate.started(threadId, compaction.turnId)).pipe(
                       toProviderClientOperationError,
                       Effect.tap(() =>
                         Effect.sync(() => {
@@ -392,7 +396,9 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
               gate.uncertain(threadId);
               resume(
                 Effect.fail(
-                  new ProviderClientOperationError({ cause: new Error("Codex did not confirm the fleet turn ID.") }),
+                  new ProviderClientOperationError({
+                    cause: new Error(sourceText("error.provider.fleetIdentityUnconfirmed")),
+                  }),
                 ),
               );
               return;
@@ -401,17 +407,20 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
             const start = this.#fleetStarts.get(threadId);
             if (!start || (start.observed && start.observed !== turnId)) {
               gate.uncertain(threadId);
-              if (this.#process) this.#fail(new Error("Codex turn identity is uncertain."), this.#process);
+              if (this.#process)
+                this.#fail(new Error(sourceText("error.provider.fleetIdentityUnconfirmed")), this.#process);
               resume(
                 Effect.fail(
-                  new ProviderClientOperationError({ cause: new Error("Codex turn identity is uncertain.") }),
+                  new ProviderClientOperationError({
+                    cause: new Error(sourceText("error.provider.fleetIdentityUnconfirmed")),
+                  }),
                 ),
               );
               return;
             }
             start.confirmed = turnId;
             resume(
-              gate.started(threadId, turnId).pipe(
+              this.#trackFleetResponse(gate.started(threadId, turnId)).pipe(
                 toProviderClientOperationError,
                 Effect.andThen(
                   Effect.try({
@@ -549,35 +558,53 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
     return true;
   }
 
+  #trackFleetResponse<A, E>(operation: Effect.Effect<A, E>): Effect.Effect<A, E> {
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    this.#fleetReleases.add(pending);
+    return operation.pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          this.#fleetReleases.delete(pending);
+          finish();
+        }),
+      ),
+    );
+  }
+
   #admitFleetTurn(threadId: string, compactionSignal?: AbortSignal) {
     return Effect.uninterruptibleMask((restore) =>
       Effect.gen({ self: this }, function* () {
         const gate = this.#fleet;
         if (!gate)
-          return yield* new ProviderClientOperationError({ cause: new Error("Fleet admission is not configured.") });
+          return yield* new ProviderClientOperationError({
+            cause: new Error(sourceText("error.provider.fleetUnavailable")),
+          });
         const child = this.#process;
         const signal = this.#fleetWaitAbort.signal;
         while (true) {
           if (signal.aborted || compactionSignal?.aborted || !child || this.#process !== child || !this.running)
             return yield* new ProviderClientOperationError({
-              cause: new Error("Codex stopped while waiting for fleet admission."),
+              cause: new Error(sourceText("error.provider.fleetUnavailable")),
             });
           if (gate.requiresRecovery("codex"))
             return yield* new ProviderClientOperationError({
-              cause: new Error("Fleet admission requires operator recovery."),
+              cause: new Error(sourceText("error.provider.fleetUnavailable")),
             });
           if (!gate.has(threadId) && (yield* gate.begin(threadId, "codex", null))) {
             if (signal.aborted || compactionSignal?.aborted || this.#process !== child || !this.running) {
               yield* gate.cancelBeforeSend(threadId);
               return yield* new ProviderClientOperationError({
-                cause: new Error("Codex stopped while waiting for fleet admission."),
+                cause: new Error(sourceText("error.provider.fleetUnavailable")),
               });
             }
             gate.sent(threadId);
             const reservationId = gate.reservationId(threadId);
             if (!reservationId)
               return yield* new ProviderClientOperationError({
-                cause: new Error("Fleet reservation disappeared before provider start."),
+                cause: new Error(sourceText("error.provider.fleetIdentityUnconfirmed")),
               });
             this.#fleetThreads.set(threadId, reservationId);
             return reservationId;
@@ -590,7 +617,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
                   resume(
                     Effect.fail(
                       new ProviderClientOperationError({
-                        cause: new Error("Codex stopped while waiting for fleet admission."),
+                        cause: new Error(sourceText("error.provider.fleetUnavailable")),
                       }),
                     ),
                   );

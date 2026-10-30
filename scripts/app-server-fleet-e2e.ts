@@ -174,6 +174,33 @@ try {
   assert.deepEqual(await readdir(stopJournal), []);
   checks.push("Codex shutdown waits for its completed turn release");
 
+  const earlyHeld = join(root, "early-held");
+  const earlyJournal = join(root, "early-journal");
+  await mkdir(earlyHeld);
+  await writeFile(join(earlyHeld, "delay-release"), "");
+  const earlyGate = await runCauseEffect(
+    FleetTurnGate.open(earlyJournal, new FleetTurnCommandTransport(process.execPath, [coordinator, earlyHeld])),
+  );
+  const earlyClient = new CodexAppServerClient(executable, 5_000, undefined, earlyGate);
+  earlyClient.start();
+  const earlyStart = Effect.runPromise(earlyClient.request("turn/start", { threadId: "early" }, decodeRecordResponse));
+  earlyStart.catch(() => {});
+  while (!(await readdir(earlyHeld)).includes("release-started")) {
+    if (Date.now() > releaseDeadline) throw new Error("Early completion release did not start.");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  let earlyStopped = false;
+  const earlyStop = Effect.runPromise(earlyClient.stop()).then(() => {
+    earlyStopped = true;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(earlyStopped, false);
+  await writeFile(join(earlyHeld, "release-continue"), "");
+  await earlyStop;
+  await earlyStart;
+  assert.deepEqual(await readdir(earlyJournal), []);
+  checks.push("shutdown waits for a release triggered by an early completion response");
+
   await assert.rejects(Effect.runPromise(client.request("turn/start", { threadId: "archived" }, decodeRecordResponse)));
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
