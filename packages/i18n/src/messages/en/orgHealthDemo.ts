@@ -54,7 +54,6 @@ export const messages = defineMessages("orgHealthDemo", {
   "orgHealthDemo.next": "Verification priorities",
   "orgHealthDemo.footer": "Aggregate organization health diagnosis",
   "orgHealthDemo.footerLoading": "Local static data · no external requests",
-  "orgHealthDemo.noscript": "Enable JavaScript to read local JSON data.",
   "orgHealthDemo.notProvided": "Not provided",
   "orgHealthDemo.actual01": "January actual",
   "orgHealthDemo.reference05": "May H1 reference",

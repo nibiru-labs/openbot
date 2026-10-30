@@ -49,7 +49,6 @@ export const messages = {
   "orgHealthDemo.next": "建议的核实顺序",
   "orgHealthDemo.footer": "组织健康聚合诊断",
   "orgHealthDemo.footerLoading": "本机静态数据 · 不发送网络请求",
-  "orgHealthDemo.noscript": "请启用浏览器 JavaScript 以读取本机 JSON 数据。",
   "orgHealthDemo.notProvided": "未提供",
   "orgHealthDemo.actual01": "01 实际",
   "orgHealthDemo.reference05": "05 H1 参考",
