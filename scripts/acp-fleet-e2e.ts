@@ -133,7 +133,9 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     let stopped = false;
-    const stopping = stopClients([client]).then(() => { stopped = true; });
+    const stopping = stopClients([client]).then(() => {
+      stopped = true;
+    });
     await new Promise((resolve) => setTimeout(resolve, 200));
     assert.equal(stopped, false, "shutdown must wait for a private prompt release");
     await writeFile(join(held, "release-continue"), "");
@@ -156,7 +158,11 @@ try {
   const activeId = getString(getRecord(active, "turn"), "id");
   assert.ok(activeId);
   const competing = Effect.runFork(
-    cursorClient.request("turn/start", { threadId: cursorThread, input: [{ type: "text", text: "competing" }] }, (v) => v),
+    cursorClient.request(
+      "turn/start",
+      { threadId: cursorThread, input: [{ type: "text", text: "competing" }] },
+      (v) => v,
+    ),
   );
   await new Promise((resolve) => setTimeout(resolve, 100));
   await Effect.runPromise(Fiber.interrupt(competing));
@@ -167,7 +173,10 @@ try {
     if (Date.now() > cursorDeadline) throw new Error("Active Cursor reservation was not released.");
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  assert.equal((await runTurn(cursorClient, cursorThread, { text: "after competing request", timeoutMs: 10_000 })).status, "completed");
+  assert.equal(
+    (await runTurn(cursorClient, cursorThread, { text: "after competing request", timeoutMs: 10_000 })).status,
+    "completed",
+  );
   while ((await readdir(journal)).length) {
     if (Date.now() > cursorDeadline) throw new Error("Follow-up Cursor reservation was not released.");
     await new Promise((resolve) => setTimeout(resolve, 25));
