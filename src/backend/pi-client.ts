@@ -123,6 +123,7 @@ interface ClientEvents {
   request: [AppServerRequest];
   exit: [Error];
   diagnostic: [string, DiagnosticOrigin?];
+  "fleet-release-drain": [number];
 }
 
 /** Owns Pi's native sessions. The database owns OpenBot history and agent identity. */
@@ -201,6 +202,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
     for (const threadId of this.#fleetThreads.keys()) {
       if (!this.#fleetCompleting.has(threadId)) yield* this.#cancelOrRetainFleetTurn(threadId);
     }
+    this.emit("fleet-release-drain", this.#fleetReleases.size);
     yield* Effect.promise(() => Promise.all([...this.#fleetReleases]).then(() => undefined));
     this.#fleetThreads.clear();
     this.#fleetSent.clear();
