@@ -431,6 +431,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   /** The answer text of the private prompt in progress. One prompt runs at a time. */
   #privateAnswer: string[] | null = null;
   readonly #privatePromptLock = Semaphore.makeUnsafe(1);
+  readonly #privatePrompts = new Map<string, Promise<string>>();
   readonly #fleet: ReturnType<typeof configuredFleetTurnGate>;
   readonly #fleetBackend: "cursor" | "agy" | "copilot" | null;
   readonly #fleetThreads = new Map<string, string>();
@@ -932,21 +933,32 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     if (!this.running) return yield* providerFailure(new Error("ACP client is not running."));
     yield* this.#ensureInitializedEffect();
     if (!this.#signedIn) return null;
-    // The time limit starts when the lock is held, so a prompt that waits for another one keeps its time.
-    const answer = yield* this.#privatePromptLock.withPermit(
-      this.#privatePromptOnce(prompt).pipe(
-        Effect.timeoutOrElse({
-          duration: this.#requestTimeoutMs,
-          orElse: () =>
-            Effect.fail(providerFailure(new TimeoutError(`${this.#label} request timed out: usage prompt`))),
-        }),
-      ),
-    );
+    const answer = yield* this.#privatePrompt(prompt);
     return this.#redact(answer).trim() || null;
   });
 
   #privatePrompt(text: string): Effect.Effect<string, ProviderClientOperationError> {
-    return this.#privatePromptLock.withPermit(this.#privatePromptOnce(text));
+    return Effect.tryPromise({
+      try: () => {
+        const existing = this.#privatePrompts.get(text);
+        if (existing) return existing;
+        const prompt = runCauseEffect(
+          this.#privatePromptLock.withPermit(
+            this.#privatePromptOnce(text).pipe(
+              Effect.timeoutOrElse({
+                duration: this.#requestTimeoutMs,
+                orElse: () =>
+                  Effect.fail(providerFailure(new TimeoutError(`${this.#label} request timed out: usage prompt`))),
+              }),
+            ),
+          ),
+        ).finally(() => this.#privatePrompts.delete(text));
+        this.#privatePrompts.set(text, prompt);
+        void prompt.catch(() => {});
+        return prompt;
+      },
+      catch: providerFailure,
+    });
   }
 
   /**
