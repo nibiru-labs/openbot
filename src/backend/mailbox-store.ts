@@ -1459,8 +1459,6 @@ export class MailboxStore {
   userMessagesToStartWith(deliveryId: string): DeliveryContext[] {
     const next = this.#state.deliveries.find((candidate) => candidate.id === deliveryId);
     if (!next) return [];
-    // Run now starts only the selected message before other queued work.
-    if (this.#runNow.has(next.id)) return [];
     const messages = this.#messagesById();
     const first = this.#requireMessage(next.messageId, messages);
     if (!isChatMessageFromPerson(first)) return [];
