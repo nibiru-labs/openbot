@@ -200,6 +200,11 @@ try {
     if (Date.now() > waitingDeadline) throw new Error("ACP admission did not wait.");
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
+  await assert.rejects(
+    runCauseEffect(
+      agyClient.request("turn/start", { threadId: agyThread, input: [{ type: "text", text: "duplicate" }] }, (v) => v),
+    ),
+  );
   await runCauseEffect(agyClient.request("turn/interrupt", { threadId: agyThread }, (value) => value));
   await assert.rejects(pending);
   assert.deepEqual(await readdir(journal), []);

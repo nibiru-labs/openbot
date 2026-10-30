@@ -1157,6 +1157,8 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         const threadId = yield* providerSync(() => requiredString(params, "threadId"));
         const controller = this.#fleet ? new AbortController() : null;
         let admitted = false;
+        if (controller && this.#fleetPendingStarts.has(threadId))
+          return yield* providerFailure(new Error(sourceText("error.provider.fleetUnavailable")));
         if (controller) this.#fleetPendingStarts.set(threadId, controller);
         const response = yield* Effect.gen({ self: this }, function* () {
           if (this.#fleet) {

@@ -214,6 +214,15 @@ try {
       if (Date.now() > deadline) throw new Error("Pi admission did not wait.");
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
+    await assert.rejects(
+      runCauseEffect(
+        client.request(
+          "turn/start",
+          { threadId: thread, input: [{ type: "text", text: "duplicate" }] },
+          (value) => value,
+        ),
+      ),
+    );
     await runCauseEffect(client.request("turn/interrupt", { threadId: thread }, (value) => value));
     await assert.rejects(waiting);
     assert.deepEqual(await readdir(journal), []);
