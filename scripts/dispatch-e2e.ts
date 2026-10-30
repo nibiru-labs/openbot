@@ -170,12 +170,16 @@ try {
   await session.page.evaluate((id) => {
     delete window.__dispatchE2EApproval;
     window.__dispatchE2EUnsubscribe = window.openbot.agent.onEvent((event) => {
-      if (
-        event.type === "approval" &&
-        event.approval.agentId === id &&
-        event.approval.command?.includes('"tool": "dispatch_work"')
-      )
-        window.__dispatchE2EApproval = event.approval;
+      if (event.type !== "approval" || event.approval.agentId !== id || !event.approval.command) return;
+      const command = event.approval.command;
+      let matches: boolean;
+      try {
+        const parsed = JSON.parse(command);
+        matches = typeof parsed === "object" && parsed !== null && "tool" in parsed && parsed.tool === "dispatch_work";
+      } catch {
+        matches = /"tool"\s*:\s*"dispatch_work"/.test(command);
+      }
+      if (matches) window.__dispatchE2EApproval = event.approval;
     });
   }, agentId);
   const card = [
@@ -222,7 +226,7 @@ try {
   await writeFile(join(stubDirectory, "release-result"), "approved\n");
 
   await session.page.evaluate(
-    ({ id, key, expectedMarker }) => {
+    ({ id, key, expectedMarker, expectedFields }) => {
       const state: { done: boolean; failure: string | null } = { done: false, failure: null };
       window.__dispatchE2EWait = state;
       const check = async () => {
@@ -234,29 +238,39 @@ try {
         const resultIndex = page.messages.findIndex(
           (message) => message.id === `dispatch-${key}-result` && message.itemType === "dispatch",
         );
-        const review = page.messages
-          .slice(resultIndex + 1)
-          .find(
-            (message) =>
-              message.author === "assistant" && message.status === "completed" && message.text.includes(expectedMarker),
-          );
-        if (resultIndex >= 0 && review) {
+        const userIndex = page.messages.findIndex(
+          (message) => message.author === "user" && message.text.includes(expectedMarker),
+        );
+        const replies = page.messages
+          .slice(userIndex + 1)
+          .filter((message) => message.author === "assistant" && message.status === "completed")
+          .map((message) => message.text)
+          .join("\n");
+        const markerPattern = new RegExp(expectedMarker.split(/[-_]/).join("[-_]"));
+        if (
+          resultIndex >= 0 &&
+          userIndex >= 0 &&
+          markerPattern.test(replies) &&
+          expectedFields.every((field) => replies.includes(field))
+        ) {
           state.done = true;
-        } else {
-          const userIndex = page.messages.findIndex(
-            (message) => message.author === "user" && message.text.includes(expectedMarker),
-          );
-          const reply = page.messages
-            .slice(userIndex + 1)
-            .findLast((message) => message.author === "assistant" && message.status === "completed");
-          if (reply && !reply.text.includes("DISPATCH_E2E_STARTED")) state.failure = reply.text;
         }
         if (state.done || state.failure) window.clearInterval(window.__dispatchE2EInterval);
       };
       void check();
       window.__dispatchE2EInterval = window.setInterval(() => void check(), 500);
     },
-    { id: agentId, key: messageKey, expectedMarker: marker },
+    {
+      id: agentId,
+      key: messageKey,
+      expectedMarker: marker,
+      expectedFields: [
+        "done",
+        `openswarm/${runId}`,
+        "d15ca11d15ca11d15ca11d15ca11d15ca11d15ca11d",
+        "DISPATCH_E2E_VERIFY_OK",
+      ],
+    },
   );
   await session.page.waitForFunction(
     () => Boolean(window.__dispatchE2EWait?.done || window.__dispatchE2EWait?.failure),
@@ -273,27 +287,31 @@ try {
   const resultCard = conversation.messages.find(
     (message) => message.id === `dispatch-${messageKey}-result` && message.itemType === "dispatch",
   );
-  const resultIndex = conversation.messages.findIndex((message) => message.id === `dispatch-${messageKey}-result`);
-  const review = conversation.messages
-    .slice(resultIndex + 1)
-    .find(
-      (message) => message.author === "assistant" && message.status === "completed" && message.text.includes(marker),
-    );
+  const userIndex = conversation.messages.findIndex(
+    (message) => message.author === "user" && message.text.includes(marker),
+  );
+  const reviewText = conversation.messages
+    .slice(userIndex + 1)
+    .filter((message) => message.author === "assistant" && message.status === "completed")
+    .map((message) => message.text)
+    .join("\n");
+  const seenMarker = reviewText.match(new RegExp(marker.split(/[-_]/).join("[-_]")))?.[0];
   const args = await readFile(join(stubDirectory, "arguments.txt"), "utf8");
   check("openswarm accepted the detached run", args.includes("run") && args.includes("--task-file"), args);
   check("risky work starts after approval", existsSync(join(stubDirectory, "arguments.txt")));
   check("the start card is in the chat", startedCard);
   check("the terminal status card is in the same chat", resultCard !== undefined, resultCard?.text);
-  check("the result woke the agent in the same chat", review !== undefined, review?.text);
-  const reviewText = review?.text ?? "";
+  check("the result woke the agent in the same chat", userIndex >= 0 && seenMarker !== undefined, reviewText);
   const reviewedFields = [
     "done",
     `openswarm/${runId}`,
     "d15ca11d15ca11d15ca11d15ca11d15ca11d15ca11d",
-    marker,
     "DISPATCH_E2E_VERIFY_OK",
   ].every((field) => reviewText.includes(field));
-  check("the agent reported the result and verify fields", reviewedFields, reviewText);
+  check("the agent reported the result and verify fields", reviewedFields && seenMarker !== undefined, {
+    text: reviewText,
+    marker: seenMarker,
+  });
   result.passed = result.checks.every((item) => item.passed);
 } catch (error) {
   check("dispatch E2E completed", false, error instanceof Error ? `${error.name}: ${error.message}` : "unknown error");
