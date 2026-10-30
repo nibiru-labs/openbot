@@ -134,6 +134,7 @@ import type { QueueEditRequest } from "@openbot/contracts/team-protocol/queue-ed
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger } from "@openbot/logging";
 import { classifyFailure } from "@openbot/telemetry";
+import { errorReference } from "@openbot/user-errors";
 import { Cause, Deferred, Effect, Exit, Fiber, Result, Schema, Scope, Semaphore } from "effect";
 import { AgentMemories } from "./agent/agent-memories";
 import { AgentPauses } from "./agent/agent-pauses";
@@ -1205,6 +1206,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this.#tokenBudget = new TokenBudget({
       limits: tokenBudget,
       readSince: (agentId, sinceMs) => store.database.usage.tokensSince(agentId, sinceMs),
+      emitError: (code, error, agentId) => this.#emitError(code, error, agentId),
       held: (notice) => this.#pauses.budgetHeld(notice),
       released: (agentId) => this.#pauses.budgetReleased(agentId),
       interrupt: (agentId, turnId) =>
@@ -4924,6 +4926,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       ...(agentId !== undefined ? { agentId } : {}),
       causeCode: context?.causeCode ?? classifyFailure(error),
     });
+    const message = this.#mcp.redact(error instanceof Error ? error.message : String(error));
+    const reference = errorReference(error);
     this.#emit({
       type: "error",
       ...(agentId !== undefined ? { agentId } : {}),
@@ -4931,7 +4935,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       // Redacted, because every error from a provider CLI arrives here on its way to the renderer
       // and the log, and a CLI quotes what it was given: a failure against a custom endpoint can
       // carry that endpoint's API key or a header value.
-      message: this.#mcp.redact(error instanceof Error ? error.message : String(error)),
+      message,
+      ...(reference ? { reference } : {}),
       ...(context?.provider ? { provider: context.provider } : {}),
       ...(context?.model ? { model: context.model } : {}),
     });

@@ -36,4 +36,6 @@ export const messages = {
   "error.host.maintenanceConfigChanged": "Bakım sırasında ana makine yapılandırması değişti.",
   "error.host.maintenanceMissingRelease": "Hazırlanmış sürüm eksik.",
   "error.host.maintenanceVersionMismatch": "Kurulu sürüm uyuşmuyor.",
+  "error.host.startRetryExhausted": "OpenBot birkaç denemeden sonra başlatılamadı: {reason}",
+  "error.host.startRetryExhaustedUnknown": "OpenBot birkaç denemeden sonra başlatılamadı.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -36,6 +36,7 @@ import {
   decodeTeamProtocolV7WebRtcHttpResponse,
   encodeTeamProtocolV7WebRtcHttpResponse,
 } from "@openbot/contracts/team-protocol/v7-webrtc-adapter";
+import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import { runCauseEffect } from "../src/backend/effect-boundary";
 import { MailboxStore } from "../src/backend/mailbox-store";
@@ -310,7 +311,12 @@ async function checkOldFailure(origin: string, mailbox: MailboxStore): Promise<v
   assert.ok(snapshot, "The snapshot with an old failure fits in one frame.");
   const byId = new Map(snapshot.deliveries.map((delivery) => [delivery.id, delivery]));
   assert.equal(byId.get(failed)?.status, "failed", "The old failed delivery stays.");
-  assert.equal(byId.get(failed)?.error, FAILURE_REASON, "The old failure reason stays.");
+  assert.equal(
+    byId.get(failed)?.error,
+    sourceText("error.backend.deliveryFailed"),
+    "The old failure keeps a catalog reason.",
+  );
+  assert.equal(byId.get(failed)?.errorDetail, FAILURE_REASON, "The old failure keeps provider detail.");
   assert.equal(byId.get(interrupted)?.status, "interrupted", "The old interrupted delivery stays.");
   assert.deepEqual(
     snapshot.deliveries.map((delivery) => delivery.id),
@@ -415,7 +421,12 @@ async function checkMixed(origin: string, mailbox: MailboxStore): Promise<void> 
   assert.equal(byId.get(running)?.turnId, "turn-running");
   for (const id of failed) {
     assert.equal(byId.get(id)?.status, "failed", "The newest failed deliveries stay.");
-    assert.equal(byId.get(id)?.error, FAILURE_REASON, "The failure reason stays.");
+    assert.equal(
+      byId.get(id)?.error,
+      sourceText("error.backend.deliveryFailed"),
+      "The failure keeps a catalog reason.",
+    );
+    assert.equal(byId.get(id)?.errorDetail, FAILURE_REASON, "The failure keeps provider detail.");
   }
   assert.deepEqual(
     snapshot.deliveries.filter((delivery) => delivery.status === "queued").map((delivery) => delivery.position),

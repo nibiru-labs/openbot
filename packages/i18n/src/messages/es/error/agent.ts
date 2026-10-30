@@ -42,6 +42,7 @@ export const messages = {
     "{provider} no tiene ningún modelo disponible, y ningún otro proveedor conectado tiene uno. Inicia sesión en un proveedor o cambia el proveedor predeterminado en Ajustes del servidor → Proveedores.",
   "error.agent.noStartingModel":
     "{provider} no tiene ningún modelo disponible, ni tampoco los demás proveedores con sesión iniciada. Inicia sesión en un proveedor o cambia el proveedor predeterminado en Proveedores y permisos.",
+  "error.agent.waitUntilIdle": "Espera a que el agente esté inactivo.",
   "error.agent.waitBeforeProviderChange":
     "Espera a que terminen el turno activo y la cola antes de cambiar de proveedor.",
   "error.agent.waitForTasksBeforeProviderChange":

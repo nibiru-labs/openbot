@@ -8,6 +8,7 @@ import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import type { TeamApiAgentImport } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readBinary, readJson, stringField } from "./request-helpers";
@@ -83,8 +84,6 @@ export async function answer<T>(run: () => Promise<T>, status: number): Promise<
   try {
     return await run();
   } catch (error) {
-    if (error instanceof HttpError) throw error;
-    if (error instanceof Error && !("code" in error)) throw new HttpError(status, error.message);
-    throw error;
+    throwExpectedRouteError(error, status);
   }
 }

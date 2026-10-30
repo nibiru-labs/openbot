@@ -27,4 +27,6 @@ export const messages = {
   "error.host.tenantsNotIdle": "两小时内租户未能保持空闲五分钟。",
   "error.host.tenantShutdownTimeout": "租户关闭超时，未开始替换应用。",
   "error.host.tenantHealthMissing": "重启后租户健康报告缺失或不健康。再次更新前请检查租户会话。",
+  "error.host.startRetryExhausted": "多次尝试后 OpenBot 仍无法启动：{reason}",
+  "error.host.startRetryExhaustedUnknown": "多次尝试后 OpenBot 仍无法启动。",
 } as const satisfies PartialTranslation<typeof source>;

@@ -1,4 +1,4 @@
-import { Deferred, Effect } from "effect";
+import { Deferred, Effect, Result } from "effect";
 import type { RemoteWorkflowError } from "./remote-service-effects";
 /**
  * A hosted server has nobody to press Retry, so it publishes the host again after a failed start. A
@@ -11,6 +11,7 @@ import { runCauseEffect } from "../backend/effect-boundary";
 
 const CHECK_INTERVAL_MS = 60_000;
 const START_RETRY_DELAYS_MS = [30_000, 60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000];
+const MAX_START_ATTEMPTS = START_RETRY_DELAYS_MS.length;
 const RETRY_PHASES: ReadonlySet<HostPhase> = new Set(["error", "idle", "unconfigured"]);
 
 export interface HostedServerStartRetryOptions {
@@ -18,6 +19,8 @@ export interface HostedServerStartRetryOptions {
   /** Signs in again when the first start could not, then publishes the host. */
   startHost: () => Effect.Effect<unknown, RemoteWorkflowError>;
   onError: (message: string, error: unknown) => void;
+  /** Called once when automatic start retries end. The last failure is passed through. */
+  onExhausted?: (error: unknown) => void;
   now?: () => number;
 }
 
@@ -28,6 +31,8 @@ export class HostedServerStartRetry {
   #pending: Deferred.Deferred<void, RemoteWorkflowError> | null = null;
   #startFailures = 0;
   #nextStartAt = 0;
+  #exhausted = false;
+  #lastError: unknown = null;
 
   constructor(options: HostedServerStartRetryOptions) {
     this.#options = options;
@@ -74,12 +79,29 @@ export class HostedServerStartRetry {
     if (phase === "online") {
       this.#startFailures = 0;
       this.#nextStartAt = 0;
+      this.#exhausted = false;
+      this.#lastError = null;
       return;
     }
     if (!RETRY_PHASES.has(phase) || now < this.#nextStartAt) return;
+    if (this.#exhausted || this.#startFailures >= MAX_START_ATTEMPTS) {
+      this.#reportExhausted();
+      return;
+    }
     const delay = START_RETRY_DELAYS_MS[Math.min(this.#startFailures, START_RETRY_DELAYS_MS.length - 1)] ?? 0;
     this.#startFailures += 1;
     this.#nextStartAt = now + delay;
-    yield* this.#options.startHost();
+    const result = yield* this.#options.startHost().pipe(Effect.result);
+    if (Result.isFailure(result)) {
+      this.#lastError = result.failure.cause;
+      this.#reportExhausted();
+      return yield* Effect.fail(result.failure);
+    }
   });
+
+  #reportExhausted(): void {
+    if (this.#exhausted || this.#startFailures < MAX_START_ATTEMPTS) return;
+    this.#exhausted = true;
+    this.#options.onExhausted?.(this.#lastError);
+  }
 }

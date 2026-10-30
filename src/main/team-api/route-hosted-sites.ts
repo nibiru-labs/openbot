@@ -2,6 +2,7 @@ import { HOSTED_SITES_CAPABILITY, HOSTED_SITES_ROUTES } from "@openbot/contracts
 import { sourceText } from "@openbot/i18n/source";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import type { TeamApiHostedSites } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin, stringField } from "./request-helpers";
@@ -30,9 +31,6 @@ export async function routeHostedSites(
     await runCauseEffect(hostedSites.deleteServerSite(stringField(body, "siteId")));
     return json(200, {});
   } catch (error) {
-    // The account service refuses with a sentence for the person, such as a missing sign-in or a site of
-    // another server. The host credential is never part of it.
-    if (error instanceof Error && !(error instanceof HttpError)) throw new HttpError(409, error.message);
-    throw error;
+    throwExpectedRouteError(error, 409);
   }
 }

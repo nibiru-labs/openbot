@@ -127,6 +127,13 @@
   justify-content: flex-end;
 }
 
+.message-turn-failure {
+  margin: var(--openbot-space-1) 0 0;
+  color: var(--openbot-danger-text);
+  font-size: var(--openbot-text-sm);
+  line-height: var(--openbot-leading-sm);
+}
+
 .message-actions {
   position: relative;
   z-index: 4;

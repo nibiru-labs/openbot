@@ -18,6 +18,7 @@ import {
   retainThinkingMessages,
   toAgentMessage,
   toAgentMessages,
+  withDeliveryFailureReasons,
   withoutAgent,
 } from "../../app-message-projection";
 import { createStoredMessage, updateStored } from "../../app-stored-values";
@@ -141,6 +142,7 @@ const Conversation = createSimpleContext({
       setSubmittedPromptRequests,
       setActiveTurns,
       setTurnProgress,
+      queues,
     } = useTurns();
 
     const [conversations, setConversations] = createStore<Record<string, ConversationState>>({});
@@ -188,7 +190,11 @@ const Conversation = createSimpleContext({
           message.questionPrompt?.resolution !== null &&
           (!requestKey || messagePromptRequestKey(message) !== requestKey),
       );
-      return [...messages, ...(uiErrors()[agentConversationKey(activeServerId(), agent.id)] ?? [])];
+      const queue = queues()[agent.id];
+      return withDeliveryFailureReasons(
+        [...messages, ...(uiErrors()[agentConversationKey(activeServerId(), agent.id)] ?? [])],
+        queue?.deliveries ?? [],
+      );
     });
 
     createEffect(

@@ -53,6 +53,7 @@ import {
   assertBeforeDeadline,
   automationContextId,
   axValue,
+  CdpCaptureSessionGuard,
   type CdpResult,
   clamp,
   exceptionDescription,
@@ -60,6 +61,7 @@ import {
   isFiniteNumber,
   isRecord,
   numberValue,
+  optionalCdpCommand,
   recordValue,
   type SendCommand,
   stringValue,
@@ -75,6 +77,20 @@ import {
 import { describeBrowserTarget, stopLoadingAndWait, waitForLoading } from "./browser-navigation";
 import { createFramePacer } from "./browser-screencast-pacing";
 import type { VaultCardSecret } from "./vault-items";
+
+function withCdpCleanup<A>(
+  operation: Effect.Effect<A, BrowserOperationError>,
+  cleanup: Effect.Effect<void, BrowserOperationError>,
+): Effect.Effect<A, BrowserOperationError> {
+  return Effect.gen(function* () {
+    const exit = yield* operation.pipe(Effect.exit);
+    yield* cleanup;
+    return yield* Exit.match(exit, {
+      onFailure: (cause) => Effect.failCause(cause),
+      onSuccess: (value) => Effect.succeed(value),
+    });
+  });
+}
 
 const ACTION_TIMEOUT_MS = 10_000;
 const WAIT_TIMEOUT_MS = 30_000;
@@ -586,6 +602,7 @@ export class BrowserCdpEngine {
   #highlightSessionId: string | undefined;
   readonly #uploadDocumentIds = new Set<string>();
   readonly #targetSessions = new Map<string, { sessionId: string; url: string }>();
+  readonly #captureSessionGuard = new CdpCaptureSessionGuard();
 
   constructor(contents: WebContents) {
     this.#contents = contents;
@@ -595,7 +612,10 @@ export class BrowserCdpEngine {
       this.#closing = true;
     });
     contents.on("did-start-navigation", (details) => {
-      if (details.isMainFrame) this.#navigationGeneration += 1;
+      if (details.isMainFrame) {
+        this.#navigationGeneration += 1;
+        this.#captureSessionGuard.clear();
+      }
       this.#targets.clear();
       this.#lastSnapshot = null;
     });
@@ -897,10 +917,11 @@ export class BrowserCdpEngine {
             }
             progress.failedIndex = null;
             yield* fillPreparedFields(prepared, progress, deadline, checkPolicy);
-          }).pipe(
-            Effect.ensuring(
+          }).pipe((operation) =>
+            withCdpCleanup(
+              operation,
               Effect.suspend(() =>
-                Effect.forEach(objects, (objectId) => send("Runtime.releaseObject", { objectId }).pipe(Effect.ignore), {
+                Effect.forEach(objects, (objectId) => this.#optionalSend(send, "Runtime.releaseObject", { objectId }), {
                   discard: true,
                 }),
               ),
@@ -1310,11 +1331,12 @@ export class BrowserCdpEngine {
           );
         }).pipe(
           Effect.onInterrupt(() =>
-            Effect.gen(function* () {
+            Effect.gen({ self: this }, function* () {
               stopWaitingForIntercept();
-              yield* send("Input.setInterceptDrags", { enabled: false }, sessionId).pipe(Effect.ignore);
+              yield* this.#optionalSend(send, "Input.setInterceptDrags", { enabled: false }, sessionId);
               if (pressSent)
-                yield* send(
+                yield* this.#optionalSend(
+                  send,
                   "Input.dispatchMouseEvent",
                   {
                     type: "mouseReleased",
@@ -1324,22 +1346,23 @@ export class BrowserCdpEngine {
                     clickCount: 1,
                   },
                   sessionId,
-                ).pipe(Effect.ignore);
+                );
             }),
           ),
-          Effect.catch((operationFailure) =>
+          Effect.catch((operationFailure: BrowserOperationError) =>
             Effect.gen({ self: this }, function* () {
               const error = operationFailure.cause;
               // The listener and the drag intercept would otherwise outlive a drag that never started.
               stopWaitingForIntercept();
-              yield* send("Input.setInterceptDrags", { enabled: false }, sessionId).pipe(Effect.ignore);
+              yield* this.#optionalSend(send, "Input.setInterceptDrags", { enabled: false }, sessionId);
               // The press can reach the page even when its reply fails, and a held button breaks later input.
               if (pressSent) {
-                yield* send(
+                yield* this.#optionalSend(
+                  send,
                   "Input.dispatchMouseEvent",
                   { type: "mouseReleased", x: from.x, y: from.y, button: "left", clickCount: 1 },
                   sessionId,
-                ).pipe(Effect.ignore);
+                );
               }
               return yield* browserFailure(error);
             }),
@@ -1384,19 +1407,21 @@ export class BrowserCdpEngine {
             sessionId,
           );
           released = true;
-        }).pipe(
-          Effect.ensuring(
+        }).pipe((operation) =>
+          withCdpCleanup(
+            operation,
             Effect.gen({ self: this }, function* () {
               stopWaitingForIntercept();
-              yield* send("Input.setInterceptDrags", { enabled: false }, sessionId).pipe(Effect.ignore);
+              yield* this.#optionalSend(send, "Input.setInterceptDrags", { enabled: false }, sessionId);
               if (!released) {
-                yield* send(
+                yield* this.#optionalSend(
+                  send,
                   "Input.dispatchMouseEvent",
                   { type: "mouseReleased", x: to.x, y: to.y, button: "left", clickCount: 1 },
                   sessionId,
-                ).pipe(Effect.ignore);
+                );
               }
-            }).pipe(Effect.orDie),
+            }),
           ),
         );
       }),
@@ -1894,7 +1919,7 @@ export class BrowserCdpEngine {
       const objectId = stringValue(recordValue(probe.result)?.objectId);
       if (!objectId) break;
       const described = yield* send("DOM.describeNode", { objectId }, sessionId);
-      yield* send("Runtime.releaseObject", { objectId }, sessionId).pipe(Effect.ignore);
+      yield* this.#optionalSend(send, "Runtime.releaseObject", { objectId }, sessionId);
       const frameId = stringValue(recordValue(described.node)?.frameId);
       if (!frameId) break;
       const target = this.#targetSessions.get(frameId);
@@ -1930,12 +1955,13 @@ export class BrowserCdpEngine {
             const errorText = stringValue(result.errorText);
             if (errorText) return yield* browserFailure(new Error(`Navigation failed: ${errorText}`));
             yield* waitForLoading(this.#contents, WAIT_TIMEOUT_MS);
-          }).pipe(
-            Effect.ensuring(
+          }).pipe((operation) =>
+            withCdpCleanup(
+              operation,
               Effect.gen({ self: this }, function* () {
-                yield* send("Network.setCacheDisabled", { cacheDisabled: false }).pipe(Effect.ignore);
-                yield* send("Network.disable").pipe(Effect.ignore);
-              }).pipe(Effect.orDie),
+                yield* this.#optionalSend(send, "Network.setCacheDisabled", { cacheDisabled: false });
+                yield* this.#optionalSend(send, "Network.disable");
+              }),
             ),
           );
         }),
@@ -2244,11 +2270,9 @@ export class BrowserCdpEngine {
           Effect.gen({ self: this }, function* () {
             const error = operationFailure.cause;
             yield* Effect.all(
-              matches
-                .map((match) =>
-                  send("Runtime.releaseObject", { objectId: match.objectId }, match.sessionId).pipe(Effect.ignore),
-                )
-                .map((operation) => Effect.exit(operation)),
+              matches.map((match) =>
+                this.#optionalSend(send, "Runtime.releaseObject", { objectId: match.objectId }, match.sessionId),
+              ),
               { concurrency: "unbounded" },
             );
             return yield* browserFailure(error);
@@ -2257,11 +2281,9 @@ export class BrowserCdpEngine {
       );
       if (ambiguous || matches.length > 1) {
         yield* Effect.all(
-          matches
-            .map((match) =>
-              send("Runtime.releaseObject", { objectId: match.objectId }, match.sessionId).pipe(Effect.ignore),
-            )
-            .map((operation) => Effect.exit(operation)),
+          matches.map((match) =>
+            this.#optionalSend(send, "Runtime.releaseObject", { objectId: match.objectId }, match.sessionId),
+          ),
           { concurrency: "unbounded" },
         );
         return yield* browserFailure(new Error(`CSS selector is ambiguous (at least 2 matches): ${target.selector}`));
@@ -2280,11 +2302,10 @@ export class BrowserCdpEngine {
           x: 0,
           y: 0,
         };
-      }).pipe(
-        Effect.ensuring(
-          Effect.gen({ self: this }, function* () {
-            yield* send("Runtime.releaseObject", { objectId: match.objectId }, match.sessionId).pipe(Effect.ignore);
-          }).pipe(Effect.orDie),
+      }).pipe((operation) =>
+        withCdpCleanup(
+          operation,
+          this.#optionalSend(send, "Runtime.releaseObject", { objectId: match.objectId }, match.sessionId),
         ),
       );
     }
@@ -2320,16 +2341,15 @@ export class BrowserCdpEngine {
             });
             if (candidates.length >= 2) break;
           }
-        }).pipe(
-          Effect.ensuring(
-            Effect.gen({ self: this }, function* () {
-              yield* Effect.all(
-                objectIds
-                  .map((objectId) => send("Runtime.releaseObject", { objectId }, capture.sessionId).pipe(Effect.ignore))
-                  .map((operation) => Effect.exit(operation)),
-                { concurrency: "unbounded" },
-              );
-            }).pipe(Effect.orDie),
+        }).pipe((operation) =>
+          withCdpCleanup(
+            operation,
+            Effect.all(
+              objectIds.map((objectId) =>
+                this.#optionalSend(send, "Runtime.releaseObject", { objectId }, capture.sessionId),
+              ),
+              { concurrency: "unbounded" },
+            ),
           ),
         );
       }
@@ -2472,7 +2492,7 @@ export class BrowserCdpEngine {
         sessionId,
       );
       const hitId = numberValue(hit.backendNodeId);
-      if (hitId && (yield* hitActivatesTarget(send, hitId, backendNodeId, sessionId))) {
+      if (hitId && (yield* hitActivatesTarget(this.#captureSessionGuard, send, hitId, backendNodeId, sessionId))) {
         return { ...point, ...session };
       }
       blockerId ||= hitId;
@@ -2516,12 +2536,8 @@ export class BrowserCdpEngine {
       const exception = recordValue(result.exceptionDetails);
       if (exception) return yield* browserFailure(new Error(exceptionDescription(exception)));
       return recordValue(result.result)?.value;
-    }).pipe(
-      Effect.ensuring(
-        Effect.gen({ self: this }, function* () {
-          yield* send("Runtime.releaseObject", { objectId }, sessionId).pipe(Effect.ignore);
-        }).pipe(Effect.orDie),
-      ),
+    }).pipe((operation) =>
+      withCdpCleanup(operation, this.#optionalSend(send, "Runtime.releaseObject", { objectId }, sessionId)),
     );
   });
 
@@ -2636,7 +2652,17 @@ export class BrowserCdpEngine {
 
   #clearDebuggerSessions(): void {
     this.#targetSessions.clear();
+    this.#captureSessionGuard.clear();
     this.#highlightSessionId = undefined;
+  }
+
+  #optionalSend(
+    send: SendCommand,
+    method: string,
+    params: DynamicRecord = {},
+    sessionId?: string,
+  ): Effect.Effect<void, BrowserOperationError> {
+    return optionalCdpCommand(this.#captureSessionGuard, send, method, params, sessionId);
   }
 
   readonly #applyEnvironmentEffect = Effect.fn("BrowserCdp.applyEnvironment")(function* (
@@ -2716,6 +2742,7 @@ function uniquePoints(points: Array<{ x: number; y: number }>): Array<{ x: numbe
 }
 
 const hitActivatesTarget = Effect.fn("Browser.hitActivatesTarget")(function* (
+  guard: CdpCaptureSessionGuard,
   send: SendCommand,
   candidate: number,
   target: number,
@@ -2753,14 +2780,13 @@ const hitActivatesTarget = Effect.fn("Browser.hitActivatesTarget")(function* (
       sessionId,
     );
     return recordValue(result.result)?.value === true;
-  }).pipe(
-    Effect.ensuring(
-      Effect.gen(function* () {
-        yield* Effect.all(
-          objectIds.map((objectId) => send("Runtime.releaseObject", { objectId }, sessionId).pipe(Effect.ignore)),
-          { concurrency: "unbounded" },
-        );
-      }).pipe(Effect.orDie),
+  }).pipe((operation) =>
+    withCdpCleanup(
+      operation,
+      Effect.all(
+        objectIds.map((objectId) => optionalCdpCommand(guard, send, "Runtime.releaseObject", { objectId }, sessionId)),
+        { concurrency: "unbounded" },
+      ),
     ),
   );
 });

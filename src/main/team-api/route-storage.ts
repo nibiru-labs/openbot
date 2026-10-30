@@ -8,8 +8,8 @@ import { STORAGE_DISK_CAPABILITY, STORAGE_DISK_ROUTES } from "@openbot/contracts
 import { STORAGE_ROUTES } from "@openbot/contracts/team-protocol/storage-v1";
 import { sourceText } from "@openbot/i18n/source";
 import { runCauseEffect } from "../../backend/effect-boundary";
-import { StorageNotFoundError } from "../../backend/storage-usage";
 import type { TeamApiStorage } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin } from "./request-helpers";
@@ -48,8 +48,7 @@ export async function routeStorage(
     if (deleteFile) await runCauseEffect(storage.deleteFile(parseDeleteStoredFileInput(body).fileId));
     else await runCauseEffect(storage.clear(parseClearStorageInput(body).category));
   } catch (error) {
-    if (error instanceof StorageNotFoundError) throw new HttpError(404, error.message);
-    throw error;
+    throwExpectedRouteError(error, 404);
   }
   return json(200, {});
 }

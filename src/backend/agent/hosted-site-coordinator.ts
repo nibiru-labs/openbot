@@ -87,6 +87,28 @@ interface HostedSiteMutationResult {
 
 export const HOSTED_SITE_APPROVAL_METHOD = "openbot/hosted-site-mutation";
 
+/** The first retry of a pending marker waits a second; every later one waits twice as long. */
+const TERMINAL_RETRY_BASE_DELAY_MS = 1_000;
+/** The longest a retry of a pending marker waits. */
+const TERMINAL_RETRY_MAX_DELAY_MS = 60_000;
+/** How often a pending marker is written before OpenBot leaves it for the next start. */
+const TERMINAL_RETRY_MAX_ATTEMPTS = 5;
+
+/** How a pending marker waits for the database to take it again. */
+interface TerminalRetry {
+  /** The writes that failed. */
+  attempts: number;
+  /** When the marker may be written again. */
+  nextAt: number;
+  /** The failure is reported once, so the renderer does not get it again for every attempt. */
+  reported: boolean;
+}
+
+/** The wait before the next write of a pending marker: a second, then twice as long. */
+function terminalRetryDelay(attempts: number): number {
+  return Math.min(TERMINAL_RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempts - 1), TERMINAL_RETRY_MAX_DELAY_MS);
+}
+
 /**
  * Owns publishing to openbot.site: the approval a mutation needs, the mutation itself, and the
  * conversation markers that record it.
@@ -104,6 +126,8 @@ export class HostedSiteCoordinator {
   readonly #isStopping: () => boolean;
   readonly #pendingTerminalEvents = new Map<string, PendingHostedSiteTerminalEvent>();
   readonly #pendingTerminalDeliveries = new Map<string, () => void>();
+  /** How each pending marker waits for its next write, so a broken database is not written to every second. */
+  readonly #terminalRetries = new Map<string, TerminalRetry>();
   #terminalRetryTimer: NodeJS.Timeout | null = null;
 
   constructor(options: HostedSiteCoordinatorOptions) {
@@ -219,6 +243,7 @@ export class HostedSiteCoordinator {
       if (event.agentId !== agentId) continue;
       this.#pendingTerminalEvents.delete(key);
       this.#pendingTerminalDeliveries.delete(key);
+      this.#terminalRetries.delete(key);
     }
     if (this.#pendingTerminalEvents.size === 0 && this.#terminalRetryTimer) {
       clearTimeout(this.#terminalRetryTimer);
@@ -231,6 +256,7 @@ export class HostedSiteCoordinator {
     this.#terminalRetryTimer = null;
     this.#pendingTerminalEvents.clear();
     this.#pendingTerminalDeliveries.clear();
+    this.#terminalRetries.clear();
   }
 
   #requireHostedSites(): AgentHostedSites {
@@ -354,13 +380,12 @@ export class HostedSiteCoordinator {
     status: HostedSiteConversationEventStatus,
     details: HostedSiteConversationEventDetails,
     createdAt?: string,
-  ): boolean {
+  ): { written: boolean; failure: unknown } {
     try {
       this.#recordEvent(context, status, details, createdAt);
-      return true;
+      return { written: true, failure: null };
     } catch (error) {
-      this.#emitError("hosted_site_marker_persistence_failed", error, context.agentId);
-      return false;
+      return { written: false, failure: error };
     }
   }
 
@@ -396,13 +421,20 @@ export class HostedSiteCoordinator {
   }
 
   #flushPendingTerminalEvents(): void {
+    const now = Date.now();
     for (const [key, event] of this.#pendingTerminalEvents) {
+      const retry = this.#terminalRetries.get(key);
+      // The marker ran out of attempts: its row stays in the database, and the next start writes it.
+      if (retry && retry.attempts >= TERMINAL_RETRY_MAX_ATTEMPTS) continue;
+      // The marker waits for its backoff, so one failure does not write to the database every second.
+      if (retry && retry.nextAt > now) continue;
+      let failure: unknown = null;
       let durable = false;
       try {
         this.#store.database.recordPendingHostedSiteTerminalEvent(event);
         durable = true;
       } catch (error) {
-        this.#emitError("hosted_site_marker_persistence_failed", error, event.agentId);
+        failure = error;
       }
       const context: HostedSiteMutationContext = {
         agentId: event.agentId,
@@ -418,9 +450,20 @@ export class HostedSiteCoordinator {
         },
         eventDetails: event.details,
       };
-      if (this.#tryRecordEvent(context, event.status, event.details, event.createdAt)) {
+      const written = this.#tryRecordEvent(context, event.status, event.details, event.createdAt);
+      if (written.written) {
         this.#pendingTerminalEvents.delete(key);
+        this.#terminalRetries.delete(key);
         durable = true;
+      } else if (failure === null) {
+        failure = written.failure;
+      }
+      if (!written.written) {
+        // The marker is not in the conversation yet: the retry waits for its backoff.
+        this.#noteTerminalFailure(key, failure, event.agentId);
+      } else if (failure !== null) {
+        // The row of the pending event did not reach the database; the marker is written all the same.
+        this.#emitError("hosted_site_marker_persistence_failed", failure, event.agentId);
       }
       if (durable) {
         const deliver = this.#pendingTerminalDeliveries.get(key);
@@ -434,15 +477,47 @@ export class HostedSiteCoordinator {
         }
       }
     }
-    if (this.#pendingTerminalEvents.size > 0) this.#scheduleTerminalRetry();
+    this.#scheduleTerminalRetry();
+  }
+
+  /**
+   * Counts a write that failed and waits for the backoff. The failure is reported once, not on
+   * every attempt, and the attempts are capped: the row stays in the database and the next start
+   * writes the marker.
+   */
+  #noteTerminalFailure(key: string, failure: unknown, agentId: string): void {
+    const retry = this.#terminalRetries.get(key) ?? { attempts: 0, nextAt: 0, reported: false };
+    retry.attempts += 1;
+    retry.nextAt = Date.now() + terminalRetryDelay(retry.attempts);
+    this.#terminalRetries.set(key, retry);
+    if (!retry.reported) {
+      retry.reported = true;
+      this.#emitError("hosted_site_marker_persistence_failed", failure, agentId);
+      return;
+    }
+    if (retry.attempts >= TERMINAL_RETRY_MAX_ATTEMPTS) {
+      this.#emitError("hosted_site_marker_retry_exhausted", failure, agentId);
+    }
   }
 
   #scheduleTerminalRetry(): void {
     if (this.#terminalRetryTimer || this.#isStopping()) return;
-    this.#terminalRetryTimer = setTimeout(() => {
-      this.#terminalRetryTimer = null;
-      this.#flushPendingTerminalEvents();
-    }, 1_000);
+    const now = Date.now();
+    let nextAt = Number.POSITIVE_INFINITY;
+    for (const key of this.#pendingTerminalEvents.keys()) {
+      const retry = this.#terminalRetries.get(key);
+      if (retry && retry.attempts >= TERMINAL_RETRY_MAX_ATTEMPTS) continue;
+      nextAt = Math.min(nextAt, retry ? retry.nextAt : 0);
+    }
+    // Every pending marker ran out of attempts: the next start writes them.
+    if (!Number.isFinite(nextAt)) return;
+    this.#terminalRetryTimer = setTimeout(
+      () => {
+        this.#terminalRetryTimer = null;
+        this.#flushPendingTerminalEvents();
+      },
+      Math.max(0, nextAt - now),
+    );
     this.#terminalRetryTimer.unref?.();
   }
 

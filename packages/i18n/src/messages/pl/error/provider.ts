@@ -164,6 +164,9 @@ export const messages = {
     "{provider} nie podał listy modeli w ciągu {seconds} s. Komputer może być zajęty.",
   "error.provider.startStopped":
     "{provider} kilka razy z rzędu się nie uruchomił, więc OpenBot przestał próbować. Odśwież dostawców, aby spróbować ponownie.",
+  "error.provider.stoppedRepeatedly":
+    "{provider} wielokrotnie się zatrzymał. Uruchom OpenBot ponownie po sprawdzeniu CLI.",
+  "error.provider.restarting": "{provider} się zatrzymał. Ponowna próba ({attempt}/3)…",
   "error.provider.tempDiskSpace":
     "{provider} potrzebuje do uruchomienia co najmniej 1 GB wolnego miejsca na dysku. Zwolnij miejsce, a potem odśwież dostawców.",
   "error.provider.noCodeSignIn": "Dostawca {provider} nie obsługuje logowania kodem.",

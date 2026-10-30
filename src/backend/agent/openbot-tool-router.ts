@@ -373,7 +373,10 @@ export class OpenBotToolRouter {
                 const agent = this.#requireAgent(agentId);
                 const result = discoverTools(params, { computerUseEnabled: agentComputerUseEnabled(agent) });
                 client.respond(request.id, openBotToolResult(result));
-              } catch {
+              } catch (error) {
+                // The cause is reported, because a database failure, a provider failure and a
+                // malformed request all read the same to the agent without it.
+                this.#hooks.emitError("tool_discovery_failed", error, agentId);
                 client.respond(request.id, openBotToolFailure(sourceText("error.agent.toolRequestInvalid")));
               }
               return;

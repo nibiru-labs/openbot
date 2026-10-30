@@ -15,7 +15,6 @@ import {
   WORKFLOWS_ROUTES,
 } from "@openbot/contracts/team-protocol/workflows-v1";
 import { sourceText } from "@openbot/i18n/source";
-import { RoutineInputError } from "@openbot/team-client/routine-schedule";
 import type { Effect } from "effect";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import { WorkflowStoreError } from "../../backend/workflows/workflow-store";
@@ -32,6 +31,7 @@ import {
   parseWorkflowVersion,
 } from "../ipc/workflow-inputs";
 import type { TeamApiAgents, TeamApiWorkflows } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import { isPeerHiddenProvider } from "./provider-visibility";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
@@ -61,9 +61,8 @@ async function run<A>(operation: Effect.Effect<A, { readonly cause: unknown }>):
   try {
     return await runCauseEffect(operation);
   } catch (error) {
-    if (error instanceof WorkflowStoreError) throw new HttpError(error.code === "missing" ? 404 : 400, error.message);
-    if (error instanceof RoutineInputError) throw new HttpError(400, error.message);
-    throw error;
+    if (error instanceof WorkflowStoreError) throwExpectedRouteError(error, error.code === "missing" ? 404 : 400);
+    throwExpectedRouteError(error, 400);
   }
 }
 

@@ -36,7 +36,7 @@ import {
 } from "@openbot/contracts/team-protocol/providers-v5";
 import { PROVIDERS_V8_CAPABILITY, PROVIDERS_V8_ROUTES } from "@openbot/contracts/team-protocol/providers-v8";
 import { sourceText } from "@openbot/i18n/source";
-import { redactText, registerSecretValue } from "@openbot/logging";
+import { registerSecretValue } from "@openbot/logging";
 import { Effect } from "effect";
 import { normalizePastedCode } from "../../backend/agent/cli-code-login";
 import { AgentLifecycleFailed } from "../../backend/agent-service";
@@ -45,6 +45,7 @@ import { parseProviderId } from "../ipc/app-inputs";
 import { parseDeleteCustomProvider, parseSaveCustomProvider } from "../ipc/custom-provider-inputs";
 import { parseProviderApiKeyInput } from "../ipc/provider-handlers";
 import type { TeamApiAdmin } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin } from "./request-helpers";
@@ -252,11 +253,7 @@ export async function routeProviders(
         );
     }
   } catch (error) {
-    if (error instanceof HttpError) throw error;
-    // A busy provider or a failed download is a sentence for the admin, not a host fault. A provider
-    // process can quote its key, so the message leaves this computer redacted.
-    if (error instanceof Error) throw new HttpError(409, redactText(error.message));
-    throw error;
+    throwExpectedRouteError(error, 409);
   }
 }
 

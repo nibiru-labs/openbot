@@ -5,4 +5,5 @@ export const messages = {
   "error.storage.unsupported": "Ten serwer nie obsługuje magazynu.",
   "error.storage.agentMissing": "Agent nie istnieje.",
   "error.storage.unreadableFile": "OpenBot nie może odczytać pliku {path}. Plik jest uszkodzony.",
+  "error.storage.openFailed": "OpenBot nie mógł otworzyć folderu obszaru roboczego.",
 } as const satisfies PartialTranslation<typeof source>;

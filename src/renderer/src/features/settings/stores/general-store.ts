@@ -4,6 +4,7 @@ import {
   type AgentStatus,
   agentProviderName,
   isLocalOnlyProvider,
+  isManagedRuntimeProvider,
   type ProviderApiKeyStatus,
   type ProviderRuntimeStatus,
 } from "@openbot/contracts/ipc";
@@ -15,6 +16,8 @@ import { useI18n } from "../../../i18n-context";
 interface GeneralStoreProps {
   agentStatus?: AgentStatus;
   providerRuntimeStatuses?: Partial<Record<AgentProviderId, ProviderRuntimeStatus>> | undefined;
+  /** The last update check could not reach every release source. Shown on managed provider rows. */
+  providerRuntimeUpdateCheckError?: string | null | undefined;
   /** The newer runtime main says exists, per provider. Decided there, never worked out here. */
   providerAvailableVersions?: Partial<Record<AgentProviderId, string | null>> | undefined;
   /**
@@ -76,7 +79,11 @@ export function createSettingsGeneralStore(props: GeneralStoreProps) {
         email: agent?.email,
         connectionState: agent?.connectionState,
         restartPending: agent?.restartPending,
-        checkError: agent?.checkError,
+        checkError:
+          agent?.checkError ??
+          (isManagedRuntimeProvider(provider) && !agent?.off && props.providerRuntimeUpdateCheckError
+            ? props.providerRuntimeUpdateCheckError
+            : undefined),
         lastError: agent?.lastError,
         diagnostics: agent ? providerDiagnosticsText(agent) : undefined,
         availableVersion: props.providerAvailableVersions?.[provider] ?? null,

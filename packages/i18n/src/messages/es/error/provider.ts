@@ -164,6 +164,9 @@ export const messages = {
   "error.provider.acpModelsTimedOut": "{provider} no listó sus modelos en {seconds} s. El equipo puede estar ocupado.",
   "error.provider.startStopped":
     "{provider} no se inició varias veces seguidas, así que OpenBot dejó de intentarlo. Actualiza los proveedores para intentarlo de nuevo.",
+  "error.provider.stoppedRepeatedly":
+    "{provider} se detuvo repetidamente. Reinicia OpenBot después de comprobar la CLI.",
+  "error.provider.restarting": "{provider} se detuvo. Reintentando ({attempt}/3)…",
   "error.provider.tempDiskSpace":
     "{provider} necesita al menos 1 GB de espacio libre en disco para iniciarse. Libera espacio y luego actualiza los proveedores.",
   "error.provider.noCodeSignIn": "No se puede iniciar sesión en {provider} con un código.",

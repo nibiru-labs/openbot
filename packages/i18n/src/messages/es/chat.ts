@@ -6,6 +6,7 @@ export const messages = {
   "chat.process.completed": "Proceso de respuesta",
   "chat.process.stopped": "Proceso detenido",
   "chat.process.failed": "Proceso fallido",
+  "chat.turnFailure.fallback": "The agent stopped before it could answer. Send the message again to try again.",
   "chat.process.waiting": "Esperando los detalles del proceso…",
   "chat.process.unavailable": "No se proporcionaron detalles del proceso.",
   "chat.activity.workingOnIt": "Trabajando en ello…",

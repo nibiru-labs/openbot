@@ -31,4 +31,6 @@ export const messages = {
   "error.host.tenantShutdownTimeout": "Het afsluiten van tenants duurde te lang. Er is geen app vervangen.",
   "error.host.tenantHealthMissing":
     "Statusrapporten van tenants ontbreken of zijn niet in orde na de herstart. Controleer de sessies van tenants voor een volgende update.",
+  "error.host.startRetryExhausted": "OpenBot kon na meerdere pogingen niet starten: {reason}",
+  "error.host.startRetryExhaustedUnknown": "OpenBot kon na meerdere pogingen niet starten.",
 } as const satisfies PartialTranslation<typeof source>;

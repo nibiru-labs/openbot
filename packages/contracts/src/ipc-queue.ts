@@ -51,6 +51,10 @@ export interface QueueDelivery {
   position: number | null;
   turnId: string | null;
   error: string | null;
+  /** Redacted provider detail for a failure stored after catalog encoding. Absent on older rows. */
+  errorDetail?: string | null;
+  /** Copyable failure code from `@openbot/user-errors`. Absent on older rows. */
+  reference?: string | null;
   createdAt: string;
   /**
    * Another editor holds this queued message. It keeps its place in the queue and the agent does
@@ -108,6 +112,10 @@ export function isQueueDelivery(value: unknown): value is QueueDelivery {
       (isNumber(value.position) && Number.isInteger(value.position) && value.position >= 1)) &&
     (value.turnId === null || isIdentifier(value.turnId)) &&
     (value.error === null || isBoundedString(value.error, INPUT_LIMITS.messageText)) &&
+    (value.errorDetail === undefined ||
+      value.errorDetail === null ||
+      isBoundedString(value.errorDetail, INPUT_LIMITS.messageText)) &&
+    (value.reference === undefined || value.reference === null || isBoundedString(value.reference, 160)) &&
     isBoundedString(value.createdAt, 160) &&
     (value.editing === undefined || isBoolean(value.editing)) &&
     (value.expectsReply === undefined || isBoolean(value.expectsReply)) &&

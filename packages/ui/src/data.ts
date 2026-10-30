@@ -189,6 +189,9 @@ export interface AgentMessage {
   itemType?: string | undefined;
   kind?: MessageKind;
   status?: string | undefined;
+  /** Catalog or legacy English from the failed delivery. Localize with `sourceText` before display. */
+  failureReason?: string | undefined;
+  failureReference?: string | null | undefined;
   senderAgentId?: string | undefined;
   /** The person who wrote a `you` message. Absent on the reader's own older messages. */
   senderMember?: ConversationMessageSender | undefined;

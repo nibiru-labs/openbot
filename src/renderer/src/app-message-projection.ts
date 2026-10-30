@@ -1,4 +1,9 @@
-import type { ClientAgentSummary, ConversationMessage, QueueDeliveryStatus } from "@openbot/contracts/ipc";
+import type {
+  ClientAgentSummary,
+  ConversationMessage,
+  QueueDelivery,
+  QueueDeliveryStatus,
+} from "@openbot/contracts/ipc";
 import {
   AGENT_PAUSE_ITEM_TYPE,
   CONVERSATION_MEMORY_CHANGES_ITEM_TYPE,
@@ -18,6 +23,7 @@ import {
   skillConversationEvent,
 } from "@openbot/contracts/ipc";
 import { markdownPreviewText } from "@openbot/contracts/markdown-preview-text";
+import { deliveryFailureMessage } from "@openbot/i18n";
 import { cleanAgentMessageText } from "@openbot/team-client/agent-message-text";
 import type {
   AgentDeliveryMarkerStatus,
@@ -222,6 +228,35 @@ export function toAgentMessages(
     result.push(thinking);
   }
   return result;
+}
+
+const failedMessages = new WeakMap<AgentMessage, AgentMessage>();
+
+/** Adds each failed delivery's catalog reason to its user message row. */
+export function withDeliveryFailureReasons(
+  messages: AgentMessage[],
+  deliveries: readonly QueueDelivery[],
+): AgentMessage[] {
+  const reasons = new Map<string, { reason: string; reference: string | null | undefined }>();
+  const { sourceText } = currentText();
+  for (const delivery of deliveries) {
+    if (delivery.status !== "failed") continue;
+    const reason = deliveryFailureMessage(delivery, sourceText);
+    if (!reason) continue;
+    reasons.set(delivery.id, { reason, reference: delivery.reference });
+  }
+  if (reasons.size === 0) return messages;
+  return messages.map((message) => {
+    if (message.author !== "you" || message.status !== "Failed") return message;
+    const failure = reasons.get(message.id);
+    if (!failure) return message;
+    let failed = failedMessages.get(message);
+    if (failed?.failureReason !== failure.reason || failed.failureReference !== failure.reference) {
+      failed = { ...message, failureReason: failure.reason, failureReference: failure.reference };
+      failedMessages.set(message, failed);
+    }
+    return failed;
+  });
 }
 
 export function agentProfilesEqual(left: AgentProfile, right: AgentProfile): boolean {

@@ -20,11 +20,26 @@ export function causeHelpers<E>(ErrorClass: CauseError<E>) {
 
 /**
  * Runs an Effect at a Promise boundary and rejects with the original failure that the typed error
- * wraps. Defects and interruption still reject as they are.
+ * wraps, after copying the typed error's `_tag` onto that value so `errorReference` can name the
+ * failure at IPC boundaries. When the cause cannot take a tag, the typed error itself is thrown.
+ * Defects and interruption still reject as they are.
  */
 export async function runCauseEffect<A>(operation: Effect.Effect<A, { readonly cause: unknown }>): Promise<A> {
   const result = await Effect.runPromise(Effect.result(operation));
-  if (Result.isFailure(result)) throw result.failure.cause;
+  if (Result.isFailure(result)) {
+    const failure = result.failure;
+    const tag = "_tag" in failure && typeof failure._tag === "string" ? failure._tag : undefined;
+    const { cause } = failure;
+    if (tag !== undefined && cause !== null && typeof cause === "object") {
+      try {
+        Object.defineProperty(cause, "_tag", { value: tag, configurable: true, enumerable: false });
+        throw cause;
+      } catch (error) {
+        if (error === cause) throw error;
+      }
+    }
+    throw cause;
+  }
   return result.success;
 }
 

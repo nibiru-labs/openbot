@@ -19,8 +19,13 @@ export interface TokenBudgetNotice {
 
 export interface TokenBudgetHooks {
   limits(): TokenBudgetPreference;
-  /** The tokens an agent used since this time, oldest first, as the database kept them. Read once per agent. */
+  /**
+   * The tokens an agent used since this time, oldest first, as the database kept them. Read once
+   * per agent, and again after a read that failed.
+   */
   readSince(agentId: string, sinceMs: number): ReadonlyArray<{ at: number; tokens: number }>;
+  /** A read of the ledger failed. The user has to know the limit is not enforced. */
+  emitError(code: string, error: unknown, agentId?: string): void;
   /** An agent was held. Writes the marker and tells the renderers. Must not wait for the agent's queue. */
   held(notice: TokenBudgetNotice): Effect.Effect<void>;
   /** The window of an hourly hold fell under the limit, or the user raised the limit. Resolves its marker. */
@@ -38,6 +43,8 @@ interface Hold {
 interface AgentLedger {
   /** The samples came from the database, not from the reports of this run only. */
   seeded: boolean;
+  /** The database read failed, so the window holds less than the agent used. */
+  unknown: boolean;
   samples: Array<{ at: number; tokens: number }>;
   /** Reports before this time do not count: the user continued then. */
   since: number;
@@ -101,10 +108,9 @@ export class TokenBudget {
   ) {
     if (tokens <= 0) return;
     const now = Date.now();
-    const known = this.#agents.has(agentId);
-    const ledger = this.#ledger(agentId, now);
-    // The database stored this report before it came here, so a ledger read from it holds the report.
-    if (known || !ledger.seeded) ledger.samples.push({ at: now, tokens });
+    const ledger = this.#ledger(agentId);
+    // The database stored this report before it came here, so a read that ran now already holds it.
+    if (!this.#readLedger(ledger, agentId, now)) ledger.samples.push({ at: now, tokens });
     if (turnId !== null) {
       const turn = this.#turns.get(turnId) ?? { agentId, tokens: 0, armed: false, stopped: false };
       turn.tokens += tokens;
@@ -130,7 +136,7 @@ export class TokenBudget {
     const { perTurn } = this.#hooks.limits();
     if (!turn?.armed || turn.stopped || perTurn <= 0) return false;
     turn.stopped = true;
-    const ledger = this.#ledger(agentId, Date.now());
+    const ledger = this.#ledger(agentId);
     // The turn stop replaces an hourly hold that the same report set: one marker says what happened.
     if (ledger.hold?.timer) clearTimeout(ledger.hold.timer);
     ledger.hold = { reason: "turn-budget", timer: null };
@@ -192,22 +198,39 @@ export class TokenBudget {
     this.#scope = Scope.makeUnsafe();
   }).bind(this);
 
-  #ledger(agentId: string, now: number): AgentLedger {
+  #ledger(agentId: string): AgentLedger {
     let ledger = this.#agents.get(agentId);
     if (!ledger) {
-      ledger = { seeded: false, samples: [], since: 0, hold: null };
-      // Seeded once: reports from before this start count for the hour they fall in.
-      try {
-        ledger.samples = this.#hooks
-          .readSince(agentId, now - TOKEN_BUDGET_WINDOW_MS)
-          .map((sample) => ({ at: sample.at, tokens: sample.tokens }));
-        ledger.seeded = true;
-      } catch {
-        // A failed read counts from this start on. The limit then holds later, not never.
-      }
+      ledger = { seeded: false, unknown: false, samples: [], since: 0, hold: null };
       this.#agents.set(agentId, ledger);
     }
     return ledger;
+  }
+
+  /**
+   * Reads the tokens the agent used from the database into the ledger. True when the ledger was
+   * read, so the caller knows the count holds the report it is about to count.
+   *
+   * A read that fails leaves the count unknown: the limit holds later, not never. The failure is
+   * reported once, because the user has to know the limit is not being enforced, and the next
+   * report reads again, so a good read makes the count whole.
+   */
+  #readLedger(ledger: AgentLedger, agentId: string, now: number): boolean {
+    if (ledger.seeded && !ledger.unknown) return false;
+    try {
+      ledger.samples = this.#hooks
+        .readSince(agentId, now - TOKEN_BUDGET_WINDOW_MS)
+        .map((sample) => ({ at: sample.at, tokens: sample.tokens }));
+      ledger.seeded = true;
+      ledger.unknown = false;
+      return true;
+    } catch (error) {
+      const firstFailure = !ledger.unknown;
+      ledger.seeded = false;
+      ledger.unknown = true;
+      if (firstFailure) this.#hooks.emitError("token_budget_read_failed", error, agentId);
+      return false;
+    }
   }
 
   #window(agentId: string, now = Date.now()): number {

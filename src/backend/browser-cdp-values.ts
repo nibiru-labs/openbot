@@ -1,5 +1,5 @@
 import { type DynamicRecord, isBoolean, isDynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-values";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { type BrowserOperationError, browserFailure } from "./browser-effects";
 
 const AUTOMATION_WORLD_NAME = "openbot-browser-automation";
@@ -11,6 +11,43 @@ export type SendCommand = (
   params?: DynamicRecord,
   sessionId?: string,
 ) => Effect.Effect<CdpResult, BrowserOperationError>;
+
+/** Tracks a CDP capture session that failed once, so later cleanup calls stay ignored. */
+export class CdpCaptureSessionGuard {
+  readonly #closed = new Set<string>();
+
+  key(sessionId?: string): string {
+    return sessionId ?? "";
+  }
+
+  markClosed(sessionId?: string): void {
+    this.#closed.add(this.key(sessionId));
+  }
+
+  isClosed(sessionId?: string): boolean {
+    return this.#closed.has(this.key(sessionId));
+  }
+
+  clear(): void {
+    this.#closed.clear();
+  }
+}
+
+/** Runs an optional CDP command. The first failure closes the session and reaches the caller. */
+export const optionalCdpCommand = Effect.fn("Browser.optionalCdpCommand")(function* (
+  guard: CdpCaptureSessionGuard,
+  send: SendCommand,
+  method: string,
+  params: DynamicRecord = {},
+  sessionId?: string,
+) {
+  if (guard.isClosed(sessionId)) return;
+  const result = yield* send(method, params, sessionId).pipe(Effect.result);
+  if (Result.isFailure(result)) {
+    guard.markClosed(sessionId);
+    return yield* browserFailure(result.failure.cause);
+  }
+});
 
 export function assertBeforeDeadline(deadline: number | undefined): void {
   if (deadline !== undefined && Date.now() >= deadline) throw new Error("Browser wait condition timed out.");

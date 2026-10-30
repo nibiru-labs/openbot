@@ -12,7 +12,6 @@ import {
 import { sourceText } from "@openbot/i18n/source";
 import type { Effect } from "effect";
 import { runCauseEffect } from "../../backend/effect-boundary";
-import { RoutineFlowError } from "../../backend/routine-flows/routine-flow-store";
 import {
   parseConnectRoutineFlow,
   parseDisconnectRoutineFlow,
@@ -21,6 +20,7 @@ import {
   parseUpdateRoutineFlowLink,
 } from "../ipc/routine-flow-inputs";
 import type { TeamApiAgents, TeamApiRoutineFlows } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAgentLevel, stringField, WEBRTC_FRAME_BODY_BUDGET } from "./request-helpers";
@@ -45,8 +45,7 @@ async function run<A>(operation: Effect.Effect<A, { readonly cause: unknown }>):
   try {
     return await runCauseEffect(operation);
   } catch (error) {
-    if (error instanceof RoutineFlowError) throw new HttpError(400, error.message);
-    throw error;
+    throwExpectedRouteError(error, 400);
   }
 }
 

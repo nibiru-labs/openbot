@@ -479,6 +479,20 @@ export class HostService extends EventEmitter<HostEvents> {
     if (this.#webrtcGateway) yield* this.#webrtcGateway.applyNetworkRoute();
   }).bind(this);
 
+  /** Reports that automatic start retries on a hosted or server-mode machine ended. */
+  reportAutomaticStartExhausted(error: unknown): void {
+    const reason =
+      error instanceof Error && error.message.trim()
+        ? error.message
+        : sourceText("error.host.startRetryExhaustedUnknown");
+    this.#setStatus({
+      phase: "error",
+      apiOnline: false,
+      apiUrl: null,
+      message: sourceText("error.host.startRetryExhausted", { reason }),
+    });
+  }
+
   getStatus(): HostStatus {
     const capabilities = this.#remoteScreen.capabilities();
     return {

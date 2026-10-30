@@ -20,4 +20,5 @@ export const messages = {
   "error.attachment.notPrepared": "La pièce jointe n’a pas été préparée.",
   "error.attachment.namedFileTooLarge": "« {name} » dépasse la limite de 100 Mo.",
   "error.attachment.notAvailable": "La pièce jointe est indisponible.",
+  "error.attachment.openFailed": "OpenBot n’a pas pu ouvrir le fichier.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -16,6 +16,7 @@ import {
   type UpdateAgentInput,
 } from "@openbot/contracts/ipc";
 import { ContextResetBusyError } from "@openbot/contracts/team-protocol/context-reset-v1";
+import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import { AgentSettingsRefused } from "../src/backend/agent/agent-settings-refused";
 import { AutomationServer, type UpdatedAgent } from "../src/main/automation-server";
@@ -136,7 +137,7 @@ const options: ConstructorParameters<typeof AutomationServer>[0] = {
   },
   turnAnswer: (_agentId, turnId) => `Answer of ${turnId}`,
   updateAgent: (input) => {
-    if (busy) return Effect.fail({ cause: new AgentSettingsRefused("Wait until the agent is idle.") });
+    if (busy) return Effect.fail({ cause: new AgentSettingsRefused(sourceText("error.agent.waitUntilIdle")) });
     if (input.providerAccountId === "a0000000000000000") return Effect.fail({ cause: new Error("disk full") });
     updates.push(input);
     const agent: UpdatedAgent = {
@@ -150,7 +151,8 @@ const options: ConstructorParameters<typeof AutomationServer>[0] = {
     return Effect.succeed(agent);
   },
   clearAgentContext: (agentId) => {
-    if (busy) return Effect.fail({ cause: new ContextResetBusyError("Wait for the active turn to finish.") });
+    if (busy)
+      return Effect.fail({ cause: new ContextResetBusyError(sourceText("error.agent.waitBeforeClearContext")) });
     cleared.push(agentId);
     return Effect.void;
   },
@@ -312,10 +314,10 @@ try {
   await check("new-chat needs exactly one agent", ["agent", "new-chat"], 2, (run) => run.stderr.includes("Usage:"));
   busy = true;
   await check("a refused update exits 1 with its reason", ["agent", "set-account", "Ada", "default"], 1, (run) => {
-    return run.stderr.includes("Wait until the agent is idle.");
+    return run.stderr.includes(sourceText("error.agent.waitUntilIdle"));
   });
   await check("new-chat while the agent works exits 1 with its reason", ["agent", "new-chat", "Ada"], 1, (run) => {
-    return run.stderr.includes("Wait for the active turn to finish.") && cleared.length === 1;
+    return run.stderr.includes(sourceText("error.agent.waitBeforeClearContext")) && cleared.length === 1;
   });
   busy = false;
   await Effect.runPromise(server.stop());

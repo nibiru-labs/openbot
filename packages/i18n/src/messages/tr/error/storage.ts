@@ -6,4 +6,5 @@ export const messages = {
   "error.storage.unsupported": "Depolama bu sunucu tarafından desteklenmiyor.",
   "error.storage.agentMissing": "Ajan mevcut değil.",
   "error.storage.unreadableFile": "OpenBot {path} dosyasını okuyamıyor. Dosya bozuk.",
+  "error.storage.openFailed": "OpenBot çalışma alanı klasörünü açamadı.",
 } as const satisfies PartialTranslation<typeof source>;

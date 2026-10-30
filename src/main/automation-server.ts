@@ -18,13 +18,10 @@ import {
   type UpdateAgentInput,
 } from "@openbot/contracts/ipc";
 import { type DynamicRecord, isDynamicRecord, isString } from "@openbot/contracts/runtime-values";
-import { ContextResetBusyError } from "@openbot/contracts/team-protocol/context-reset-v1";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, registerSecretValue, toLogValue } from "@openbot/logging";
 import { RoutineInputError } from "@openbot/team-client/routine-schedule";
 import { Effect, Exit, Schema, Scope, Semaphore } from "effect";
-import { AgentSettingsRefused } from "../backend/agent/agent-settings-refused";
-import { InactiveAttentionRequest } from "../backend/agent/inactive-attention-request";
 import { type ModelRequest, requestedRuntime } from "../backend/agent/model-tools";
 import type { AgentLifecycleFailed, AgentService } from "../backend/agent-service";
 import { writeFileAtomically } from "../backend/atomic-json-file";
@@ -32,6 +29,7 @@ import { AUTOMATION_HEADERS_FILE, AUTOMATION_TOKEN_FILE, AUTOMATION_URL_FILE } f
 import { causeHelpers, runCauseEffect } from "../backend/effect-boundary";
 import { readBodyWithin } from "./http-body";
 import { listenLoopback } from "./listen-loopback";
+import { expectedConflictMessage } from "./team-api/expected-route-error";
 import { HttpError } from "./team-api/http-error";
 import { approvalDecision, promptAnswers } from "./team-api/request-helpers";
 
@@ -249,9 +247,8 @@ export class AutomationServer {
       await this.#run(request, response, agentId, routineId);
     } catch (error) {
       if (error instanceof HttpError) return send(response, error.status, { error: error.message });
-      if (error instanceof InactiveAttentionRequest) return send(response, 409, { error: error.message });
-      if (error instanceof AgentSettingsRefused) return send(response, 409, { error: error.message });
-      if (error instanceof ContextResetBusyError) return send(response, 409, { error: error.message });
+      const conflict = expectedConflictMessage(error);
+      if (conflict !== null) return send(response, 409, { error: conflict });
       logger.warn("An automation request failed.", error);
       if (!response.headersSent) send(response, 500, { error: "internal error" });
     }

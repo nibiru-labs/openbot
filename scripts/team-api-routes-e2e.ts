@@ -39,6 +39,7 @@ import {
   AGENT_BACKUP_MODELS_ROUTES,
 } from "@openbot/contracts/team-protocol/agent-backup-models-v1";
 import { AGENT_HIDDEN_CAPABILITY, AGENT_HIDDEN_ROUTES } from "@openbot/contracts/team-protocol/agent-hidden-v1";
+import { AGENT_INSTALL_CAPABILITY, AGENT_INSTALL_ROUTES } from "@openbot/contracts/team-protocol/agent-install-v1";
 import {
   AGENT_TASK_LIMIT_CAPABILITY,
   AGENT_TASK_LIMIT_ROUTES,
@@ -93,6 +94,7 @@ import { RoutineResultError } from "../src/backend/routine-results/routine-resul
 import { TeamChatStore } from "../src/backend/team-chat-store";
 import { AGENT_ACCESS_FILE, AgentAccessStore } from "../src/main/agent-access-store";
 import { createAgentHostSettings } from "../src/main/agent-host-settings";
+import { AgentMarketplaceFailure } from "../src/main/agent-marketplace-service";
 import { type BitwardenCliRunner, BitwardenConnectorService } from "../src/main/bitwarden-connector-service";
 import { BitwardenConnectorStore } from "../src/main/bitwarden-connector-store";
 import { createBrowserProfileService } from "../src/main/browser-profile-service";
@@ -752,6 +754,16 @@ try {
           remove: unused("providers.customProviders.remove"),
         },
         pasteSignIn: false,
+      },
+      marketplaceAgents: {
+        install: () =>
+          Effect.fail(new AgentMarketplaceFailure({ cause: new Error(`fetch failed with ${FAKE_SECRET}`) })),
+      },
+      agentTemplates: {
+        install: unused("agentTemplates.install"),
+        preview: unused("agentTemplates.preview"),
+        publish: unused("agentTemplates.publish"),
+        unpublish: unused("agentTemplates.unpublish"),
       },
     },
     bitwardenConnector,
@@ -3111,6 +3123,20 @@ try {
         workspace.text === "# workspace notes\n" &&
         errorIs(workspaceBig, 413, sourceText("error.team.workspaceFileTooLarge")),
       [summary(workspaceMissing), summary(workspace), summary(workspaceBig)],
+    );
+  }
+
+  // ---- Admin routes do not forward raw internal messages ----
+  {
+    const rawInstall = await call("POST", AGENT_INSTALL_ROUTES.marketplace, {
+      token: owner.sessionToken,
+      capabilities: [AGENT_INSTALL_CAPABILITY],
+      json: { listingId: "listing-e2e", timezone: "UTC", receiptId: "receipt-e2e" },
+    });
+    check(
+      "a marketplace install with a raw internal failure gets 500 requestFailed, not the raw message",
+      errorIs(rawInstall, 500, sourceText("error.team.requestFailed")) && !rawInstall.text.includes(FAKE_SECRET),
+      summary(rawInstall),
     );
   }
 

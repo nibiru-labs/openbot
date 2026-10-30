@@ -368,10 +368,12 @@ async function cacheRemoteFile(
   return target;
 }
 
-// `shell.openPath` reports failure by resolving with the message rather than rejecting.
+// `shell.openPath` reports failure by resolving with the message rather than rejecting. The message
+// is the operating system's own sentence, so the user reads our sentence and the operating system
+// keeps its text in the cause.
 async function openPath(path: string): Promise<void> {
   const error = await shell.openPath(path);
-  if (error) throw new Error(error);
+  if (error) throw new Error(sourceText("error.attachment.openFailed"), { cause: error });
 }
 
 // Another member or a remote host chose this file and its name. The OS can run some types when it

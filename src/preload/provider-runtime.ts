@@ -17,6 +17,14 @@ export function decodeProviderRuntimeSnapshot(value: unknown): ProviderRuntimeSn
   // so a new runtime can never arrive at the renderer undecoded.
   return {
     revision: value.revision,
+    updateCheckError:
+      value.updateCheckError === undefined || value.updateCheckError === null
+        ? null
+        : isString(value.updateCheckError)
+          ? value.updateCheckError
+          : (() => {
+              throw new Error("Invalid provider runtime response.");
+            })(),
     providers: {
       codex: decodeProviderRuntimeStatus(providers.codex),
       claude: decodeProviderRuntimeStatus(providers.claude),

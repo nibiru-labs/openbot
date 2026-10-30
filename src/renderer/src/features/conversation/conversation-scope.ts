@@ -26,6 +26,7 @@ import {
   useContext,
 } from "solid-js";
 import { createScopeGuard } from "../../scope-lifetime";
+import { readableAgentError } from "../agents/agent-error-text";
 import { createAttachmentImportSounds } from "./attachment-import-sounds";
 import { useConversationController } from "./conversation-controller-context";
 import { agentConversationKey, composerDraftKey } from "./conversation-keys";
@@ -126,6 +127,8 @@ export function createConversationViewScope(props: ConversationProps) {
     setComposerErrorReferences,
     conversationErrors,
     setConversationErrors,
+    conversationErrorReferences,
+    setConversationErrorReferences,
     conversationErrorRuns,
     voicePhase,
     setVoicePhase,
@@ -308,6 +311,8 @@ export function createConversationViewScope(props: ConversationProps) {
     setDrafts,
     conversationErrors,
     setConversationErrors,
+    conversationErrorReferences,
+    setConversationErrorReferences,
     composerErrors,
     setComposerErrors,
     editingAgentId,
@@ -335,13 +340,22 @@ export function createConversationViewScope(props: ConversationProps) {
     setComposerErrorForTarget,
     clearChatErrors,
   } = composer;
-  /** The code of the shown composer error. A later sentence without a cause shows no code. */
+  /** The code of the shown chat error. A later sentence without a cause shows no code. */
   const currentChatErrorReference = createMemo(() => {
     const target = currentTarget();
-    const message = currentComposerError();
-    if (!target || !message) return null;
-    const entry = composerErrorReferences()[composerDraftKey(target)];
-    return entry?.message === message ? entry.reference : null;
+    if (!target) return null;
+    const key = composerDraftKey(target);
+    const composerMessage = currentComposerError();
+    if (composerMessage) {
+      const entry = composerErrorReferences()[key];
+      return entry?.message === composerMessage ? entry.reference : null;
+    }
+    const conversationMessage = currentConversationError();
+    if (conversationMessage) {
+      const entry = conversationErrorReferences()[key];
+      return entry?.message === conversationMessage ? entry.reference : null;
+    }
+    return null;
   });
   /** The provider and model of the run behind the shown error. A later error of another run shows none. */
   const currentChatErrorRun = createMemo(() => {
@@ -844,9 +858,12 @@ export function createConversationViewScope(props: ConversationProps) {
         setAttachmentBusy(resources.importTargetAgents.size > 0);
         if (target) {
           importSounds.finished(event.requestId, "error");
+          // The import failure arrives as the text Electron sent, so it can name a local path. The
+          // agent path reads its failures the same way: the sentence comes from the catalog and the
+          // raw text stays out of the chat.
           setConversationErrors((current) => ({
             ...current,
-            [composerDraftKey(target)]: event.message,
+            [composerDraftKey(target)]: readableAgentError(event.message),
           }));
         }
       } else {

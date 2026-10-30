@@ -8,7 +8,8 @@
     "./format": "./src/format.ts",
     "./languages": "./src/languages.ts",
     "./mobile": "./src/mobile.ts",
-    "./source": "./src/source-text.ts"
+    "./source": "./src/source-text.ts",
+    "./delivery-failure": "./src/delivery-failure.ts"
   },
   "scripts": {
     "typecheck": "bun ../../scripts/type-checker.ts --noEmit -p tsconfig.json"

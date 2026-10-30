@@ -1120,7 +1120,14 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
       const serverId = server()?.id;
       if (event.agentId && serverId) {
         const key = composerDraftKey({ agentId: event.agentId, serverId });
-        controller.setConversationErrors((current) => ({ ...current, [key]: readableAgentError(event.message) }));
+        const message = readableAgentError(event.message);
+        controller.setConversationErrors((current) => ({ ...current, [key]: message }));
+        controller.setConversationErrorReferences((current) => {
+          if (event.reference) return { ...current, [key]: { message, reference: event.reference } };
+          if (!(key in current)) return current;
+          const { [key]: _removed, ...next } = current;
+          return next;
+        });
         return;
       }
       const description = readableAgentError(event.message);

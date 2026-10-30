@@ -14,7 +14,7 @@ import type { ServerCompatibility, ServerConnectionIssue, ServerSummary } from "
 import { TEAM_PROTOCOL_V1, type TeamProtocolSupportV1 } from "@openbot/contracts/team-protocol/v1";
 import { TEAM_PROTOCOL_V3_CAPABILITIES } from "@openbot/contracts/team-protocol/v3";
 import { sourceText } from "@openbot/i18n/source";
-import { referenceFrom } from "@openbot/user-errors";
+import { classifyUserError, errorReference, referenceFrom, userErrorMessage } from "@openbot/user-errors";
 import { RemoteProtocolError, RemoteRequestError } from "./remote-server-errors";
 
 // The protocol range this build speaks. Every compatibility record reports it as the local half.
@@ -139,10 +139,23 @@ export function classifyRemoteConnectionError(error: unknown): RemoteConnectionO
         hostSupport: null,
       };
     }
-    // Any other refusal is the host answering normally. It is the caller's to report, not a
-    // connection problem. The error keeps its status and code, so its reference is still
-    // `http/<status>/<code>` where the caller shows it.
-    return NO_OUTCOME;
+    // Any other refusal is the host answering normally: the connection is good and the request was
+    // refused. The user still needs a sentence and a code, so the status picks the kind and the kind
+    // picks the sentence. The reference keeps the status and the host's own code.
+    return {
+      issue: withReference(
+        {
+          code: "request_failed",
+          message: refusalSentence(error.status),
+          retryable: refusalRetryable(error.status),
+        },
+        reference,
+      ),
+      state: "error",
+      // The host answered, so the connection is good and reconnecting would not change the answer.
+      suspendReconnect: false,
+      hostSupport: null,
+    };
   }
   if (error instanceof SyntaxError) {
     return {
@@ -158,7 +171,43 @@ export function classifyRemoteConnectionError(error: unknown): RemoteConnectionO
     };
   }
   if (error instanceof TypeError) return hostUnreachable();
-  return NO_OUTCOME;
+  // An error of a kind this app cannot name still names a failure when its message carries an errno
+  // or a status. The kind picks the sentence, and the reference names the errno or the status. The
+  // sentence is the English source text, because a screen translates it back.
+  const kind = classifyUserError(error);
+  if (kind === "network") return hostUnreachable();
+  if (kind === "unknown") return NO_OUTCOME;
+  return {
+    issue: withReference(
+      {
+        code: "request_failed",
+        message: userErrorMessage(error, sourceText("error.remote.requestFailed"), "en"),
+        retryable: true,
+      },
+      errorReference(error),
+    ),
+    state: "error",
+    suspendReconnect: false,
+    hostSupport: null,
+  };
+}
+
+// The sentence for a refusal the host made with a status. The status picks the kind and the kind
+// picks the sentence, so a 403 and a 429 do not read the same. A status with no kind of its own
+// keeps the sentence that names the status.
+function refusalSentence(status: number): string {
+  if (status === 403) return sourceText("error.kind.permission");
+  if (status === 404) return sourceText("error.kind.notFound");
+  if (status === 408) return sourceText("error.kind.timeout");
+  if (status === 429) return sourceText("error.kind.rateLimit");
+  if (status >= 500) return sourceText("error.kind.service");
+  return sourceText("error.remote.requestFailedStatus", { status });
+}
+
+// A refusal the user can retry: a rate limit, a timeout and a server fault clear on their own. A 403
+// or a 404 does not: the host answers the same way until something changes.
+function refusalRetryable(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
 }
 
 // The WebRTC transport reports failures as a code and a message rather than an error object, so it

@@ -83,6 +83,7 @@ export const messages = {
   "error.backend.memoryGone": "该记忆已不存在。",
   "error.backend.routineGone": "该自动化任务已不存在。",
   "error.backend.turnNotStarted": "服务商未启动本轮对话。",
+  "error.backend.deliveryFailed": "该消息未能运行。",
   "error.backend.routineResultConnectionOff": "该消息连接已关闭或已移除，请另选投递位置。",
   "error.backend.routineResultNoDelivery": "本次运行没有可再次发送的回答。",
   "error.backend.channelMemoryLimit": "一个频道最多可有 {limit} 条记忆。",

@@ -62,7 +62,7 @@ export interface StorageUsageSources {
 }
 
 /** The request names an agent or a file the host does not have. The Team API answers 404. */
-export class StorageNotFoundError extends Error {}
+class StorageNotFoundError extends Error {}
 
 /** A folder with more entries than this counts what it reached and marks the result truncated. */
 const STORAGE_WALK_ENTRY_LIMIT = 100_000;

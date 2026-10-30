@@ -10,6 +10,7 @@ import type { AgentTemplateFailure } from "../agent-template-service";
 import { parseInstallAgentTemplate } from "../ipc/agent-template-handlers";
 import { parseInstallMarketplaceAgent } from "../ipc/app-inputs";
 import type { TeamApiAdmin } from "./dependencies";
+import { throwExpectedRouteError } from "./expected-route-error";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { readJson, requireAdmin, requireVisibleBodyAgent } from "./request-helpers";
@@ -57,9 +58,9 @@ async function answer(json: TeamApiRequestContext["json"], add: Install): Promis
     const { agent } = await runCauseEffect(add());
     return json(200, { agentId: agent.id, name: agent.name });
   } catch (error) {
-    // A withdrawn listing, a newer template or a signed-out host is a sentence for the admin, not a host fault.
-    if (error instanceof Error) throw new HttpError(409, error.message);
-    throw error;
+    // A withdrawn listing, a newer template or a signed-out host is catalog text for the admin.
+    // A network or disk failure stays private and becomes a 500 in the dispatcher.
+    throwExpectedRouteError(error, 409);
   }
 }
 

@@ -324,6 +324,7 @@ function ServerSettings() {
     toolRuntimeStatuses,
     providerAdminServerId,
     providerRuntimeStatuses,
+    providerRuntimeUpdateCheckError,
     providerAvailableVersions,
     providerRuntimeDownloadsAvailable,
     downloadProviderRuntime,
@@ -491,6 +492,9 @@ function ServerSettings() {
       },
       get providerRuntimeStatuses() {
         return providerRuntimeDownloadsAvailable() ? providerRuntimeStatuses() : undefined;
+      },
+      get providerRuntimeUpdateCheckError() {
+        return providerRuntimeDownloadsAvailable() ? providerRuntimeUpdateCheckError() : undefined;
       },
       get providerAvailableVersions() {
         return providerRuntimeDownloadsAvailable() ? providerAvailableVersions() : undefined;

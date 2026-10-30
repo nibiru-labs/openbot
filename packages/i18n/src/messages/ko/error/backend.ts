@@ -88,6 +88,7 @@ export const messages = {
   "error.backend.memoryGone": "이 메모리는 더 이상 없어요.",
   "error.backend.routineGone": "이 루틴은 더 이상 없어요.",
   "error.backend.turnNotStarted": "제공자가 이 턴을 시작하지 않았어요.",
+  "error.backend.deliveryFailed": "This message did not run.",
   "error.backend.routineResultConnectionOff": "이 메시징 연결이 꺼져 있거나 제거되었어요. 다른 위치를 선택하세요.",
   "error.backend.routineResultNoDelivery": "이 실행에는 다시 보낼 답변이 없어요.",
   "error.backend.channelMemoryLimit": "채널 하나에는 메모리를 최대 {limit}개까지 둘 수 있어요.",
