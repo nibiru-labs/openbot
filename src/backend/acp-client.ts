@@ -951,7 +951,22 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
             yield* providerCall(() => connection.cancel({ sessionId })).pipe(Effect.ignore);
           }),
         ),
-        Effect.onError(() => Effect.sync(() => this.#retainFleetTurn(fleetId))),
+        Effect.catch((error) =>
+          Effect.gen({ self: this }, function* () {
+            if (error.cause instanceof RequestError && this.#fleet) {
+              yield* this.#fleet
+                .completed(fleetId, fleetId)
+                .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
+              if (!this.#fleet.has(fleetId)) {
+                this.#fleetThreads.delete(fleetId);
+                this.#fleetSent.delete(fleetId);
+              }
+            } else {
+              this.#retainFleetTurn(fleetId);
+            }
+            return yield* error;
+          }),
+        ),
       );
       if (this.#fleet) {
         yield* this.#fleet
