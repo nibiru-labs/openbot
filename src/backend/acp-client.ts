@@ -784,21 +784,31 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   #completePrivateFleetTurn(id: string): Effect.Effect<void, ProviderClientOperationError> {
     const gate = this.#fleet;
     if (!gate) return Effect.void;
-    return Effect.tryPromise({
-      try: () => {
-        this.#fleetCompleting.add(id);
-        const release = runCauseEffect(gate.completed(id, id))
-          .then(() => {
+    return Effect.gen({ self: this }, function* () {
+      let finish!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      this.#fleetCompleting.add(id);
+      this.#fleetReleases.add(pending);
+      yield* gate.completed(id, id).pipe(
+        Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))),
+        Effect.tap(() =>
+          Effect.sync(() => {
             if (!gate.has(id)) {
               this.#fleetThreads.delete(id);
               this.#fleetSent.delete(id);
             }
-          })
-          .finally(() => this.#fleetCompleting.delete(id));
-        this.#trackFleetRelease(release.catch(() => undefined));
-        return release;
-      },
-      catch: () => providerFailure(new Error(sourceText("error.provider.fleetUnavailable"))),
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            this.#fleetCompleting.delete(id);
+            this.#fleetReleases.delete(pending);
+            finish();
+          }),
+        ),
+      );
     });
   }
 
