@@ -273,7 +273,8 @@ for (const [name, messages] of english) {
 }
 
 const code = CODE_ROOTS.flatMap((root) => files(resolve(ROOT, root), CODE_EXTENSIONS))
-  .filter((path) => !path.startsWith(MESSAGES))
+  .concat(files(resolve(ROOT, "examples"), /\.(?:ts|tsx|js|html)$/))
+  .filter((path) => !path.startsWith(MESSAGES) && !path.endsWith(".bundle.js"))
   .map((path) => readFileSync(path, "utf8"))
   .join("\n");
 for (const [key, name] of owner) {
