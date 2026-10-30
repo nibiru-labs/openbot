@@ -390,6 +390,36 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
               yield* thread.rpc.request({ type: "compact" }, timeoutMs ?? 120_000);
             }),
           );
+          if (this.#fleet) {
+            const fleet = this.#fleet;
+            const turnId = `compact-${randomUUID()}`;
+            let finishRelease!: () => void;
+            const release = new Promise<void>((resolve) => {
+              finishRelease = resolve;
+            });
+            this.#fleetCompleting.add(id);
+            this.#fleetReleases.add(release);
+            yield* Effect.gen({ self: this }, function* () {
+              yield* fleet
+                .started(id, turnId)
+                .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
+              yield* fleet
+                .completed(id, turnId)
+                .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
+              if (!fleet.has(id)) {
+                this.#fleetThreads.delete(id);
+                this.#fleetSent.delete(id);
+              }
+            }).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  this.#fleetCompleting.delete(id);
+                  this.#fleetReleases.delete(release);
+                  finishRelease();
+                }),
+              ),
+            );
+          }
         }).pipe(
           Effect.onError(() => (admitted ? this.#cancelOrRetainFleetTurn(id) : Effect.void)),
           Effect.ensuring(
@@ -400,19 +430,6 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
             }),
           ),
         );
-        if (this.#fleet) {
-          const turnId = `compact-${randomUUID()}`;
-          yield* this.#fleet
-            .started(id, turnId)
-            .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
-          yield* this.#fleet
-            .completed(id, turnId)
-            .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
-          if (!this.#fleet.has(id)) {
-            this.#fleetThreads.delete(id);
-            this.#fleetSent.delete(id);
-          }
-        }
         response = {};
         break;
       }

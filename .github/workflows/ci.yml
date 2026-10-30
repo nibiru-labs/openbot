@@ -484,6 +484,7 @@ jobs:
           bun scripts/pi-fleet-e2e.ts --stop
           bun scripts/pi-fleet-e2e.ts --release-stop
           bun scripts/pi-fleet-e2e.ts --acquire-stop
+          bun scripts/pi-fleet-e2e.ts --compact-release-stop
 
       - name: Run the fleet configuration E2E test
         if: ${{ !cancelled() }}
