@@ -4,6 +4,7 @@
 //   the agent does not have (`gone-…`). Each form is the one that the provider's flavor recognizes.
 // - `FAKE_SIGNED_OUT=1` refuses each new session, as an agent does before its sign-in.
 // A prompt with the text `wait` runs until the client cancels it. Each other prompt answers at once.
+import { closeSync, fstatSync } from "node:fs";
 import {
   type AcpError,
   type AcpParams,
@@ -104,7 +105,16 @@ serveFakeAcpAgent(
       const text = promptText(request.params);
       logEntry({ event: "prompt", sessionId, model: models.get(sessionId) ?? null, text });
       if (text.trim() === "drop-stream") {
-        process.stdout.write("x".repeat(32 * 1024 * 1024 + 1));
+        const stdout = fstatSync(1);
+        for (let fd = 3; fd < 64; fd++) {
+          try {
+            const candidate = fstatSync(fd);
+            if (candidate.dev === stdout.dev && candidate.ino === stdout.ino) closeSync(fd);
+          } catch {
+            // Most descriptor numbers are unused.
+          }
+        }
+        closeSync(1);
         setInterval(() => {}, 60_000);
         return;
       }
