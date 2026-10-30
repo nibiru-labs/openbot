@@ -5,6 +5,7 @@ import { sourceText } from "@openbot/i18n/source";
 import { Effect, Fiber } from "effect";
 import { configuredFleetTurnGate } from "./agent/fleet-turn-config";
 import type { FleetTurnGate } from "./agent/fleet-turn-gate";
+import { isPlanLimitDiagnostic } from "./agent/provider-diagnostics";
 import { type AgentProvider, RequestTimeoutError } from "./agent-client";
 import { cliSpawnTarget } from "./cli";
 import { runCauseEffect } from "./effect-boundary";
@@ -75,6 +76,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   readonly #fleet: FleetTurnGate | null;
   readonly #fleetThreads = new Map<string, string>();
   readonly #fleetReleases = new Set<Promise<void>>();
+  readonly #fleetAdmissions = new Set<Promise<void>>();
   readonly #fleetCompactions = new Map<string, { turnId: string | null; confirmed: boolean }>();
   readonly #fleetStarts = new Map<string, { observed: string | null; confirmed: string | null }>();
   #fleetWaitAbort = new AbortController();
@@ -145,6 +147,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
 
   readonly stop = Effect.fn("CodexAppServer.stop")(function* (this: CodexAppServerClient) {
     this.#fleetWaitAbort.abort();
+    yield* Effect.promise(() => Promise.all([...this.#fleetAdmissions]).then(() => undefined));
     const child = this.#process;
     if (!child) {
       if (this.#ending) yield* Fiber.join(this.#ending);
@@ -303,6 +306,11 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
       }
       const compactionAbort = method === "thread/compact/start" ? new AbortController() : null;
       const previousReservation = this.#fleetThreads.get(threadId);
+      let finishAdmission!: () => void;
+      const admission = new Promise<void>((resolve) => {
+        finishAdmission = resolve;
+      });
+      this.#fleetAdmissions.add(admission);
       fleetCompactionAbort = compactionAbort;
       if (compactionAbort) this.#pendingCompactionAdmissions.set(threadId, compactionAbort);
       fleetReservation = yield* this.#admitFleetTurn(threadId, compactionAbort?.signal).pipe(
@@ -316,6 +324,12 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
               yield* this.#fleet.rejectedBeforeTurn(threadId).pipe(Effect.ignore);
               if (!this.#fleet.has(threadId)) this.#fleetThreads.delete(threadId);
             }
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            this.#fleetAdmissions.delete(admission);
+            finishAdmission();
           }),
         ),
       );
@@ -430,6 +444,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
             this.#fleet?.owns(fleetThread, fleetReservation) &&
             cause instanceof AppServerError &&
             (/\bis archived\b|thread not found:|\bno rollout found\b/i.test(cause.message) ||
+              isPlanLimitDiagnostic(cause.message) ||
               (cause.code === -32603 &&
                 cause.message.startsWith(
                   "failed to submit turn input: ActiveTurnNotSteerable { turn_kind: Compact",

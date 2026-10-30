@@ -58,6 +58,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
   if (threadId === 'archived') return send({id:request.id, error:{code:-32600, message:'thread is archived'}});
   if (threadId === 'missing-thread') return send({id:request.id, error:{code:-32600, message:'thread not found: missing-thread'}});
   if (threadId === 'compaction-refused') return send({id:request.id, error:{code:-32603, message:'failed to submit turn input: ActiveTurnNotSteerable { turn_kind: Compact }'}});
+  if (threadId === 'plan-refused') return send({id:request.id, error:{code:-32600, message:"You've hit your usage limit. Try again later."}});
   if (threadId === 'wrong-before') {
     send({method:'turn/started', params:{threadId, turn:{id:'other'}}});
     return send({id:request.id, result:{turn:{id:'current'}}});
@@ -117,6 +118,35 @@ try {
   assert.deepEqual(await readdir(held), []);
   checks.push("interrupted Codex acquisition releases its unsent reservation");
 
+  const waitingHeld = join(root, "waiting-held");
+  const waitingJournal = join(root, "waiting-journal");
+  await mkdir(waitingHeld);
+  await writeFile(join(waitingHeld, "delay-acquire"), "");
+  const waitingGate = await runCauseEffect(
+    FleetTurnGate.open(waitingJournal, new FleetTurnCommandTransport(process.execPath, [coordinator, waitingHeld])),
+  );
+  const waitingClient = new CodexAppServerClient(executable, 5_000, undefined, waitingGate);
+  waitingClient.start();
+  const pendingAdmission = Effect.runPromise(
+    waitingClient.request("turn/start", { threadId: "waiting" }, decodeRecordResponse),
+  );
+  pendingAdmission.catch(() => {});
+  while (!(await readdir(waitingHeld)).includes("acquire-started")) {
+    if (Date.now() > admissionDeadline) throw new Error("Codex pending acquisition did not start.");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  let waitingStopped = false;
+  const waitingStop = Effect.runPromise(waitingClient.stop()).then(() => {
+    waitingStopped = true;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(waitingStopped, false);
+  await writeFile(join(waitingHeld, "acquire-continue"), "");
+  await waitingStop;
+  await assert.rejects(pendingAdmission);
+  assert.deepEqual(await readdir(waitingJournal), []);
+  checks.push("shutdown waits for an unsent admission to be released");
+
   const stopHeld = join(root, "stop-held");
   const stopJournal = join(root, "stop-journal");
   await mkdir(stopHeld);
@@ -149,7 +179,7 @@ try {
   assert.deepEqual(await readdir(journal), []);
   assert.equal(gate.recoveryRequired, false);
   checks.push("an explicitly archived thread releases the refused admission");
-  for (const threadId of ["missing-thread", "compaction-refused"]) {
+  for (const threadId of ["missing-thread", "compaction-refused", "plan-refused"]) {
     await assert.rejects(Effect.runPromise(client.request("turn/start", { threadId }, decodeRecordResponse)));
     assert.equal(gate.has(threadId), false, `${threadId} releases its admission`);
   }
