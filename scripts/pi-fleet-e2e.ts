@@ -160,6 +160,7 @@ try {
   checks.push("Pi compaction releases admission after the RPC acknowledges completion");
   if (acquireStopScenario) {
     await writeFile(join(held, "delay-response"), "");
+    await writeFile(join(held, "delay-release"), "");
     const pending = runCauseEffect(
       client.request("turn/start", { threadId: thread, input: [{ type: "text", text: "unsent" }] }, (v) => v),
     );
@@ -173,9 +174,17 @@ try {
     const stopping = stopClients([client]).then(() => {
       stopped = true;
     });
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    assert.equal(stopped, false, "shutdown must wait for an in-flight Pi acquisition");
+    while (client.running) {
+      if (Date.now() > deadline) throw new Error("Pi shutdown did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
     await writeFile(join(held, "allow-response"), "");
+    while (!(await readdir(held)).includes("release-started")) {
+      if (Date.now() > deadline) throw new Error("Pi acquisition release did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.equal(stopped, false, "shutdown must wait for an in-flight Pi acquisition");
+    await writeFile(join(held, "release-continue"), "");
     await stopping;
     await assert.rejects(pending);
     assert.deepEqual(await readdir(journal), []);

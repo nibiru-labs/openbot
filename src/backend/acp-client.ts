@@ -677,11 +677,11 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   }
 
   get running(): boolean {
-    return this.#transport.running;
+    return this.#transport.running && !this.#stopping;
   }
 
   start(): void {
-    if (this.running) return;
+    if (this.#transport.running) return;
     this.#stopping = false;
     this.#scope = Scope.makeUnsafe();
     this.#transport.start();
