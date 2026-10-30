@@ -47,8 +47,8 @@ const codexExecutable = join(root, "codex");
 const codexLog = join(root, "codex-turns.jsonl");
 const workLog = join(root, "work.jsonl");
 const CODEX_MODEL = defaultProviderModel("codex");
-const PRIMARY: AgentModelId = defaultProviderModel("claude");
-const BACKUP: AgentModelId = PRIMARY === "claude-sonnet-5-5" ? "claude-opus-5-5" : "claude-sonnet-5-5";
+const PRIMARY: AgentModelId = "claude-sonnet-5-5";
+const BACKUP: AgentModelId = "claude-opus-5-5";
 // The text the Claude CLI writes in an outage. It names no HTTP status phrase, only the 529 and its type.
 const PROVIDER_ERROR =
   'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"},"request_id":"req_e2e"}';
@@ -122,6 +122,8 @@ const turn = (message) => {
   if ((input.includes("usage-work") || input.includes("usage-chain") || input.includes("usage-exhausted")) &&
       (model === ${JSON.stringify(PRIMARY)} || input.includes("usage-exhausted"))) {
     if (!input.includes("usage-chain-empty")) assistant("Checkpoint saved. Only the final step remains.");
+    write({ type: "rate_limit_event", rate_limit_info: { status: "rejected",
+      rateLimitType: model.includes("opus") ? "seven_day_opus" : "seven_day_sonnet" } });
     result({ is_error: true, result: "You've hit your limit. Try again later." });
     return;
   }
@@ -473,7 +475,7 @@ async function send(agentId: string, text: string, sourcePaths?: string[]) {
   assert.ok(deliveryId, "The message has a delivery.");
   const status = await waitFor(`"${text}" to end`, () => {
     const value = mailbox.getDelivery(deliveryId)?.delivery.status;
-    return value === "completed" || value === "failed" ? value : null;
+    return value === "completed" || value === "failed" || value === "interrupted" ? value : null;
   });
   return { deliveryId, status, error: mailbox.getDelivery(deliveryId)?.delivery.error ?? null };
 }
@@ -792,7 +794,7 @@ try {
         const before = turns().length;
         const beforeCodex = readLog<CodexTurn>(codexLog).length;
         const outcome = await send(agent.id, "usage-partial case:stopped");
-        assert.equal(outcome.status, "failed");
+        assert.equal(outcome.status, "interrupted");
         assert.equal(turns().length, before, "No backup runs.");
         assert.equal(readLog<CodexTurn>(codexLog).length, beforeCodex + 1, "The original action is not replayed.");
         assert.equal(agentOf(agent.id).provider, "codex");
@@ -807,7 +809,7 @@ try {
     const before = turns().length;
     const beforeCodex = readLog<CodexTurn>(codexLog).length;
     const outcome = await send(agent.id, "usage-exhausted case:exhausted");
-    assert.equal(outcome.status, "failed");
+    assert.equal(outcome.status, "interrupted");
     assert.deepEqual(
       turns()
         .slice(before)
