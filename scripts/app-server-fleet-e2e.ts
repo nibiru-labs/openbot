@@ -118,6 +118,21 @@ try {
   assert.deepEqual(await readdir(held), []);
   checks.push("interrupted Codex acquisition releases its unsent reservation");
 
+  await writeFile(join(held, "delay-acquire"), "");
+  const firstAdmission = Effect.runPromise(client.request("turn/start", { threadId: "early" }, decodeRecordResponse));
+  const duplicateDeadline = Date.now() + 10_000;
+  while (!(await readdir(held)).includes("acquire-started")) {
+    if (Date.now() > duplicateDeadline) throw new Error("First acquisition did not start.");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  await assert.rejects(Effect.runPromise(client.request("turn/start", { threadId: "early" }, decodeRecordResponse)));
+  await writeFile(join(held, "acquire-continue"), "");
+  await firstAdmission;
+  for (const marker of ["delay-acquire", "acquire-started", "acquire-continue"]) await rm(join(held, marker));
+  assert.deepEqual(await readdir(held), []);
+  assert.deepEqual(await readdir(journal), []);
+  checks.push("a duplicate pending admission cannot release another request's slot");
+
   const waitingHeld = join(root, "waiting-held");
   const waitingJournal = join(root, "waiting-journal");
   await mkdir(waitingHeld);

@@ -77,6 +77,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
   readonly #fleetThreads = new Map<string, string>();
   readonly #fleetReleases = new Set<Promise<void>>();
   readonly #fleetAdmissions = new Set<Promise<void>>();
+  readonly #fleetPendingAdmissions = new Set<string>();
   readonly #fleetCompactions = new Map<string, { turnId: string | null; confirmed: boolean }>();
   readonly #fleetStarts = new Map<string, { observed: string | null; confirmed: string | null }>();
   #fleetWaitAbort = new AbortController();
@@ -303,6 +304,11 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
       }
       fleetThread = params.threadId;
       const threadId = fleetThread;
+      if (this.#fleetPendingAdmissions.has(threadId)) {
+        return yield* new ProviderClientOperationError({
+          cause: new Error(sourceText("error.provider.fleetUnavailable")),
+        });
+      }
       if (!this.running) {
         return yield* new ProviderClientOperationError({ cause: new Error("Codex App Server is not running.") });
       }
@@ -313,6 +319,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
         finishAdmission = resolve;
       });
       this.#fleetAdmissions.add(admission);
+      this.#fleetPendingAdmissions.add(threadId);
       fleetCompactionAbort = compactionAbort;
       if (compactionAbort) this.#pendingCompactionAdmissions.set(threadId, compactionAbort);
       fleetReservation = yield* this.#admitFleetTurn(threadId, compactionAbort?.signal).pipe(
@@ -331,6 +338,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
         Effect.ensuring(
           Effect.sync(() => {
             this.#fleetAdmissions.delete(admission);
+            this.#fleetPendingAdmissions.delete(threadId);
             finishAdmission();
           }),
         ),
