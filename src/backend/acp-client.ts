@@ -435,7 +435,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   readonly #fleetSent = new Set<string>();
   readonly #fleetCompleting = new Set<string>();
   readonly #fleetReleases = new Set<Promise<void>>();
+  readonly #fleetAdmissions = new Set<Promise<void>>();
   readonly #fleetPendingStarts = new Map<string, AbortController>();
+  #stopping = false;
   readonly #serverRequests = new PendingServerRequests((request) => this.emit("request", request));
   #initialized: Deferred.Deferred<void, ProviderClientOperationError> | null = null;
   #scope = Scope.makeUnsafe();
@@ -675,6 +677,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
 
   start(): void {
     if (this.running) return;
+    this.#stopping = false;
     this.#scope = Scope.makeUnsafe();
     this.#transport.start();
   }
@@ -682,7 +685,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   readonly stop = Effect.fn("AcpAgentClient.stop")(function* (
     this: AcpAgentClient,
   ): Effect.fn.Return<void, ProviderClientOperationError> {
+    this.#stopping = true;
     this.#retainFleetTurns();
+    yield* Effect.promise(() => Promise.all([...this.#fleetAdmissions]).then(() => undefined));
     yield* Effect.promise(() => Promise.all([...this.#fleetReleases]).then(() => undefined));
     yield* this.#transport
       .stop(
@@ -707,10 +712,15 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     const gate = this.#fleet;
     const backend = this.#fleetBackend;
     if (!gate || !backend) return;
+    let finishAdmission!: () => void;
+    const admission = new Promise<void>((resolve) => {
+      finishAdmission = resolve;
+    });
+    this.#fleetAdmissions.add(admission);
     yield* Effect.uninterruptibleMask((restore) =>
       Effect.gen({ self: this }, function* () {
         while (true) {
-          if (!this.running || signal?.aborted)
+          if (!this.running || this.#stopping || signal?.aborted)
             return yield* providerFailure(new Error(sourceText("error.provider.fleetUnavailable")));
           if (gate.requiresRecovery(backend))
             return yield* providerFailure(new Error(sourceText("error.provider.fleetUnavailable")));
@@ -720,7 +730,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
               .begin(id, backend, null)
               .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable"))))))
           ) {
-            if (!this.running || signal?.aborted) {
+            if (!this.running || this.#stopping || signal?.aborted) {
               yield* gate
                 .cancelBeforeSend(id)
                 .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
@@ -746,6 +756,13 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           );
         }
       }),
+    ).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          this.#fleetAdmissions.delete(admission);
+          finishAdmission();
+        }),
+      ),
     );
   });
 

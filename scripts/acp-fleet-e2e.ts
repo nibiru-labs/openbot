@@ -37,6 +37,10 @@ if (request.op === 'acquire') {
     process.exit(0);
   }
   writeFileSync(path, 'held', {flag:'wx'});
+  if (existsSync(join(process.argv[2], 'delay-acquire'))) {
+    writeFileSync(join(process.argv[2], 'acquire-started'), '');
+    while (!existsSync(join(process.argv[2], 'acquire-continue'))) await new Promise(resolve => setTimeout(resolve, 20));
+  }
   process.stdout.write(JSON.stringify({ok:true, admitted:true}));
 } else {
   unlinkSync(path);
@@ -114,6 +118,39 @@ try {
     assert.equal(entries.filter((entry) => entry.op === "acquire" && entry.backend === backend).length, 5);
     checks.push(`${provider} holds admission for both a turn and a private usage prompt`);
   }
+  {
+    const client = requireProviderDriver("cursor").createClient(
+      { executable: join(root, "cursor", "agent"), version: "1.4.1", source: "managed" },
+      10_000,
+      NO_PROVIDER_CREDENTIALS,
+    );
+    clients.push(client);
+    client.start();
+    const thread = await startThread(client, { cwd: root });
+    await writeFile(join(held, "delay-acquire"), "");
+    const pending = runCauseEffect(
+      client.request("turn/start", { threadId: thread, input: [{ type: "text", text: "unsent" }] }, (v) => v),
+    );
+    pending.catch(() => {});
+    const deadline = Date.now() + 10_000;
+    while (!(await readdir(held)).includes("acquire-started")) {
+      if (Date.now() > deadline) throw new Error("Admission did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    let stopped = false;
+    const stopping = stopClients([client]).then(() => {
+      stopped = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(stopped, false, "shutdown must wait for an in-flight acquisition");
+    await writeFile(join(held, "acquire-continue"), "");
+    await stopping;
+    await assert.rejects(pending);
+    assert.deepEqual(await readdir(journal), []);
+    for (const marker of ["delay-acquire", "acquire-started", "acquire-continue"]) await rm(join(held, marker));
+    assert.deepEqual(await readdir(held), []);
+    checks.push("shutdown waits for a pending acquisition to release");
+  }
   for (const prompt of ["private usage before stop", "reject-prompt"]) {
     const client = requireProviderDriver("cursor").createClient(
       { executable: join(root, "cursor", "agent"), version: "1.4.1", source: "managed" },
@@ -157,14 +194,25 @@ try {
   );
   const activeId = getString(getRecord(active, "turn"), "id");
   assert.ok(activeId);
-  const competing = Effect.runFork(
-    cursorClient.request(
-      "turn/start",
-      { threadId: cursorThread, input: [{ type: "text", text: "competing" }] },
-      (v) => v,
+  const competing = await Effect.runPromise(
+    Effect.forkDetach(
+      cursorClient.request(
+        "turn/start",
+        { threadId: cursorThread, input: [{ type: "text", text: "competing" }] },
+        (v) => v,
+      ),
+      { startImmediately: true },
     ),
   );
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await assert.rejects(
+    runCauseEffect(
+      cursorClient.request(
+        "turn/start",
+        { threadId: cursorThread, input: [{ type: "text", text: "duplicate" }] },
+        (v) => v,
+      ),
+    ),
+  );
   await Effect.runPromise(Fiber.interrupt(competing));
   await runCauseEffect(cursorClient.request("turn/interrupt", { threadId: cursorThread, turnId: activeId }, (v) => v));
   await cursorEnded;
@@ -273,6 +321,8 @@ try {
   );
   throw error;
 } finally {
+  await writeFile(join(held, "acquire-continue"), "").catch(() => {});
+  await writeFile(join(held, "release-continue"), "").catch(() => {});
   await stopClients(clients);
   await rm(root, { recursive: true, force: true });
 }
