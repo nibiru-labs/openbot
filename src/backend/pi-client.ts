@@ -142,6 +142,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
   readonly #fleetSent = new Set<string>();
   readonly #fleetCompleting = new Set<string>();
   readonly #fleetReleases = new Set<Promise<void>>();
+  readonly #fleetAdmissions = new Set<Promise<void>>();
   readonly #fleetPendingStarts = new Map<string, AbortController>();
   readonly #fleetPendingCompactions = new Map<string, AbortController>();
   readonly #compacting = new Set<string>();
@@ -196,6 +197,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
     this.#running = false;
     for (const controller of this.#fleetPendingStarts.values()) controller.abort();
     for (const controller of this.#fleetPendingCompactions.values()) controller.abort();
+    yield* Effect.promise(() => Promise.all([...this.#fleetAdmissions]).then(() => undefined));
     for (const threadId of this.#fleetThreads.keys()) {
       if (!this.#fleetCompleting.has(threadId)) yield* this.#cancelOrRetainFleetTurn(threadId);
     }
@@ -435,6 +437,11 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
   ) {
     const gate = this.#fleet;
     if (!gate) return;
+    let finishAdmission!: () => void;
+    const admission = new Promise<void>((resolve) => {
+      finishAdmission = resolve;
+    });
+    this.#fleetAdmissions.add(admission);
     yield* Effect.uninterruptibleMask((restore) =>
       Effect.gen({ self: this }, function* () {
         while (true) {
@@ -475,6 +482,13 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
           );
         }
       }),
+    ).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          this.#fleetAdmissions.delete(admission);
+          finishAdmission();
+        }),
+      ),
     );
   });
 
