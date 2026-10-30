@@ -324,6 +324,7 @@ export const messages = defineMessages("error.provider", {
   "error.provider.nativeVersionUnreadable": "The {provider} CLI version could not be read.",
   "error.provider.piSessionBusy": "Wait for the current Pi turn to finish.",
   "error.provider.piStopped": "Pi is not running. Connect Pi and try again.",
+  "error.provider.compactionUnconfirmed": "The provider did not confirm compaction.",
   "error.provider.fleetUnavailable":
     "The shared execution limit is unavailable or requires recovery. Check the coordinator before retrying.",
   "error.provider.fleetIdentityUnconfirmed":

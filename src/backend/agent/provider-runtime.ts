@@ -342,7 +342,7 @@ const INITIAL_STATUS: AgentStatus = {
 export class ProviderRuntime implements ProviderPort {
   /** Treat an unresponsive client as lost so its owner clears turns and schedules a restart. */
   stopUnresponsiveClient(client: AgentClient): void {
-    this.#handleExit(client, new Error("Provider did not confirm compaction."));
+    this.#handleExit(client, new Error(sourceText("error.provider.compactionUnconfirmed")));
   }
   readonly #conversation: ConversationRuntime;
   readonly #hooks: ProviderHooks;
