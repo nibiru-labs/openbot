@@ -4,7 +4,7 @@
 // `refuse` is refused, as Pi refuses an extension command, and the run goes on. A steer whose text
 // starts with `hold` stays in the queue, as during a long tool call. A steer whose text starts with
 // `slow` is queued but gets no answer. Each request is logged to `FAKE_LOG`.
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { isDynamicRecord, type DynamicRecord as RpcRecord } from "@openbot/contracts/runtime-values";
@@ -49,8 +49,13 @@ const handlers: Record<string, (command: RpcRecord) => void> = {
   get_session_stats: (command) => refuse(command, "No stats."),
   compact: (command) => {
     log({ event: "compact" });
-    if (process.env.FAKE_COMPACT_DELAY) setTimeout(() => answer(command), 1000);
-    else answer(command);
+    if (process.env.FAKE_COMPACT_DELAY) {
+      const timer = setInterval(() => {
+        if (!existsSync(join(process.env.FAKE_DIR ?? process.cwd(), "compact-continue"))) return;
+        clearInterval(timer);
+        answer(command);
+      }, 20);
+    } else answer(command);
   },
   prompt: (command) => {
     log({ event: "prompt", text: String(command.message), streamingBehavior: String(command.streamingBehavior) });

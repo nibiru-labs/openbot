@@ -154,6 +154,7 @@ try {
   assert.equal(client.canReleaseProcess?.(), false);
   assert.ok(client.releaseIdleThreads);
   await runCauseEffect(client.releaseIdleThreads());
+  await writeFile(join(root, "compact-continue"), "");
   await compact;
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
@@ -406,6 +407,7 @@ try {
   );
   throw error;
 } finally {
+  await writeFile(join(root, "compact-continue"), "").catch(() => {});
   await writeFile(join(held, "allow-response"), "").catch(() => {});
   await writeFile(join(held, "release-continue"), "").catch(() => {});
   await stopClients(clients);
