@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { Effect, Fiber } from "effect";
 import type { AgentClient } from "../src/backend/agent-client";
 import { runCauseEffect } from "../src/backend/effect-boundary";
+import { PiAgentClient } from "../src/backend/pi-client";
 import { getRecord, getString } from "../src/backend/protocol";
 import { requireProviderDriver } from "../src/backend/provider-drivers";
 import { installFakeAgent, startThread, stopClients } from "./provider-fakes/host";
@@ -18,6 +19,10 @@ const executable = join(root, "bin", "pi");
 const reportDirectory = resolve(import.meta.dirname, "../.openbot-build/pi-fleet-e2e");
 const clients: AgentClient[] = [];
 const checks: string[] = [];
+function observePiReleaseDrain(client: AgentClient): Promise<number> {
+  if (!(client instanceof PiAgentClient)) throw new Error("Expected the Pi adapter.");
+  return new Promise((resolve) => client.once("fleet-release-drain", resolve));
+}
 const timeoutScenario = process.argv.includes("--timeout");
 const interruptScenario = process.argv.includes("--interrupt");
 const idleScenario = process.argv.includes("--idle");
@@ -163,11 +168,19 @@ try {
       if (Date.now() > deadline) throw new Error("Pi compaction release did not start.");
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
+    const drain = observePiReleaseDrain(client);
     let stopped = false;
     const stopping = stopClients([client]).then(() => {
       stopped = true;
     });
-    await Promise.race([stopping, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const draining = await Promise.race([
+      drain,
+      new Promise<never>((_, reject) => {
+        watchdog = setTimeout(() => reject(new Error("Pi shutdown did not reach release drain.")), 10_000);
+      }),
+    ]).finally(() => clearTimeout(watchdog));
+    assert.equal(draining, 1, "shutdown must track the in-flight compaction release");
     assert.equal(stopped, false, "shutdown must wait for the compaction release");
     await writeFile(join(held, "release-continue"), "");
     await compact;
