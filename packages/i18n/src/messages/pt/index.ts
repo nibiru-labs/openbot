@@ -27,6 +27,7 @@ import { messages as menu } from "./menu";
 import { messages as messaging } from "./messaging";
 import { messages as notification } from "./notification";
 import { messages as onboarding } from "./onboarding";
+import { messages as orgHealthDemo } from "./orgHealthDemo";
 import { messages as plugin } from "./plugin";
 import { messages as preview } from "./preview";
 import { messages as prompt } from "./prompt";
@@ -90,6 +91,7 @@ export const pt = {
   ...webClient,
   ...account,
   ...onboarding,
+  ...orgHealthDemo,
   ...usage,
   ...sidebar,
   ...channel,
