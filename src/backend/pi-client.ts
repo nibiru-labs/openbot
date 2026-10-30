@@ -309,6 +309,8 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
         const id = yield* providerSync(() => requiredString(params, "threadId"));
         const controller = method === "turn/start" && this.#fleet ? new AbortController() : null;
         let admitted = false;
+        if (controller && this.#fleetPendingStarts.has(id))
+          return yield* providerFailure(new Error(sourceText("error.provider.piSessionBusy")));
         if (controller) this.#fleetPendingStarts.set(id, controller);
         response = yield* Effect.gen({ self: this }, function* () {
           if (method === "turn/start" && this.#fleet) {
