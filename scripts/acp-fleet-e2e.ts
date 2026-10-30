@@ -128,6 +128,7 @@ try {
     client.start();
     const thread = await startThread(client, { cwd: root });
     await writeFile(join(held, "delay-acquire"), "");
+    await writeFile(join(held, "delay-release"), "");
     const pending = runCauseEffect(
       client.request("turn/start", { threadId: thread, input: [{ type: "text", text: "unsent" }] }, (v) => v),
     );
@@ -141,13 +142,29 @@ try {
     const stopping = stopClients([client]).then(() => {
       stopped = true;
     });
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    assert.equal(stopped, false, "shutdown must wait for an in-flight acquisition");
+    while (client.running) {
+      if (Date.now() > deadline) throw new Error("ACP shutdown did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
     await writeFile(join(held, "acquire-continue"), "");
+    while (!(await readdir(held)).includes("release-started")) {
+      if (Date.now() > deadline) throw new Error("ACP acquisition release did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.equal(stopped, false, "shutdown must wait for an in-flight acquisition");
+    await writeFile(join(held, "release-continue"), "");
     await stopping;
     await assert.rejects(pending);
     assert.deepEqual(await readdir(journal), []);
-    for (const marker of ["delay-acquire", "acquire-started", "acquire-continue"]) await rm(join(held, marker));
+    for (const marker of [
+      "delay-acquire",
+      "acquire-started",
+      "acquire-continue",
+      "delay-release",
+      "release-started",
+      "release-continue",
+    ])
+      await rm(join(held, marker));
     assert.deepEqual(await readdir(held), []);
     checks.push("shutdown waits for a pending acquisition to release");
   }
@@ -173,7 +190,10 @@ try {
     const stopping = stopClients([client]).then(() => {
       stopped = true;
     });
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    while (client.running) {
+      if (Date.now() > deadline) throw new Error("ACP shutdown did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
     assert.equal(stopped, false, "shutdown must wait for a private prompt release");
     await writeFile(join(held, "release-continue"), "");
     await stopping;
