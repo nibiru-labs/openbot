@@ -182,8 +182,8 @@ try {
   // 1. A Google sign-in on 1.4.1: the Gemini group's weekly window, both reads in one session.
   const google = await readUsage("1.4.1", GOOGLE_ANSWER, 2, "gemini-3.8-flash-high");
   report.googleSignIn = google;
-  assert.deepEqual(google.prompts, ["/usage", "/usage"], "1.4.1 is sent `/usage` for each read");
-  assert.equal(google.usageSessions.length, 1, "the second read reuses the first read's session");
+  assert.deepEqual(google.prompts, ["/usage"], "concurrent reads share one `/usage` prompt");
+  assert.equal(google.usageSessions.length, 1, "the shared read uses one private session");
   for (const reading of google.readings)
     assert.deepEqual(reading.rateLimits, {
       limitId: "antigravity",
