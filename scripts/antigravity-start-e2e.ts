@@ -37,7 +37,7 @@ const SLOW_UNPACK_MS = 7_000;
 // `FAKE_AGY_UNPACK_MS` before it reads a request, then answers as an ACP server with one model.
 // While the file `FAKE_AGY_HOLD` exists, a `session/new` after the first one, as the catalogue
 // refresh of a started process sends, waits for that file to go and writes its pid to `<file>.held`.
-const FAKE_AGY = `#!/usr/bin/env node
+const FAKE_AGY = `#!${process.execPath}
 const fs = require("node:fs");
 const path = require("node:path");
 const NL = String.fromCharCode(10);
@@ -237,7 +237,7 @@ try {
   const envInRoot = [started.TMP, started.TEMP, started.TMPDIR].every((path) => path.startsWith(`${tempRoot}${sep}`));
   const unpackedWhileRunning = (await entries(started.unpacked)).length > 0;
   await runCauseEffect(client.stop());
-  await waitFor("the stopped process's folder to be removed", async () => (await entries(tempRoot)).length === 0);
+  assert.deepEqual(await entries(tempRoot), [], "stop waits for the temporary folder removal");
   report.stoppedProcess = {
     tempRoot,
     envInRoot,

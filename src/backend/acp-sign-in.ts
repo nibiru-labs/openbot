@@ -59,7 +59,7 @@ export const startAcpAuthentication = Effect.fnUntraced(function* (options: {
 }) {
   // Cursor's Windows launcher is a `.cmd` file, which starts only through `cmd.exe`.
   const target = cliSpawnTarget(options.executable, options.argv);
-  const child = yield* Effect.acquireRelease(
+  const resource = yield* Effect.acquireRelease(
     Effect.try({
       try: () =>
         spawnWithProviderTemp(options.privateTemp, (tempEnv) =>
@@ -80,8 +80,9 @@ export const startAcpAuthentication = Effect.fnUntraced(function* (options: {
         ),
       catch: providerFailure,
     }),
-    (child) => stopProcessTree(child).pipe(Effect.orDie),
+    ({ child, removed }) => stopProcessTree(child).pipe(Effect.orDie, Effect.ensuring(Effect.promise(() => removed))),
   );
+  const { child } = resource;
   if (!options.openGoogleSignIn) child.stderr.resume();
   const done = yield* Effect.forkScoped(
     Effect.callback<void, ProviderClientOperationError>((resume) => {

@@ -286,8 +286,16 @@ function shellWord(value: string): string {
  * login shell's own is used, because a packaged app starts with a restricted `PATH` - the same
  * reason `collectCandidates` in `cli.ts` uses a login shell.
  */
-/** Share one lookup per command and PATH. A miss is removed so new installs can be found. */
+/** Share one lookup per command and PATH. A miss is removed so new installs can be found. Past the cap, the oldest goes. */
+const MCP_COMMAND_CACHE_LIMIT = 512;
 const resolvedCommands = new Map<string, Deferred.Deferred<string | null, McpShapeFailed>>();
+
+function rememberMcpCommandLookup(key: string, pending: Deferred.Deferred<string | null, McpShapeFailed>): void {
+  resolvedCommands.set(key, pending);
+  if (resolvedCommands.size <= MCP_COMMAND_CACHE_LIMIT) return;
+  const [oldest] = resolvedCommands.keys();
+  if (oldest !== undefined && oldest !== key) resolvedCommands.delete(oldest);
+}
 
 const resolveMcpCommand = Effect.fn("McpShape.resolveCommand")(function* (command: string, path: string | null = null) {
   const trimmed = expandHomePath(command);
@@ -297,7 +305,7 @@ const resolveMcpCommand = Effect.fn("McpShape.resolveCommand")(function* (comman
   const cached = resolvedCommands.get(key);
   if (cached) return yield* Deferred.await(cached);
   const pending = Deferred.makeUnsafe<string | null, McpShapeFailed>();
-  resolvedCommands.set(key, pending);
+  rememberMcpCommandLookup(key, pending);
   return yield* lookUpMcpCommand(trimmed, path).pipe(
     Effect.tap((value) =>
       Effect.sync(() => {
@@ -318,6 +326,11 @@ const resolveMcpCommand = Effect.fn("McpShape.resolveCommand")(function* (comman
  */
 export function clearMcpCommandCache(): void {
   resolvedCommands.clear();
+}
+
+/** How many command lookups the cache currently holds. For E2E checks only. */
+export function mcpCommandCacheSize(): number {
+  return resolvedCommands.size;
 }
 
 /**

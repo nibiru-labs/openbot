@@ -176,6 +176,17 @@ const parseCommandJson = <S extends Schema.ConstraintDecoder<unknown>>(schema: S
       }),
   });
 const isTerminal = (record: DispatchRecord) => record.status !== "running" && record.status !== "cancelling";
+const DELIVERED_HISTORY_LIMIT = 100;
+const limitDeliveredHistory = (runs: DispatchRecord[]) => {
+  let kept = 0;
+  return runs
+    .filter((run) => {
+      if (!run.delivered || !isTerminal(run)) return true;
+      kept += 1;
+      return kept <= DELIVERED_HISTORY_LIMIT;
+    })
+    .reverse();
+};
 const expandHome = (path: string) => (path.startsWith("~/") ? join(homedir(), path.slice(2)) : path);
 
 /** Redacts executor-controlled text again before it reaches the local dispatch record. */
@@ -232,7 +243,9 @@ export class DispatchService {
     );
     if (contents !== null) {
       const runs = [...(yield* step(() => Schema.decodeUnknownSync(stateSchema)(JSON.parse(contents)))).runs];
-      const safeRuns = runs.map((record) => redactDispatchRecord(record, this.#options.redact));
+      const safeRuns = limitDeliveredHistory(runs.toReversed()).map((record) =>
+        redactDispatchRecord(record, this.#options.redact),
+      );
       if (JSON.stringify(runs) !== JSON.stringify(safeRuns)) yield* this.#save(safeRuns);
       else this.#runs = safeRuns;
     }
@@ -456,7 +469,9 @@ export class DispatchService {
   }
 
   #save(runs: DispatchRecord[], exitCode: number | null = null) {
-    const safeRuns = runs.map((record) => redactDispatchRecord(record, this.#options.redact));
+    const safeRuns = limitDeliveredHistory(runs.toReversed()).map((record) =>
+      redactDispatchRecord(record, this.#options.redact),
+    );
     return writeJsonFileAtomically(
       join(this.#options.dataPath, "openbot-dispatch-v1.json"),
       { version: 1, runs: safeRuns },

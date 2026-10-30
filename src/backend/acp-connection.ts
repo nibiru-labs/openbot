@@ -51,6 +51,7 @@ export class AcpConnection {
   #ended: Deferred.Deferred<ProcessEnd> | null = null;
   #stopping = false;
   readonly #stoppedProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
+  readonly #tempRemovals = new Set<Promise<void>>();
   constructor(private readonly options: AcpConnectionOptions) {}
   get running(): boolean {
     return this.#process !== null && this.#process.exitCode === null && !this.#stopping;
@@ -71,20 +72,24 @@ export class AcpConnection {
     const direct = cliSpawnTarget(this.options.cli.executable, this.options.argv);
     const target = this.options.confine ? this.options.confine(direct) : direct;
     const privateTemp = this.options.privateTemp;
-    const child = spawnWithProviderTemp(privateTemp && { ...privateTemp, provider: this.options.label() }, (tempEnv) =>
-      spawn(target.command, target.args, {
-        stdio: ["pipe", "pipe", "pipe"],
-        env: {
-          ...process.env,
-          ...cliPathEnvironment(this.options.cli),
-          ...this.options.env,
-          ...this.options.extraEnv?.(),
-          ...tempEnv,
-        },
-        windowsVerbatimArguments: target.windowsVerbatimArguments,
-        windowsHide: true,
-      }),
+    const { child, removed } = spawnWithProviderTemp(
+      privateTemp && { ...privateTemp, provider: this.options.label() },
+      (tempEnv) =>
+        spawn(target.command, target.args, {
+          stdio: ["pipe", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            ...cliPathEnvironment(this.options.cli),
+            ...this.options.env,
+            ...this.options.extraEnv?.(),
+            ...tempEnv,
+          },
+          windowsVerbatimArguments: target.windowsVerbatimArguments,
+          windowsHide: true,
+        }),
     );
+    this.#tempRemovals.add(removed);
+    void removed.then(() => this.#tempRemovals.delete(removed));
     this.#process = child;
     registerProviderProcess(child, this.options.provider);
     // A start that times out says nothing of the process. These lines show whether it ran, how long
@@ -167,7 +172,10 @@ export class AcpConnection {
     this.#connection = null;
     yield* cleanup.pipe(
       Effect.ensuring(
-        Effect.suspend(() => (!child || child.exitCode !== null ? Effect.void : endProcess(child))).pipe(Effect.orDie),
+        Effect.suspend(() => (!child || child.exitCode !== null ? Effect.void : endProcess(child))).pipe(
+          Effect.orDie,
+          Effect.ensuring(Effect.promise(() => Promise.all(this.#tempRemovals).then(() => undefined))),
+        ),
       ),
     );
   }, Effect.uninterruptible);

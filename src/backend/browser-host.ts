@@ -361,6 +361,7 @@ export class BrowserHost {
   /** Whether the machine is too low on memory for one more tab. Only a server has a reading. */
   readonly #memoryLow: () => boolean;
   readonly #idleTabSweep: NodeJS.Timeout;
+  #idleTabSweepRunning = false;
 
   constructor(
     window: BrowserWindow,
@@ -406,9 +407,13 @@ export class BrowserHost {
     app.userAgentFallback = sessionBrowserUserAgent(app.userAgentFallback);
     this.#configureSession(this.#session);
     this.#idleTabSweep = setInterval(() => {
-      void runCauseEffect(this.#sleepIdleTabs()).catch((error) =>
-        logger.warn("Unable to sleep browser tabs", { error: toLogValue(error) }),
-      );
+      if (this.#idleTabSweepRunning) return;
+      this.#idleTabSweepRunning = true;
+      void runCauseEffect(this.#sleepIdleTabs())
+        .catch((error) => logger.warn("Unable to sleep browser tabs", { error: toLogValue(error) }))
+        .finally(() => {
+          this.#idleTabSweepRunning = false;
+        });
     }, IDLE_TAB_SWEEP_MS);
     this.#idleTabSweep.unref();
   }
@@ -2908,7 +2913,14 @@ export class BrowserHost {
     // navigation queued before it, or one that commits while it runs, decides where it ran.
     const markScripted = () => {
       const origin = urlOrigin(currentTabUrl(tab));
-      if (origin) this.#agentScriptedOrigins.add(origin);
+      if (origin) {
+        this.#agentScriptedOrigins.delete(origin);
+        this.#agentScriptedOrigins.add(origin);
+        if (this.#agentScriptedOrigins.size > 1000) {
+          const oldest = this.#agentScriptedOrigins.values().next().value;
+          if (oldest !== undefined) this.#agentScriptedOrigins.delete(oldest);
+        }
+      }
     };
     return yield* runTabEvaluation(
       tab,

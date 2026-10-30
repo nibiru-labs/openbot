@@ -1,5 +1,5 @@
 import type { ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, statfsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statfsSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { sourceText } from "@openbot/i18n/source";
@@ -41,28 +41,27 @@ const { io } = causeHelpers(ProviderTempIoError);
 export function spawnWithProviderTemp<Child extends ChildProcess>(
   options: ProviderTempOptions | undefined,
   start: (env: Record<string, string>) => Child,
-): Child {
-  if (!options) return start({});
+): { child: Child; removed: Promise<void> } {
+  if (!options) return { child: start({}), removed: Promise.resolve() };
   mkdirSync(options.root, { recursive: true, mode: 0o700 });
   const available = (options.availableDiskBytes ?? freeDiskBytes)(options.root);
   if (available < PROVIDER_TEMP_FREE_BYTES)
     throw new ProviderTempDiskSpaceError(sourceText("error.provider.tempDiskSpace", { provider: options.provider }));
   const directory = mkdtempSync(join(options.root, "run-"));
-  const dispose = () => void Effect.runFork(removeDirectory(directory));
   let child: Child;
   try {
     // `TMP` and `TEMP` on Windows, `TMPDIR` elsewhere.
     child = start({ TMP: directory, TEMP: directory, TMPDIR: directory });
   } catch (error) {
-    dispose();
+    rmSync(directory, { recursive: true, force: true });
     throw error;
   }
-  child.once("close", dispose);
-  // A process that never started has no `close` to wait for.
-  child.once("error", () => {
-    if (child.pid === undefined) dispose();
+  const removed = new Promise<void>((resolve) => {
+    child.once("close", () => {
+      void Effect.runPromise(removeDirectory(directory)).then(resolve);
+    });
   });
-  return child;
+  return { child, removed };
 }
 
 /**

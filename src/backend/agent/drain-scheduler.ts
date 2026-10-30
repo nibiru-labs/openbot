@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AGENT_PROVIDERS, type AgentModelOption, type AgentSummary } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger } from "@openbot/logging";
-import { Deferred, Effect, Result, Schema } from "effect";
+import { Deferred, Effect, Exit, Result, Schema, Scope } from "effect";
 import { type AgentProvider, ProviderTurnActiveError } from "../agent-client";
 import type { AgentStore } from "../agent-store";
 import type { ChannelService } from "../channel-service";
@@ -198,6 +198,7 @@ export class DrainScheduler {
    */
   readonly #startingDeliveries = new Map<AgentProvider, number>();
   readonly #scheduledDrains = new Set<string>();
+  #scope = Scope.makeUnsafe();
   readonly #drainTasks = new Map<string, Deferred.Deferred<void, DeliveryStartFailed>>();
 
   constructor(options: DrainSchedulerOptions) {
@@ -454,7 +455,9 @@ export class DrainScheduler {
     this.retrySlotWaiters();
   }
 
-  dispose(): void {
+  *dispose(): Effect.fn.Return<void> {
+    yield* Scope.close(this.#scope, Exit.void);
+    this.#scope = Scope.makeUnsafe();
     this.#drainingLanes.clear();
     this.#scheduledDrains.clear();
     this.#slotWaiters.clear();
@@ -911,10 +914,11 @@ export class DrainScheduler {
             // The wait has a limit: a turn that never starts would keep these messages starting, and
             // the agent's queue would stop with no notice.
             const ids = batch.map(({ delivery: item }) => item.id);
-            yield* Effect.forkDetach(
+            yield* Effect.forkIn(
               this.#settleUnstarted(delivery.recipientAgentId, ids, releaseReservation, routineThreadId).pipe(
                 Effect.delay(TURN_START_GRACE_MS),
               ),
+              this.#scope,
             );
             return;
           }

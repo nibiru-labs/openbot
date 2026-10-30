@@ -171,6 +171,38 @@ try {
   left.close();
   right.close();
 
+  let started!: () => void;
+  const callStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let aborted = false;
+  const pending = await runCauseEffect(
+    bridge.createSession(
+      "pending",
+      [namespace],
+      () => "turn",
+      (_call, signal) =>
+        Effect.promise(
+          () =>
+            new Promise((resolve) => {
+              started();
+              const finish = () => {
+                aborted = true;
+                resolve({ success: false, contentItems: [] });
+              };
+              if (signal.aborted) finish();
+              else signal.addEventListener("abort", finish, { once: true });
+            }),
+        ),
+    ),
+  );
+  const call = whoami(pending);
+  await callStarted;
+  pending.close();
+  await runCauseEffect(bridge.close());
+  await call;
+  assert.ok(aborted, "Bridge close aborts a call even after its session closes.");
+
   report.passed = true;
 } finally {
   await runCauseEffect(bridge.close());

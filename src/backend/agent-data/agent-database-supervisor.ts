@@ -28,7 +28,11 @@ interface PendingRequest {
   request: AgentDatabaseRequest;
   settle: (outcome: AgentDatabaseOutcome) => void;
   queuedAt: number;
+  timer: NodeJS.Timeout;
 }
+
+const MAX_QUEUED_REQUESTS = 64;
+const BUSY_MESSAGE = "The database queue was busy for too long. Try the call again.";
 
 const STOPPED_MESSAGE =
   "That statement ran longer than allowed and was stopped. Nothing it was writing was saved. Narrow the query, add an index, or work in smaller batches.";
@@ -75,12 +79,25 @@ export class AgentDatabaseSupervisor {
         resume(Effect.succeed(shuttingDown()));
         return;
       }
+      if (this.#queue.length >= MAX_QUEUED_REQUESTS) {
+        resume(Effect.succeed(failed("busy", BUSY_MESSAGE)));
+        return;
+      }
       const id = this.#nextId++;
       const numbered: AgentDatabaseRequest = request.kind === "statement" ? { ...request, id } : { ...request, id };
+      const timer = setTimeout(() => {
+        const index = this.#queue.indexOf(entry);
+        if (index !== -1) {
+          this.#queue.splice(index, 1);
+          entry.settle(failed("busy", BUSY_MESSAGE));
+        }
+      }, this.#queueWaitMs);
+      timer.unref();
       const entry: PendingRequest = {
         request: numbered,
         settle: (outcome) => resume(Effect.succeed(outcome)),
         queuedAt: Date.now(),
+        timer,
       };
       this.#queue.push(entry);
       this.#pump();
@@ -88,7 +105,10 @@ export class AgentDatabaseSupervisor {
       // dropping its reply must not replay it or terminate another caller's statement.
       return Effect.sync(() => {
         const index = this.#queue.indexOf(entry);
-        if (index !== -1) this.#queue.splice(index, 1);
+        if (index !== -1) {
+          this.#queue.splice(index, 1);
+          clearTimeout(entry.timer);
+        }
       });
     });
   }
@@ -99,7 +119,10 @@ export class AgentDatabaseSupervisor {
     const pending = this.#inFlight;
     this.#inFlight = null;
     pending?.settle(shuttingDown());
-    while (this.#queue.length > 0) this.#queue.shift()?.settle(shuttingDown());
+    for (const entry of this.#queue.splice(0)) {
+      clearTimeout(entry.timer);
+      entry.settle(shuttingDown());
+    }
     this.#generation += 1;
     this.#host?.kill();
     this.#host = null;
@@ -109,8 +132,9 @@ export class AgentDatabaseSupervisor {
     if (this.#inFlight || this.#disposed) return;
     const next = this.#queue.shift();
     if (!next) return;
+    clearTimeout(next.timer);
     if (Date.now() - next.queuedAt > this.#queueWaitMs) {
-      next.settle(failed("busy", "The database queue was busy for too long. Try the call again."));
+      next.settle(failed("busy", BUSY_MESSAGE));
       this.#pump();
       return;
     }

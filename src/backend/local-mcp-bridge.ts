@@ -105,6 +105,7 @@ export class LocalMcpBridge {
   #closes = 0;
   #closing: Deferred.Deferred<void, McpOperationError> | null = null;
   readonly #routes = new Map<string, BridgeRoute>();
+  readonly #running = new Set<AbortController>();
   /** The token of each shared route, by directory and server name. */
   readonly #shared = new Map<string, string>();
 
@@ -177,6 +178,7 @@ export class LocalMcpBridge {
   readonly close = Effect.fn("LocalMcpBridge.close")(function* (this: LocalMcpBridge) {
     if (this.#closing) return yield* Deferred.await(this.#closing);
     this.#closes += 1;
+    for (const controller of this.#running) controller.abort();
     this.#routes.clear();
     this.#shared.clear();
     const closing = Deferred.makeUnsafe<void, McpOperationError>();
@@ -256,6 +258,7 @@ export class LocalMcpBridge {
     response: ServerResponse,
   ): Effect.fn.Return<void, McpOperationError> {
     const route = this.#authorize(request);
+    const closes = this.#closes;
     if (!route) {
       response.writeHead(401, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: "unauthorized" }));
@@ -303,6 +306,8 @@ export class LocalMcpBridge {
           // The SDK aborts `extra.signal` when this POST's transport closes, which follows a closed
           // response stream. A cancel on another POST aborts `abandoned` through `route.running`.
           const abandoned = new AbortController();
+          this.#running.add(abandoned);
+          if (closes !== this.#closes) abandoned.abort();
           const abandon = () => abandoned.abort();
           extra.signal.addEventListener("abort", abandon, { once: true });
           route.running.set(extra.requestId, abandoned);
@@ -336,6 +341,7 @@ export class LocalMcpBridge {
             Effect.ensuring(
               Effect.sync(() => {
                 clearInterval(keepAlive);
+                this.#running.delete(abandoned);
                 extra.signal.removeEventListener("abort", abandon);
                 if (route.running.get(extra.requestId) === abandoned) route.running.delete(extra.requestId);
               }),
