@@ -423,7 +423,11 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
             fleetReservation &&
             this.#fleet?.owns(fleetThread, fleetReservation) &&
             cause instanceof AppServerError &&
-            /\bis archived\b/i.test(cause.message) &&
+            (/\bis archived\b|thread not found:|\bno rollout found\b/i.test(cause.message) ||
+              (cause.code === -32603 &&
+                cause.message.startsWith(
+                  "failed to submit turn input: ActiveTurnNotSteerable { turn_kind: Compact",
+                ))) &&
             !this.#fleetStarts.get(fleetThread)?.observed
           ) {
             const threadId = fleetThread;

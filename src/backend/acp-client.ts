@@ -431,7 +431,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   /** The answer text of the private prompt in progress. One prompt runs at a time. */
   #privateAnswer: string[] | null = null;
   readonly #privatePromptLock = Semaphore.makeUnsafe(1);
-  readonly #privatePrompts = new Map<string, Promise<string>>();
+  readonly #privatePrompts = new Map<string, Deferred.Deferred<string, ProviderClientOperationError>>();
   readonly #fleet: ReturnType<typeof configuredFleetTurnGate>;
   readonly #fleetBackend: "cursor" | "agy" | "copilot" | null;
   readonly #fleetThreads = new Map<string, string>();
@@ -938,26 +938,33 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   });
 
   #privatePrompt(text: string): Effect.Effect<string, ProviderClientOperationError> {
-    return Effect.tryPromise({
-      try: () => {
-        const existing = this.#privatePrompts.get(text);
-        if (existing) return existing;
-        const prompt = runCauseEffect(
-          this.#privatePromptLock.withPermit(
-            this.#privatePromptOnce(text).pipe(
-              Effect.timeoutOrElse({
-                duration: this.#requestTimeoutMs,
-                orElse: () =>
-                  Effect.fail(providerFailure(new TimeoutError(`${this.#label} request timed out: usage prompt`))),
-              }),
+    return Effect.gen({ self: this }, function* () {
+      const existing = this.#privatePrompts.get(text);
+      if (existing) return yield* Deferred.await(existing);
+      const result = Deferred.makeUnsafe<string, ProviderClientOperationError>();
+      this.#privatePrompts.set(text, result);
+      const prompt = this.#privatePromptLock.withPermit(
+        this.#privatePromptOnce(text).pipe(
+          Effect.timeoutOrElse({
+            duration: this.#requestTimeoutMs,
+            orElse: () =>
+              Effect.fail(providerFailure(new TimeoutError(`${this.#label} request timed out: usage prompt`))),
+          }),
+        ),
+      );
+      yield* Effect.forkIn(
+        prompt.pipe(
+          Effect.onExit((exit) =>
+            Deferred.done(result, exit).pipe(
+              Effect.andThen(Effect.sync(() => this.#privatePrompts.delete(text))),
+              Effect.asVoid,
             ),
           ),
-        ).finally(() => this.#privatePrompts.delete(text));
-        this.#privatePrompts.set(text, prompt);
-        void prompt.catch(() => {});
-        return prompt;
-      },
-      catch: providerFailure,
+        ),
+        this.#scope,
+        { startImmediately: true },
+      );
+      return yield* Deferred.await(result);
     });
   }
 

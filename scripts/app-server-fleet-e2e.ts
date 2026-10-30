@@ -52,6 +52,8 @@ readline.createInterface({input:process.stdin}).on('line', line => {
   appendFileSync(${JSON.stringify(requests)}, request.method + '\\n');
   if (threadId === 'missing') return send({id:request.id, result:{}});
   if (threadId === 'archived') return send({id:request.id, error:{code:-32600, message:'thread is archived'}});
+  if (threadId === 'missing-thread') return send({id:request.id, error:{code:-32600, message:'thread not found: missing-thread'}});
+  if (threadId === 'compaction-refused') return send({id:request.id, error:{code:-32603, message:'failed to submit turn input: ActiveTurnNotSteerable { turn_kind: Compact }'}});
   if (threadId === 'wrong-before') {
     send({method:'turn/started', params:{threadId, turn:{id:'other'}}});
     return send({id:request.id, result:{turn:{id:'current'}}});
@@ -128,6 +130,10 @@ try {
   assert.deepEqual(await readdir(journal), []);
   assert.equal(gate.recoveryRequired, false);
   checks.push("an explicitly archived thread releases the refused admission");
+  for (const threadId of ["missing-thread", "compaction-refused"]) {
+    await assert.rejects(Effect.runPromise(client.request("turn/start", { threadId }, decodeRecordResponse)));
+    assert.equal(gate.has(threadId), false, `${threadId} releases its admission`);
+  }
 
   await Effect.runPromise(client.request("thread/compact/start", { threadId: "compact" }, decodeRecordResponse));
   assert.deepEqual(await readdir(held), []);
