@@ -128,6 +128,36 @@ try {
     client.start();
     const thread = await startThread(client, { cwd: root });
     await writeFile(join(held, "delay-acquire"), "");
+    const fiber = Effect.runFork(
+      client.request(
+        "turn/start",
+        { threadId: thread, input: [{ type: "text", text: "interrupted before send" }] },
+        (v) => v,
+      ),
+    );
+    const deadline = Date.now() + 10_000;
+    while (!(await readdir(held)).includes("acquire-started")) {
+      if (Date.now() > deadline) throw new Error("ACP acquisition did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const interruption = Effect.runPromise(Fiber.interrupt(fiber));
+    await writeFile(join(held, "acquire-continue"), "");
+    await interruption;
+    assert.deepEqual(await readdir(journal), []);
+    for (const marker of ["delay-acquire", "acquire-started", "acquire-continue"]) await rm(join(held, marker));
+    assert.deepEqual(await readdir(held), []);
+    checks.push("interrupted ACP admission releases the unsent reservation");
+  }
+  {
+    const client = requireProviderDriver("cursor").createClient(
+      { executable: join(root, "cursor", "agent"), version: "1.4.1", source: "managed" },
+      10_000,
+      NO_PROVIDER_CREDENTIALS,
+    );
+    clients.push(client);
+    client.start();
+    const thread = await startThread(client, { cwd: root });
+    await writeFile(join(held, "delay-acquire"), "");
     await writeFile(join(held, "delay-release"), "");
     const pending = runCauseEffect(
       client.request("turn/start", { threadId: thread, input: [{ type: "text", text: "unsent" }] }, (v) => v),
