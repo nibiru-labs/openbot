@@ -369,6 +369,10 @@ try {
       if (Date.now() > deadline) throw new Error("Pi acquisition did not start.");
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
+    await assert.rejects(
+      Effect.runPromise(client.request("thread/compact/start", { threadId: thread }, (value) => value)),
+    );
+    checks.push("pending Pi start rejects overlapping compaction without changing its reservation");
     const interruption = Effect.runPromise(Fiber.interrupt(fiber));
     await writeFile(join(held, "allow-response"), "");
     await interruption;

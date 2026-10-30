@@ -313,7 +313,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
         const id = yield* providerSync(() => requiredString(params, "threadId"));
         const controller = method === "turn/start" && this.#fleet ? new AbortController() : null;
         const previousReservation = this.#fleetThreads.get(id);
-        if (controller && this.#fleetPendingStarts.has(id))
+        if (controller && (this.#fleetPendingStarts.has(id) || this.#fleetPendingCompactions.has(id)))
           return yield* providerFailure(new Error(sourceText("error.provider.piSessionBusy")));
         if (controller) this.#fleetPendingStarts.set(id, controller);
         response = yield* Effect.gen({ self: this }, function* () {
@@ -369,7 +369,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       }
       case "thread/compact/start": {
         const id = yield* providerSync(() => requiredString(params, "threadId"));
-        if (this.#compacting.has(id))
+        if (this.#compacting.has(id) || this.#fleetPendingStarts.has(id))
           return yield* providerFailure(new Error(sourceText("error.provider.piSessionBusy")));
         this.#compacting.add(id);
         const controller = this.#fleet ? new AbortController() : null;
