@@ -391,6 +391,9 @@ try {
   report.checks.push("Two overlapping interrupts from one sender stop the turn once; the second waits on the cooldown");
 
   // Two senders at once, with one interrupt left in the window: the limit lets one stop through.
+  await waitFor("the interrupted held turn to end", () => status(holdFour) === "interrupted");
+  const holdFive = await send(target.id, "HOLD-FIVE");
+  await waitFor("HOLD-FIVE to run", () => status(holdFive) === "running" && runningTurn(target.id));
   const second = await runCauseEffect(
     agents.createAgent({
       name: "Second",
