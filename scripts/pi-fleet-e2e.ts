@@ -23,6 +23,7 @@ const interruptScenario = process.argv.includes("--interrupt");
 const idleScenario = process.argv.includes("--idle");
 const stopScenario = process.argv.includes("--stop");
 const releaseStopScenario = process.argv.includes("--release-stop");
+const acquireStopScenario = process.argv.includes("--acquire-stop");
 await mkdir(held);
 await writeFile(
   coordinator,
@@ -108,14 +109,21 @@ try {
   const turnId = getString(getRecord(response, "turn"), "id");
   assert.ok(turnId);
   assert.equal((await readdir(held)).length, 1);
-  const competing = Effect.runFork(
-    client.request(
-      "turn/start",
-      { threadId: thread, input: [{ type: "text", text: "competing", text_elements: [] }] },
-      (value) => value,
+  const competing = await Effect.runPromise(
+    Effect.forkDetach(
+      client.request(
+        "turn/start",
+        { threadId: thread, input: [{ type: "text", text: "competing", text_elements: [] }] },
+        (value) => value,
+      ),
+      { startImmediately: true },
     ),
   );
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await assert.rejects(
+    runCauseEffect(
+      client.request("turn/start", { threadId: thread, input: [{ type: "text", text: "duplicate" }] }, (v) => v),
+    ),
+  );
   await Effect.runPromise(Fiber.interrupt(competing));
   assert.equal((await readdir(held)).length, 1, "interrupting a waiting start must preserve the active turn's slot");
   await runCauseEffect(
@@ -150,7 +158,29 @@ try {
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
   checks.push("Pi compaction releases admission after the RPC acknowledges completion");
-  if (releaseStopScenario) {
+  if (acquireStopScenario) {
+    await writeFile(join(held, "delay-response"), "");
+    const pending = runCauseEffect(
+      client.request("turn/start", { threadId: thread, input: [{ type: "text", text: "unsent" }] }, (v) => v),
+    );
+    pending.catch(() => {});
+    const deadline = Date.now() + 10_000;
+    while (!(await readdir(held)).includes("acquire-pending")) {
+      if (Date.now() > deadline) throw new Error("Pi acquisition did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    let stopped = false;
+    const stopping = stopClients([client]).then(() => {
+      stopped = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(stopped, false, "shutdown must wait for an in-flight Pi acquisition");
+    await writeFile(join(held, "allow-response"), "");
+    await stopping;
+    await assert.rejects(pending);
+    assert.deepEqual(await readdir(journal), []);
+    checks.push("Pi shutdown waits for an in-flight acquisition to release");
+  } else if (releaseStopScenario) {
     const completed = new Promise<void>((resolve) => {
       client.on("notification", (event) => {
         if (event.method === "turn/completed" && getString(event.params, "threadId") === thread) resolve();
@@ -344,17 +374,19 @@ try {
     checks.push("a lost admission response retains its journal and never sends the Pi prompt");
   }
   await mkdir(reportDirectory, { recursive: true });
-  const report = releaseStopScenario
-    ? "release-stop-report.json"
-    : stopScenario
-      ? "stop-report.json"
-      : idleScenario
-        ? "idle-report.json"
-        : interruptScenario
-          ? "interrupt-report.json"
-          : timeoutScenario
-            ? "timeout-report.json"
-            : "report.json";
+  const report = acquireStopScenario
+    ? "acquire-stop-report.json"
+    : releaseStopScenario
+      ? "release-stop-report.json"
+      : stopScenario
+        ? "stop-report.json"
+        : idleScenario
+          ? "idle-report.json"
+          : interruptScenario
+            ? "interrupt-report.json"
+            : timeoutScenario
+              ? "timeout-report.json"
+              : "report.json";
   await writeFile(join(reportDirectory, report), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   process.stdout.write(`PASS ${join(reportDirectory, report)}\n`);
 } catch (error) {
@@ -365,6 +397,8 @@ try {
   );
   throw error;
 } finally {
+  await writeFile(join(held, "allow-response"), "").catch(() => {});
+  await writeFile(join(held, "release-continue"), "").catch(() => {});
   await stopClients(clients);
   await rm(root, { recursive: true, force: true });
 }
