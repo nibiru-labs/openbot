@@ -312,21 +312,22 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       case "turn/steer": {
         const id = yield* providerSync(() => requiredString(params, "threadId"));
         const controller = method === "turn/start" && this.#fleet ? new AbortController() : null;
-        let admitted = false;
+        const previousReservation = this.#fleetThreads.get(id);
         if (controller && this.#fleetPendingStarts.has(id))
           return yield* providerFailure(new Error(sourceText("error.provider.piSessionBusy")));
         if (controller) this.#fleetPendingStarts.set(id, controller);
         response = yield* Effect.gen({ self: this }, function* () {
           if (method === "turn/start" && this.#fleet) {
             yield* this.#admitFleetTurn(id, controller?.signal);
-            admitted = true;
           }
           const thread = yield* this.#thread(id, params);
           return yield* thread.gate.withPermit(
             method === "turn/steer" ? this.#steer(thread, params) : this.#prompt(thread, params),
           );
         }).pipe(
-          Effect.onError(() => (admitted ? this.#cancelOrRetainFleetTurn(id) : Effect.void)),
+          Effect.onError(() =>
+            this.#fleetThreads.get(id) !== previousReservation ? this.#cancelOrRetainFleetTurn(id) : Effect.void,
+          ),
           Effect.ensuring(
             Effect.sync(() => {
               if (controller && this.#fleetPendingStarts.get(id) === controller) this.#fleetPendingStarts.delete(id);
@@ -372,12 +373,11 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
           return yield* providerFailure(new Error(sourceText("error.provider.piSessionBusy")));
         this.#compacting.add(id);
         const controller = this.#fleet ? new AbortController() : null;
-        let admitted = false;
+        const previousReservation = this.#fleetThreads.get(id);
         if (controller) this.#fleetPendingCompactions.set(id, controller);
         yield* Effect.gen({ self: this }, function* () {
           if (this.#fleet) {
             yield* this.#admitFleetTurn(id, controller?.signal);
-            admitted = true;
           }
           const thread = yield* this.#thread(id, params);
           yield* thread.gate.withPermit(
@@ -423,7 +423,9 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
             );
           }
         }).pipe(
-          Effect.onError(() => (admitted ? this.#cancelOrRetainFleetTurn(id) : Effect.void)),
+          Effect.onError(() =>
+            this.#fleetThreads.get(id) !== previousReservation ? this.#cancelOrRetainFleetTurn(id) : Effect.void,
+          ),
           Effect.ensuring(
             Effect.sync(() => {
               this.#compacting.delete(id);
