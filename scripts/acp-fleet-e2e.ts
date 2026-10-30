@@ -114,6 +114,36 @@ try {
     assert.equal(entries.filter((entry) => entry.op === "acquire" && entry.backend === backend).length, 5);
     checks.push(`${provider} holds admission for both a turn and a private usage prompt`);
   }
+  for (const prompt of ["private usage before stop", "reject-prompt"]) {
+    const client = requireProviderDriver("cursor").createClient(
+      { executable: join(root, "cursor", "agent"), version: "1.4.1", source: "managed" },
+      10_000,
+      NO_PROVIDER_CREDENTIALS,
+    );
+    clients.push(client);
+    client.start();
+    await startThread(client, { cwd: root });
+    assert.ok(client.readUsageText);
+    await writeFile(join(held, "delay-release"), "");
+    const usage = runCauseEffect(client.readUsageText("fake-alpha", prompt));
+    usage.catch(() => {});
+    const deadline = Date.now() + 10_000;
+    while (!(await readdir(held)).includes("release-started")) {
+      if (Date.now() > deadline) throw new Error("Private prompt release did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    let stopped = false;
+    const stopping = stopClients([client]).then(() => { stopped = true; });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(stopped, false, "shutdown must wait for a private prompt release");
+    await writeFile(join(held, "release-continue"), "");
+    await stopping;
+    if (prompt === "reject-prompt") await assert.rejects(usage);
+    else assert.ok(await usage);
+    assert.deepEqual(await readdir(journal), []);
+    for (const marker of ["delay-release", "release-started", "release-continue"]) await rm(join(held, marker));
+  }
+  checks.push("shutdown waits for private prompt releases after success and rejection");
   assert.ok(cursorClient && cursorThread);
   const cursorEnded = new Promise<void>((resolve) => {
     cursorClient?.on("notification", (event) => {

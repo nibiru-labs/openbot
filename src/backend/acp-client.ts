@@ -759,6 +759,27 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     void release.finally(() => this.#fleetReleases.delete(release));
   }
 
+  #completePrivateFleetTurn(id: string): Effect.Effect<void, ProviderClientOperationError> {
+    const gate = this.#fleet;
+    if (!gate) return Effect.void;
+    return Effect.tryPromise({
+      try: () => {
+        this.#fleetCompleting.add(id);
+        const release = runCauseEffect(gate.completed(id, id))
+          .then(() => {
+            if (!gate.has(id)) {
+              this.#fleetThreads.delete(id);
+              this.#fleetSent.delete(id);
+            }
+          })
+          .finally(() => this.#fleetCompleting.delete(id));
+        this.#trackFleetRelease(release.catch(() => undefined));
+        return release;
+      },
+      catch: () => providerFailure(new Error(sourceText("error.provider.fleetUnavailable"))),
+    });
+  }
+
   #retainFleetTurns(): void {
     for (const controller of this.#fleetPendingStarts.values()) controller.abort();
     for (const id of this.#fleetThreads.keys()) {
@@ -950,13 +971,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         Effect.catch((error) =>
           Effect.gen({ self: this }, function* () {
             if (error.cause instanceof RequestError && this.#fleet) {
-              yield* this.#fleet
-                .completed(fleetId, fleetId)
-                .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
-              if (!this.#fleet.has(fleetId)) {
-                this.#fleetThreads.delete(fleetId);
-                this.#fleetSent.delete(fleetId);
-              }
+              yield* this.#completePrivateFleetTurn(fleetId);
             } else {
               this.#retainFleetTurn(fleetId);
             }
@@ -965,13 +980,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         ),
       );
       if (this.#fleet) {
-        yield* this.#fleet
-          .completed(fleetId, fleetId)
-          .pipe(Effect.mapError(() => providerFailure(new Error(sourceText("error.provider.fleetUnavailable")))));
-        if (!this.#fleet.has(fleetId)) {
-          this.#fleetThreads.delete(fleetId);
-          this.#fleetSent.delete(fleetId);
-        }
+        yield* this.#completePrivateFleetTurn(fleetId);
       }
       return result;
     }).pipe(Effect.onError(() => this.#cancelOrRetainFleetTurn(fleetId)));
