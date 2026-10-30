@@ -622,6 +622,7 @@ jobs:
             .openbot-build/pi-fleet-e2e/
             .openbot-build/acp-fleet-e2e/
             .openbot-build/copilot-fleet-e2e/
+            .openbot-build/acp-stream-loss-e2e/
             .openbot-build/fleet-turn-config-e2e/
             .openbot-build/codex-compaction-fleet-late-e2e/
             .openbot-build/zip-attachment-e2e/
