@@ -101,12 +101,16 @@ try {
     const answer = await runCauseEffect(client.readUsageText("fake-alpha", "private usage probe"));
     assert.ok(answer);
     assert.deepEqual(await readdir(held), []);
+    await assert.rejects(runCauseEffect(client.readUsageText("fake-alpha", "reject-prompt")));
+    assert.deepEqual(await readdir(held), []);
+    assert.deepEqual(await readdir(journal), []);
+    assert.ok(await runCauseEffect(client.readUsageText("fake-alpha", "private usage after rejection")));
     const entries = (await readFile(log, "utf8"))
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
     const backend = provider === "cursor" ? "cursor" : "agy";
-    assert.equal(entries.filter((entry) => entry.op === "acquire" && entry.backend === backend).length, 3);
+    assert.equal(entries.filter((entry) => entry.op === "acquire" && entry.backend === backend).length, 5);
     checks.push(`${provider} holds admission for both a turn and a private usage prompt`);
   }
   assert.ok(agyClient && agyThread);
