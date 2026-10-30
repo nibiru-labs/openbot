@@ -433,6 +433,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
   readonly #fleetBackend: "cursor" | "agy" | null;
   readonly #fleetThreads = new Map<string, string>();
   readonly #fleetSent = new Set<string>();
+  readonly #fleetCompleting = new Set<string>();
   readonly #fleetReleases = new Set<Promise<void>>();
   readonly #fleetPendingStarts = new Map<string, AbortController>();
   readonly #serverRequests = new PendingServerRequests((request) => this.emit("request", request));
@@ -462,6 +463,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         this.#retainFleetTurn(threadId);
         return;
       }
+      this.#fleetCompleting.add(threadId);
       const release = runCauseEffect(this.#fleet.completed(threadId, turnId))
         .then(() => {
           if (!this.#fleet?.has(threadId)) {
@@ -470,9 +472,9 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           }
         })
         .catch(() => this.emit("diagnostic", sourceText("error.provider.fleetUnavailable")))
-        .then(() => undefined);
-      this.#fleetReleases.add(release);
-      void release.finally(() => this.#fleetReleases.delete(release));
+        .then(() => undefined)
+        .finally(() => this.#fleetCompleting.delete(threadId));
+      this.#trackFleetRelease(release);
     });
     this.#flavor = options.flavor;
     this.#transport = new AcpConnection({
@@ -752,15 +754,23 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     if (reservation && this.#fleet?.owns(id, reservation)) this.#fleet.uncertain(id);
   }
 
+  #trackFleetRelease(release: Promise<void>): void {
+    this.#fleetReleases.add(release);
+    void release.finally(() => this.#fleetReleases.delete(release));
+  }
+
   #retainFleetTurns(): void {
     for (const controller of this.#fleetPendingStarts.values()) controller.abort();
     for (const id of this.#fleetThreads.keys()) {
+      if (this.#fleetCompleting.has(id)) continue;
       if (this.#fleetSent.has(id)) {
         this.#retainFleetTurn(id);
         this.#fleetThreads.delete(id);
         this.#fleetSent.delete(id);
       } else {
-        void runCauseEffect(this.#cancelOrRetainFleetTurn(id)).catch(() => this.#retainFleetTurn(id));
+        this.#trackFleetRelease(
+          runCauseEffect(this.#cancelOrRetainFleetTurn(id)).catch(() => this.#retainFleetTurn(id)),
+        );
       }
     }
   }
