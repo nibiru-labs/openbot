@@ -32,6 +32,7 @@ export interface ContextCompactionOptions {
   providers: ProviderPort;
   emitError(code: string, error: unknown, agentId?: string): void;
   scheduleDrain(agentId: string): void;
+  stopUnresponsiveClient?(client: AgentClient): void;
   /** Replaces the session for a `handoff` compaction. The new session, or `null` when none replaced it. */
   rotateSession(
     agentId: string,
@@ -76,6 +77,7 @@ export class ContextCompaction {
   readonly #providers: ProviderPort;
   readonly #emitError: (code: string, error: unknown, agentId?: string) => void;
   readonly #scheduleDrain: (agentId: string) => void;
+  readonly #stopUnresponsiveClient: (client: AgentClient) => void;
   readonly #rotateSession: ContextCompactionOptions["rotateSession"];
   readonly #rotatesSession: ContextCompactionOptions["rotatesSession"];
   readonly #budgets = new Map<string, ThreadContextBudget>();
@@ -94,6 +96,7 @@ export class ContextCompaction {
   #usageTimer: NodeJS.Timeout | null = null;
 
   constructor(options: ContextCompactionOptions) {
+    this.#stopUnresponsiveClient = options.stopUnresponsiveClient ?? ((client) => Effect.runFork(client.stop()));
     this.#changed = options.changed ?? (() => {});
     this.#compacted = options.compacted ?? (() => {});
     this.#timeoutMs = options.timeoutMs ?? CONTEXT_COMPACTION_TIMEOUT_MS;
@@ -316,7 +319,8 @@ export class ContextCompaction {
             () => {
               if (budget.phase !== "requested" || !budget.deadlineExpired) return;
               // No start event arrived: stop the uncertain provider before releasing the lane.
-              Effect.runFork(client.stop().pipe(Effect.ensuring(Effect.sync(() => this.#abandon(agentId, threadId)))));
+              this.#stopUnresponsiveClient(client);
+              this.#abandon(agentId, threadId);
             },
             Math.max(this.#graceMs, 5_000),
           );

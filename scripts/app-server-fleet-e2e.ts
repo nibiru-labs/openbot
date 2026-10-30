@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Effect, Fiber } from "effect";
 import { FleetTurnGate } from "../src/backend/agent/fleet-turn-gate";
 import { FleetTurnCommandTransport } from "../src/backend/agent/fleet-turn-transport";
 import { CodexAppServerClient } from "../src/backend/app-server-client";
@@ -30,6 +30,10 @@ if (request.op === 'acquire') {
     process.exit(0);
   }
   writeFileSync(path, 'held', {flag:'wx', mode:0o600});
+  if (existsSync(join(process.argv[2], 'delay-acquire'))) {
+    writeFileSync(join(process.argv[2], 'acquire-started'), '');
+    while (!existsSync(join(process.argv[2], 'acquire-continue'))) await new Promise(resolve => setTimeout(resolve, 20));
+  }
   process.stdout.write(JSON.stringify({ok:true, admitted:true}));
 } else {
   unlinkSync(path);
@@ -97,6 +101,21 @@ try {
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
   checks.push("early completion and a stale completion release the correct slot");
+
+  await writeFile(join(held, "delay-acquire"), "");
+  const interrupted = Effect.runFork(client.request("turn/start", { threadId: "not-sent" }, decodeRecordResponse));
+  const admissionDeadline = Date.now() + 10_000;
+  while (!(await readdir(held)).includes("acquire-started")) {
+    if (Date.now() > admissionDeadline) throw new Error("Codex acquisition did not start.");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const interruption = Effect.runPromise(Fiber.interrupt(interrupted));
+  await writeFile(join(held, "acquire-continue"), "");
+  await interruption;
+  assert.deepEqual(await readdir(journal), []);
+  for (const marker of ["delay-acquire", "acquire-started", "acquire-continue"]) await rm(join(held, marker));
+  assert.deepEqual(await readdir(held), []);
+  checks.push("interrupted Codex acquisition releases its unsent reservation");
 
   const stopHeld = join(root, "stop-held");
   const stopJournal = join(root, "stop-journal");
