@@ -140,6 +140,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
   readonly #fleet = configuredFleetTurnGate();
   readonly #fleetThreads = new Map<string, string>();
   readonly #fleetSent = new Set<string>();
+  readonly #fleetCompleting = new Set<string>();
   readonly #fleetReleases = new Set<Promise<void>>();
   readonly #fleetPendingStarts = new Map<string, AbortController>();
   readonly #fleetPendingCompactions = new Map<string, AbortController>();
@@ -195,7 +196,9 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
     this.#running = false;
     for (const controller of this.#fleetPendingStarts.values()) controller.abort();
     for (const controller of this.#fleetPendingCompactions.values()) controller.abort();
-    for (const threadId of this.#fleetThreads.keys()) yield* this.#cancelOrRetainFleetTurn(threadId);
+    for (const threadId of this.#fleetThreads.keys()) {
+      if (!this.#fleetCompleting.has(threadId)) yield* this.#cancelOrRetainFleetTurn(threadId);
+    }
     yield* Effect.promise(() => Promise.all([...this.#fleetReleases]).then(() => undefined));
     this.#fleetThreads.clear();
     this.#fleetSent.clear();
@@ -305,15 +308,19 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       case "turn/steer": {
         const id = yield* providerSync(() => requiredString(params, "threadId"));
         const controller = method === "turn/start" && this.#fleet ? new AbortController() : null;
+        let admitted = false;
         if (controller) this.#fleetPendingStarts.set(id, controller);
         response = yield* Effect.gen({ self: this }, function* () {
-          if (method === "turn/start" && this.#fleet) yield* this.#admitFleetTurn(id, controller?.signal);
+          if (method === "turn/start" && this.#fleet) {
+            yield* this.#admitFleetTurn(id, controller?.signal);
+            admitted = true;
+          }
           const thread = yield* this.#thread(id, params);
           return yield* thread.gate.withPermit(
             method === "turn/steer" ? this.#steer(thread, params) : this.#prompt(thread, params),
           );
         }).pipe(
-          Effect.onError(() => (method === "turn/start" ? this.#cancelOrRetainFleetTurn(id) : Effect.void)),
+          Effect.onError(() => (admitted ? this.#cancelOrRetainFleetTurn(id) : Effect.void)),
           Effect.ensuring(
             Effect.sync(() => {
               if (controller && this.#fleetPendingStarts.get(id) === controller) this.#fleetPendingStarts.delete(id);
@@ -359,9 +366,13 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
           return yield* providerFailure(new Error(sourceText("error.provider.piSessionBusy")));
         this.#compacting.add(id);
         const controller = this.#fleet ? new AbortController() : null;
+        let admitted = false;
         if (controller) this.#fleetPendingCompactions.set(id, controller);
         yield* Effect.gen({ self: this }, function* () {
-          if (this.#fleet) yield* this.#admitFleetTurn(id, controller?.signal);
+          if (this.#fleet) {
+            yield* this.#admitFleetTurn(id, controller?.signal);
+            admitted = true;
+          }
           const thread = yield* this.#thread(id, params);
           yield* thread.gate.withPermit(
             Effect.gen({ self: this }, function* () {
@@ -376,7 +387,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
             }),
           );
         }).pipe(
-          Effect.onError(() => this.#cancelOrRetainFleetTurn(id)),
+          Effect.onError(() => (admitted ? this.#cancelOrRetainFleetTurn(id) : Effect.void)),
           Effect.ensuring(
             Effect.sync(() => {
               this.#compacting.delete(id);
@@ -862,6 +873,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
     if (method === "turn/completed" && this.#fleetThreads.has(thread.id) && this.#fleet) {
       const turnId = getString(getRecord(params, "turn"), "id");
       if (turnId) {
+        this.#fleetCompleting.add(thread.id);
         const release = runCauseEffect(this.#fleet.completed(thread.id, turnId))
           .then(() => {
             if (!this.#fleet?.has(thread.id)) {
@@ -870,7 +882,8 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
             }
           })
           .catch(() => this.emit("diagnostic", sourceText("error.provider.fleetUnavailable")))
-          .then(() => undefined);
+          .then(() => undefined)
+          .finally(() => this.#fleetCompleting.delete(thread.id));
         this.#fleetReleases.add(release);
         void release.finally(() => this.#fleetReleases.delete(release));
       }
