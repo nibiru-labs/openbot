@@ -1143,12 +1143,16 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       case "turn/start": {
         const threadId = yield* providerSync(() => requiredString(params, "threadId"));
         const controller = this.#fleet ? new AbortController() : null;
+        let admitted = false;
         if (controller) this.#fleetPendingStarts.set(threadId, controller);
         const response = yield* Effect.gen({ self: this }, function* () {
-          if (this.#fleet) yield* this.#admitFleetTurn(threadId, controller?.signal);
+          if (this.#fleet) {
+            yield* this.#admitFleetTurn(threadId, controller?.signal);
+            admitted = true;
+          }
           return yield* this.#startTurnEffect(params);
         }).pipe(
-          Effect.onError(() => this.#cancelOrRetainFleetTurn(threadId)),
+          Effect.onError(() => (admitted ? this.#cancelOrRetainFleetTurn(threadId) : Effect.void)),
           Effect.ensuring(
             Effect.sync(() => {
               if (controller && this.#fleetPendingStarts.get(threadId) === controller)

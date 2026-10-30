@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { Effect, Fiber } from "effect";
 import type { AgentClient } from "../src/backend/agent-client";
 import { runCauseEffect } from "../src/backend/effect-boundary";
 import { getRecord, getString } from "../src/backend/protocol";
@@ -113,6 +114,35 @@ try {
     assert.equal(entries.filter((entry) => entry.op === "acquire" && entry.backend === backend).length, 5);
     checks.push(`${provider} holds admission for both a turn and a private usage prompt`);
   }
+  assert.ok(cursorClient && cursorThread);
+  const cursorEnded = new Promise<void>((resolve) => {
+    cursorClient?.on("notification", (event) => {
+      if (event.method === "turn/completed" && getString(event.params, "threadId") === cursorThread) resolve();
+    });
+  });
+  const active = await runCauseEffect(
+    cursorClient.request("turn/start", { threadId: cursorThread, input: [{ type: "text", text: "wait" }] }, (v) => v),
+  );
+  const activeId = getString(getRecord(active, "turn"), "id");
+  assert.ok(activeId);
+  const competing = Effect.runFork(
+    cursorClient.request("turn/start", { threadId: cursorThread, input: [{ type: "text", text: "competing" }] }, (v) => v),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  await Effect.runPromise(Fiber.interrupt(competing));
+  await runCauseEffect(cursorClient.request("turn/interrupt", { threadId: cursorThread, turnId: activeId }, (v) => v));
+  await cursorEnded;
+  const cursorDeadline = Date.now() + 10_000;
+  while ((await readdir(journal)).length) {
+    if (Date.now() > cursorDeadline) throw new Error("Active Cursor reservation was not released.");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.equal((await runTurn(cursorClient, cursorThread, { text: "after competing request", timeoutMs: 10_000 })).status, "completed");
+  while ((await readdir(journal)).length) {
+    if (Date.now() > cursorDeadline) throw new Error("Follow-up Cursor reservation was not released.");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  checks.push("interrupting another request leaves the active Cursor reservation usable");
   assert.ok(agyClient && agyThread);
   await writeFile(join(held, "deny"), "");
   const pending = runCauseEffect(
