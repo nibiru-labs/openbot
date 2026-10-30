@@ -201,6 +201,35 @@ try {
   assert.deepEqual(await readdir(earlyJournal), []);
   checks.push("shutdown waits for a release triggered by an early completion response");
 
+  const rejectHeld = join(root, "reject-held");
+  const rejectJournal = join(root, "reject-journal");
+  await mkdir(rejectHeld);
+  await writeFile(join(rejectHeld, "delay-release"), "");
+  const rejectGate = await runCauseEffect(
+    FleetTurnGate.open(rejectJournal, new FleetTurnCommandTransport(process.execPath, [coordinator, rejectHeld])),
+  );
+  const rejectClient = new CodexAppServerClient(executable, 5_000, undefined, rejectGate);
+  rejectClient.start();
+  const rejectedStart = Effect.runPromise(
+    rejectClient.request("turn/start", { threadId: "archived" }, decodeRecordResponse),
+  );
+  rejectedStart.catch(() => {});
+  while (!(await readdir(rejectHeld)).includes("release-started")) {
+    if (Date.now() > releaseDeadline) throw new Error("Rejected turn release did not start.");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  let rejectStopped = false;
+  const rejectStop = Effect.runPromise(rejectClient.stop()).then(() => {
+    rejectStopped = true;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(rejectStopped, false);
+  await writeFile(join(rejectHeld, "release-continue"), "");
+  await rejectStop;
+  await assert.rejects(rejectedStart);
+  assert.deepEqual(await readdir(rejectJournal), []);
+  checks.push("shutdown waits for a rejected start release");
+
   await assert.rejects(Effect.runPromise(client.request("turn/start", { threadId: "archived" }, decodeRecordResponse)));
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);

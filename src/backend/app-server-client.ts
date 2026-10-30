@@ -462,7 +462,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
           ) {
             const threadId = fleetThread;
             resume(
-              this.#fleet.rejectedBeforeTurn(threadId).pipe(
+              this.#trackFleetResponse(this.#fleet.rejectedBeforeTurn(threadId)).pipe(
                 toProviderClientOperationError,
                 Effect.tap(() =>
                   Effect.sync(() => {
@@ -487,7 +487,7 @@ export class CodexAppServerClient extends EventEmitter<ClientEvents> {
         ) {
           const threadId = fleetThread;
           resume(
-            this.#fleet.rejectedBeforeTurn(threadId).pipe(
+            this.#trackFleetResponse(this.#fleet.rejectedBeforeTurn(threadId)).pipe(
               toProviderClientOperationError,
               Effect.tap(() =>
                 Effect.sync(() => {
