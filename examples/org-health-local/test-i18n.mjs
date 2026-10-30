@@ -45,7 +45,7 @@ async function check(locale, invalid) {
     throw new Error(`${locale}: ${invalid ? "invalid" : "valid"} fixture failed`);
   console.log(`${locale} ${invalid ? "invalid" : "valid"}: pass`);
 }
-for (const locale of ["zh", "en"]) {
+for (const locale of ["zh", "en", "fr"]) {
   await check(locale, false);
   await check(locale, true);
 }

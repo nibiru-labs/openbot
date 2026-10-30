@@ -1,6 +1,6 @@
-import { translateFor } from "@openbot/i18n";
+import { resolveLocale, translateFor } from "@openbot/i18n";
 
-const locale = new URLSearchParams(location.search).get("lang") === "en" ? "en" : "zh";
+const locale = resolveLocale("system", new URLSearchParams(location.search).get("lang") || "zh-CN");
 const t = translateFor(locale);
 document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
 for (const element of document.querySelectorAll("[data-i18n]")) element.textContent = t(element.dataset.i18n);
