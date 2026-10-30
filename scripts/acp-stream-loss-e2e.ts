@@ -63,7 +63,10 @@ try {
   process.stdout.write("PASS ACP stream loss retains the reservation while the provider is alive\n");
 } catch (error) {
   await mkdir(reportDirectory, { recursive: true });
-  await writeFile(join(reportDirectory, "report.json"), `${JSON.stringify({ passed: false, checks, error: String(error) }, null, 2)}\n`);
+  await writeFile(
+    join(reportDirectory, "report.json"),
+    `${JSON.stringify({ passed: false, checks, error: String(error) }, null, 2)}\n`,
+  );
   throw error;
 } finally {
   await stopClients([client]);
