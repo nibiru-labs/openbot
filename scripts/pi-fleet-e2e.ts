@@ -24,6 +24,7 @@ const idleScenario = process.argv.includes("--idle");
 const stopScenario = process.argv.includes("--stop");
 const releaseStopScenario = process.argv.includes("--release-stop");
 const acquireStopScenario = process.argv.includes("--acquire-stop");
+const compactReleaseStopScenario = process.argv.includes("--compact-release-stop");
 await mkdir(held);
 await writeFile(
   coordinator,
@@ -154,12 +155,36 @@ try {
   assert.equal(client.canReleaseProcess?.(), false);
   assert.ok(client.releaseIdleThreads);
   await runCauseEffect(client.releaseIdleThreads());
+  if (compactReleaseStopScenario) await writeFile(join(held, "delay-release"), "");
   await writeFile(join(root, "compact-continue"), "");
-  await compact;
+  if (compactReleaseStopScenario) {
+    const deadline = Date.now() + 10_000;
+    while (!(await readdir(held)).includes("release-started")) {
+      if (Date.now() > deadline) throw new Error("Pi compaction release did not start.");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    let stopped = false;
+    const stopping = stopClients([client]).then(() => {
+      stopped = true;
+    });
+    await Promise.race([stopping, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
+    assert.equal(stopped, false, "shutdown must wait for the compaction release");
+    await writeFile(join(held, "release-continue"), "");
+    await compact;
+    await stopping;
+    await rm(join(held, "delay-release"));
+    await rm(join(held, "release-started"));
+    await rm(join(held, "release-continue"));
+    checks.push("Pi shutdown waits for the completed compaction release");
+  } else {
+    await compact;
+  }
   assert.deepEqual(await readdir(held), []);
   assert.deepEqual(await readdir(journal), []);
   checks.push("Pi compaction releases admission after the RPC acknowledges completion");
-  if (acquireStopScenario) {
+  if (compactReleaseStopScenario) {
+    // The client was stopped by the compaction release scenario above.
+  } else if (acquireStopScenario) {
     await writeFile(join(held, "delay-response"), "");
     await writeFile(join(held, "delay-release"), "");
     const pending = runCauseEffect(
@@ -384,19 +409,21 @@ try {
     checks.push("a lost admission response retains its journal and never sends the Pi prompt");
   }
   await mkdir(reportDirectory, { recursive: true });
-  const report = acquireStopScenario
-    ? "acquire-stop-report.json"
-    : releaseStopScenario
-      ? "release-stop-report.json"
-      : stopScenario
-        ? "stop-report.json"
-        : idleScenario
-          ? "idle-report.json"
-          : interruptScenario
-            ? "interrupt-report.json"
-            : timeoutScenario
-              ? "timeout-report.json"
-              : "report.json";
+  const report = compactReleaseStopScenario
+    ? "compact-release-stop-report.json"
+    : acquireStopScenario
+      ? "acquire-stop-report.json"
+      : releaseStopScenario
+        ? "release-stop-report.json"
+        : stopScenario
+          ? "stop-report.json"
+          : idleScenario
+            ? "idle-report.json"
+            : interruptScenario
+              ? "interrupt-report.json"
+              : timeoutScenario
+                ? "timeout-report.json"
+                : "report.json";
   await writeFile(join(reportDirectory, report), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   process.stdout.write(`PASS ${join(reportDirectory, report)}\n`);
 } catch (error) {
