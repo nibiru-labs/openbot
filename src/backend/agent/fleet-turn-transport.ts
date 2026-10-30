@@ -32,9 +32,17 @@ export class FleetTurnCommandTransport implements FleetTurnTransport {
   }
 
   async release(input: FleetTurnReservation): Promise<void> {
-    const response = await this.#call({ op: "release", run_id: input.run_id, token: input.token });
-    if (response.released !== true) {
-      throw new Error("Invalid fleet release response.");
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const response = await this.#call({ op: "release", run_id: input.run_id, token: input.token });
+        // false means this token is already absent, including when the first
+        // response was lost after the coordinator committed the deletion.
+        if (typeof response.released !== "boolean") throw new Error("Invalid fleet release response.");
+        return;
+      } catch (error) {
+        if (attempt === 2) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+      }
     }
   }
 

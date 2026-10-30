@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FleetTurnReservation } from "../src/backend/agent/fleet-turn-gate";
 import { FleetTurnCommandTransport } from "../src/backend/agent/fleet-turn-transport";
@@ -26,11 +27,30 @@ const transport = coordinator(`
 `);
 assert.deepEqual(await transport.acquire(reservation), { admitted: true });
 await transport.release(reservation);
-await assert.rejects(
-  coordinator('process.stdout.write(\'{"ok":true,"released":false}\')').release(reservation),
-  /release response/i,
-);
+await coordinator('process.stdout.write(\'{"ok":true,"released":false}\')').release(reservation);
+await assert.rejects(coordinator("process.stdout.write('{\"ok\":true}')").release(reservation), /release response/i);
 checks.push("separate acquire and release requests reach a child process");
+
+const retryDir = await mkdtemp(join(tmpdir(), "hub-fleet-release-"));
+try {
+  const attempts = join(retryDir, "attempts");
+  const retrying = coordinator(`
+    const fs = require('node:fs');
+    const path = ${JSON.stringify(attempts)};
+    const count = fs.existsSync(path) ? Number(fs.readFileSync(path, 'utf8')) : 0;
+    fs.writeFileSync(path, String(count + 1));
+    process.stdin.resume();
+    process.stdin.on('end', () => {
+      if (count === 0) process.exit(1); // deletion committed, response lost
+      process.stdout.write(JSON.stringify({ok:true, released:false}));
+    });
+  `);
+  await retrying.release(reservation);
+  assert.equal(await readFile(attempts, "utf8"), "2");
+  checks.push("release retries a lost acknowledgement and accepts an absent reservation");
+} finally {
+  await rm(retryDir, { recursive: true, force: true });
+}
 
 await assert.rejects(coordinator("process.stdout.write('{}')").acquire(reservation), /invalid response/i);
 await assert.rejects(coordinator("process.stdout.write('not-json')").acquire(reservation), /invalid response/i);
