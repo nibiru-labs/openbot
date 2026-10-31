@@ -119,6 +119,12 @@ const turn = (message) => {
   const input = JSON.stringify(message);
   const acts = input.includes("act-then-fail");
   fs.appendFileSync(${JSON.stringify(turnLog)}, JSON.stringify({ model, failed: fails, input }) + "\\n");
+  if (input.includes("scoped-partial-limit")) {
+    assistant("Partial answer.");
+    write({ type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: model.includes("opus") ? "seven_day_opus" : "seven_day_sonnet", resetsAt: Math.floor(Date.now() / 1000) + 3600 } });
+    result({ is_error: true, result: "You've hit your limit. Try again later." });
+    return;
+  }
   if ((input.includes("usage-work") || input.includes("usage-chain") || input.includes("usage-exhausted")) &&
       (model === ${JSON.stringify(PRIMARY)} || input.includes("usage-exhausted"))) {
     if (!input.includes("usage-chain-empty")) assistant("Checkpoint saved. Only the final step remains.");
@@ -178,7 +184,7 @@ const answer = (request) => {
     case "initialize": return reply({});
     case "account/read": return reply({ account: { type: "chatgpt", email: "codex@example.com" } });
     case "account/rateLimits/read": return reply({ rateLimits: { limitId: "codex", primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: Math.floor(Date.now() / 1000) + 3600 }, secondary: null }, rateLimitsByLimitId: null });
-    case "model/list": return reply({ data: [{ model: ${JSON.stringify(CODEX_MODEL)}, displayName: "Codex" }] });
+    case "model/list": return reply({ data: [{ model: ${JSON.stringify(CODEX_MODEL)}, displayName: "Codex" }, { model: "e2e-second-model", displayName: "Second" }] });
     case "plugin/list": return reply({ marketplaces: [] });
     case "config/read": return reply(config);
     case "config/batchWrite": return reply({});
@@ -201,7 +207,7 @@ const answer = (request) => {
       const input = JSON.stringify(params.input);
       const current = input.split("--- current message ---").at(-1);
       turn.input = current;
-      const limited = current.includes("usage-");
+      const limited = current.includes("usage-") || input.includes("routing-scope-");
       const caseId = /case:([a-z-]+)/.exec(current)?.[1] ?? "no-case";
       fs.appendFileSync(${JSON.stringify(codexLog)}, JSON.stringify({ model: params.model, threadId: thread.id, turnId: turn.id, input, limited }) + "\\n");
       reply({ turn });
@@ -210,13 +216,14 @@ const answer = (request) => {
       const finish = (status) => { turn.status = status; write({ method: "turn/completed", params: { threadId: thread.id, turn } }); };
       active.set(turn.id, finish);
       setImmediate(() => {
-        if (limited && !current.includes("usage-empty")) {
+        if (limited && !input.includes("routing-scope-") && !current.includes("usage-empty")) {
           fs.appendFileSync(${JSON.stringify(workLog)}, JSON.stringify({ caseId, step: "checkpoint" }) + "\\n");
           item({ type: "commandExecution", id: randomUUID(), command: "save-checkpoint " + caseId, cwd: params.cwd, status: "completed", exitCode: 0, aggregatedOutput: "checkpoint-result=" + caseId });
           if (!current.includes("usage-tool-only")) item({ type: "agentMessage", id: randomUUID(), phase: "commentary", text: "Checkpoint saved for " + caseId + ". Only the final step remains." });
         }
         if (current.includes("usage-wait")) return;
         if (limited) {
+          if (input.includes("routing-scope-")) write({ method: "openbot/usageLimit", params: { threadId: thread.id, turnId: turn.id, resetsAt: Math.floor(Date.now() / 1000) + 3600, ...(input.includes("routing-scope-account") ? { family: null } : {}) } });
           const error = { message: "You've hit your usage limit. Try again later.", codexErrorInfo: "usageLimitExceeded" };
           turn.error = error;
           write({ method: "error", params: { threadId: thread.id, turnId: turn.id, error, willRetry: false } });
@@ -431,9 +438,9 @@ const database = new OpenBotDatabase(userData);
 const clients: ClaudeStandIn[] = [];
 const events: AgentEvent[] = [];
 
-function startService() {
-  const store = new AgentStore(userData, home, database);
-  const mailbox = new MailboxStore(userData, store.sharedRoot, store.database);
+function startService(serviceUserData = userData, serviceDatabase = database) {
+  const store = new AgentStore(serviceUserData, home, serviceDatabase);
+  const mailbox = new MailboxStore(serviceUserData, store.sharedRoot, store.database);
   const service = new AgentService({
     store,
     mailbox,
@@ -581,7 +588,68 @@ async function verifyHistoryKeepsRequests(agentId: string) {
 
 try {
   await runCauseEffect(service.initialize());
-  const create = (name: string) =>
+  for (const scope of ["account", "model"]) {
+    await check(`routing refusal holds the ${scope} scope`, async () => {
+      await runCauseEffect(service.stop());
+      const scopeUserData = join(root, `routing-${scope}`);
+      const scopeDatabase = new OpenBotDatabase(scopeUserData);
+      ({ store, mailbox, service } = startService(scopeUserData, scopeDatabase));
+      try {
+        await runCauseEffect(service.initialize());
+        const lead = await createCodex(`Routing lead ${scope}`);
+        const other = await createCodex(`Routing other ${scope}`);
+        await runCauseEffect(service.updateAgent({ agentId: other.id, model: "e2e-second-model" }));
+        const channelId = randomUUID();
+        const actor = { id: "local", name: "Alex" };
+        await runCauseEffect(
+          service.channels.command(
+            {
+              type: "save",
+              operationId: randomUUID(),
+              channelId,
+              draft: {
+                name: "Routing scope",
+                title: "",
+                instructions: "Route the work.",
+                members: [{ agentId: lead.id }, { agentId: other.id }],
+                leadAgentId: lead.id,
+              },
+            },
+            actor,
+          ),
+        );
+        await runCauseEffect(
+          service.channels.command(
+            {
+              type: "send",
+              operationId: randomUUID(),
+              channelId,
+              text: `routing-scope-${scope}`,
+              recipientAgentId: null,
+              replyToMessageId: null,
+              attachmentDraftIds: [],
+            },
+            actor,
+          ),
+        );
+        const held = await waitFor("the routing lead to be held", () => {
+          const limits = service.getRuntimeSnapshot().usageLimits ?? [];
+          return limits.some((limit) => limit.agentId === lead.id) ? limits : null;
+        });
+        assert.equal(
+          held.some((limit) => limit.agentId === other.id),
+          scope === "account",
+        );
+        return { scope, held: held.map((limit) => limit.agentId) };
+      } finally {
+        await runCauseEffect(service.stop());
+        scopeDatabase.close();
+        ({ store, mailbox, service } = startService());
+      }
+    });
+  }
+  await runCauseEffect(service.initialize());
+  const create = (name: string, model: AgentModelId = PRIMARY) =>
     runCauseEffect(
       service.createAgent({
         name,
@@ -590,7 +658,7 @@ try {
         avatarHue: null,
         initialMessage: "Hello.",
         provider: "claude",
-        model: PRIMARY,
+        model,
       }),
     );
   const mover = await create("Mover");
@@ -973,6 +1041,27 @@ try {
       return outcome;
     });
   }
+
+  await check("a scoped limit after partial work holds the same model family", async () => {
+    await restart();
+    const first = await create("Scopedfirst", "claude-sonnet-5-5");
+    const second = await create("Scopedsecond", "claude-sonnet-5-5");
+    await waitFor("scoped agents to finish their initial turns", () =>
+      [first.id, second.id].every((id) =>
+        service.listQueue(id).deliveries.every((delivery) => delivery.status === "completed"),
+      ),
+    );
+    const outcome = await send(first.id, "scoped-partial-limit");
+    assert.equal(outcome.status, "failed");
+    const limits = await waitFor("the family limit to hold both agents", () => {
+      const current = service.getRuntimeSnapshot().usageLimits ?? [];
+      return [first.id, second.id].every((id) => current.some((limit) => limit.agentId === id)) ? current : null;
+    });
+    return {
+      status: outcome.status,
+      held: limits.filter((limit) => [first.id, second.id].includes(limit.agentId)).length,
+    };
+  });
 
   report.passed = true;
 } catch (error) {

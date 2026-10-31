@@ -34,7 +34,11 @@ const CANCELLED_MESSAGE = sourceText("error.agent.profileEndpointsChanged");
  */
 export class GenerationUsageLimitError extends Schema.TaggedError<GenerationUsageLimitError>()(
   "GenerationUsageLimitError",
-  { resetsAt: Schema.NullOr(Schema.Number), cause: Schema.Defect() },
+  {
+    resetsAt: Schema.NullOr(Schema.Number),
+    family: Schema.optional(Schema.NullOr(Schema.String)),
+    cause: Schema.Defect(),
+  },
 ) {}
 
 /** Owns a disposable provider session; no durable agent, tools, workspace or conversation is involved. */
@@ -252,7 +256,7 @@ export const toollessTurn = Effect.fnUntraced(function* (
 const profileCompletion = Effect.fnUntraced(function* (client: AgentClient, observe?: GenerationObserver) {
   return yield* Effect.callback<string, ProfileGenerationFailed | GenerationUsageLimitError>((resume) => {
     let text = "";
-    let limit: { resetsAt: number | null } | null = null;
+    let limit: { resetsAt: number | null; family?: string | null | undefined } | null = null;
     const finish = (effect: Effect.Effect<string, ProfileGenerationFailed | GenerationUsageLimitError>) => {
       cleanup();
       resume(effect);
@@ -267,7 +271,13 @@ const profileCompletion = Effect.fnUntraced(function* (client: AgentClient, obse
       observe?.(notification);
       const params = notification.params;
       if (notification.method === USAGE_LIMIT_METHOD) {
-        limit = { resetsAt: isRecord(params) && typeof params.resetsAt === "number" ? params.resetsAt : null };
+        limit = {
+          resetsAt: isRecord(params) && typeof params.resetsAt === "number" ? params.resetsAt : null,
+          family:
+            isRecord(params) && (typeof params.family === "string" || params.family === null)
+              ? params.family
+              : undefined,
+        };
       }
       if (notification.method === "error" && !(isRecord(params) && params.willRetry === true)) {
         const error = getRecord(params, "error");
@@ -291,6 +301,7 @@ const profileCompletion = Effect.fnUntraced(function* (client: AgentClient, obse
             Effect.fail(
               new GenerationUsageLimitError({
                 resetsAt: limit.resetsAt,
+                family: limit.family,
                 cause: new Error(sourceText("error.agent.profileFailed")),
               }),
             ),

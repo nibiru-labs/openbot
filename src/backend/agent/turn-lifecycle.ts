@@ -259,7 +259,7 @@ export class TurnLifecycle {
     }
   >();
   /** Running turns a provider plan refused, with the reset in epoch seconds when the provider gave it. */
-  readonly #limitedTurns = new Map<string, { resetsAt: number | null; family: string | null }>();
+  readonly #limitedTurns = new Map<string, { resetsAt: number | null; family: string | null | undefined }>();
   /**
    * Running turns that a provider error failed while their agent can move to a backup model, with
    * the error and its context. The end of the turn runs the turn again on the backup, or shows the error.
@@ -730,7 +730,8 @@ export class TurnLifecycle {
       case USAGE_LIMIT_METHOD: {
         const turnId = getString(params, "turnId");
         const resetsAt = isRecord(params) && typeof params.resetsAt === "number" ? params.resetsAt : null;
-        const family = isRecord(params) && typeof params.family === "string" ? params.family : null;
+        const family =
+          isRecord(params) && (typeof params.family === "string" || params.family === null) ? params.family : undefined;
         if (turnId && this.#runningTurns.has(turnId)) this.#limitedTurns.set(turnId, { resetsAt, family });
         return;
       }
@@ -786,7 +787,7 @@ export class TurnLifecycle {
           if (planLimit && notification.method === "error" && errorTurnId && this.#runningTurns.has(errorTurnId)) {
             this.#limitedTurns.set(
               errorTurnId,
-              this.#limitedTurns.get(errorTurnId) ?? { resetsAt: null, family: null },
+              this.#limitedTurns.get(errorTurnId) ?? { resetsAt: null, family: undefined },
             );
           }
           this.#hooks.emitFailure?.({
@@ -904,7 +905,7 @@ export class TurnLifecycle {
       const limited = status === "failed" && this.#limitedTurns.has(turnId);
       const limitEntry = this.#limitedTurns.get(turnId);
       const resetsAt = limitEntry?.resetsAt ?? null;
-      const family = limitEntry?.family ?? null;
+      const family = limitEntry?.family;
       this.#limitedTurns.delete(turnId);
       const failover = this.#failoverTurns.get(turnId);
       this.#failoverTurns.delete(turnId);
@@ -975,8 +976,9 @@ export class TurnLifecycle {
       // A foreground subagent ends with its turn. A background one works on and reports later.
       const subagents = snapshot.messages.find((message) => message.id === `${turnId}:subagents`);
       stopRunningSubagents(subagents?.subagents, new Date().toISOString(), { background: false });
-      const planStopped =
+      const partialStop =
         limited && !continuing && running?.acted && !taskTurn && !channelTurn && deliveries.length > 0;
+      const planStopped = partialStop && family === null;
       for (const message of snapshot.messages) {
         if (this.#itemTurns.get(message.id) !== turnId || message.status !== "streaming") continue;
         message.status = normalizeCompletionStatus(repeatable || failedOver || planStopped ? "interrupted" : status);

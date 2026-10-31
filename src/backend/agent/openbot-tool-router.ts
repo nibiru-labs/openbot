@@ -1757,7 +1757,8 @@ export class OpenBotToolRouter {
         })
         .pipe(toToolOperationFailed);
       for (const delivery of receipt.deliveries) {
-        yield* this.#hooks.steerAgentMessage(delivery.recipientAgentId, delivery.id);
+        if (params.arguments.busy === undefined)
+          yield* this.#hooks.steerAgentMessage(delivery.recipientAgentId, delivery.id);
         this.#mailboxSync.emitQueue(delivery.recipientAgentId);
         this.#drain.scheduleDrain(delivery.recipientAgentId);
       }
