@@ -59,10 +59,13 @@ import { ChatExchangeGroup, ChatExchangeMarker } from "@/features/chat/component
 import { ChatMarkdown } from "@/features/chat/components/chat-markdown";
 import { ChatPlan } from "@/features/chat/components/chat-plan";
 import { ChatQuestionPrompt } from "@/features/chat/components/chat-question-prompt";
+import { ChatSearchHighlightText } from "@/features/chat/components/chat-search-highlight";
+import { ChatUiBlock } from "@/features/chat/components/chat-ui-block";
 import { useActivityPresence } from "@/features/chat/components/use-activity-presence";
 import { CHAT_ROW_GAP, type ChatMotion } from "@/features/chat/components/use-chat-motion";
 import { useMessageArrivals } from "@/features/chat/components/use-message-arrivals";
 import type { QuestionPromptController } from "@/features/chat/components/use-question-prompt";
+import type { UiBlockPromptController } from "@/features/chat/components/use-ui-block-prompt";
 import {
   type ChatBubbleMessage,
   type ChatMessage,
@@ -72,6 +75,7 @@ import {
   indexChatMessages,
   type RoutineMarkerEvent,
 } from "@/features/chat/model/chat-messages";
+import { type ChatSearchMatch, chatSearchHighlightSegments, chatSearchText } from "@/features/chat/model/chat-search";
 import { useAgentColorMessages } from "@/features/settings/model/message-color";
 import { useConnectionAppearance } from "@/features/workspace/components/use-connection-appearance";
 import type { MobileAgent } from "@/features/workspace/context/mobile-workspace-context";
@@ -81,8 +85,11 @@ import { haptics } from "@/shared/lib/haptics";
 import { useMotionPreference, useReducedMotion } from "@/shared/lib/motion";
 import { isAndroid } from "@/shared/lib/platform";
 import { useText } from "@/shared/lib/text";
+import { dayMarkerLabel } from "../model/chat-day-markers";
+import { chatRunAuthor, senderRuns } from "../model/chat-grouping";
 import { mentionDraft } from "../model/chat-mentions";
 import type { ChatTarget } from "../model/chat-target";
+import { resolveUnreadBoundaryMessageId, type TranscriptRow } from "../model/chat-unread-boundary";
 import { nativeTextSelection } from "../model/native-text-selection";
 import { isStreamingReply } from "../model/reply-reveal";
 import { uploadProgressAt } from "../model/upload-progress";
@@ -90,9 +97,11 @@ import { type AttachmentTint, ChatAttachmentView } from "./chat-attachment";
 import { ChatImageGallery } from "./chat-image-gallery";
 import { ChatImageGeneration, imageGenerationStatus } from "./chat-image-generation";
 import { ChatImageViewerProvider, isViewableImage } from "./chat-image-viewer";
+import { ChatMarketplaceSuggestion } from "./chat-marketplace-suggestion";
 import { ChatMessageActions } from "./chat-message-actions";
 import { ChatMessageGesture } from "./chat-message-gesture";
 import { ChatOutboxStatus, OutboxMessageMenu, type OutboxRowStatus } from "./chat-outbox-status";
+import { ChatRoutineCard, type RoutineChatOwner } from "./chat-routine-card";
 import { ChatSelectableText } from "./chat-selectable-text";
 import { HistoryShownContext } from "./use-history-shown";
 import { useReplyHaptics } from "./use-reply-haptics";
@@ -114,6 +123,10 @@ const OPENING_ROWS = 6;
 /** The opening rows reach back to the latest user message when it is this near the end. */
 const OPENING_ROWS_TO_USER = 12;
 const ROW_STYLE = { paddingBottom: CHAT_ROW_GAP };
+/** The gap of a message that continues a run of messages by one sender. */
+const GROUPED_ROW_GAP = 4;
+/** A message that continues a run of messages by one sender sits closer to the one above it. */
+const GROUPED_ROW_STYLE = { paddingBottom: GROUPED_ROW_GAP };
 /** The side padding of the list. */
 const LIST_PADDING = 16;
 /** A user's message is at most this part of the list width, as `max-w-[88%]` on its row. */
@@ -245,6 +258,10 @@ interface ChatMessageListProps {
   appActive: boolean;
   activeTurnId: string | null;
   questionForm?: QuestionPromptController;
+  uiBlockForm?: UiBlockPromptController;
+  searchMatches?: readonly ChatSearchMatch[];
+  activeSearchMatch?: ChatSearchMatch;
+  searchFocusMessageId?: string | null;
   /** Opens the form of an open question, in a channel where several agents can ask. */
   onSelectQuestion?: (messageId: string) => void;
   /** Rows under the activity, such as the tasks that the agent works on. */
@@ -298,6 +315,8 @@ interface ChatMessageListProps {
   /** A message from search. The chat opens at its row. */
   focusMessageId?: string | null;
   onFocusPlaced?: () => void;
+  /** The first unread message when the chat opened. The divider stays after messages are marked read. */
+  firstUnreadMessageId?: string | null;
 }
 
 type ChatUpload = NonNullable<ChatMessageListProps["upload"]>;
@@ -310,6 +329,9 @@ interface MessageRowShared {
   agents: MobileAgent[];
   agentsById: ReadonlyMap<string, MobileAgent>;
   serverId: string;
+  /** The chat the rows belong to. A routine card opens the routine of this chat. */
+  targetKind: ChatTarget["kind"];
+  targetId: string;
   canSend: boolean;
   muted: ViewStyle["backgroundColor"];
   themeMuted: string;
@@ -363,9 +385,11 @@ const ROUTINE_MARKER_ICONS: Record<RoutineMarkerEvent, LucideIcon> = {
 function RoutineMarkerRow({
   message,
   muted,
+  target,
 }: {
   message: Extract<ChatMessage, { kind: "routine" }>;
   muted: ViewStyle["backgroundColor"];
+  target: RoutineChatOwner;
 }) {
   const { t } = useText();
   const [success, danger] = useCSSVariable(["--openbot-success-text", "--openbot-danger-text"]);
@@ -376,6 +400,17 @@ function RoutineMarkerRow({
       : message.event === "failed" || message.event === "needs-attention"
         ? String(danger)
         : String(muted);
+  // A routine the agent created or changed opens in the chat, as on the desktop. The other markers
+  // report a run and have nothing to open.
+  if (message.event === "created" || message.event === "updated")
+    return (
+      <ChatRoutineCard
+        label={t(message.label)}
+        routineId={message.routineId}
+        routineName={message.routineName}
+        target={target}
+      />
+    );
   return (
     <View
       accessible
@@ -389,6 +424,35 @@ function RoutineMarkerRow({
       <Typography.Paragraph type="body-sm" className="font-medium" style={{ color: muted }}>
         {message.routineName}
       </Typography.Paragraph>
+    </View>
+  );
+}
+
+/** When the day of the messages below differs from the messages above, as on desktop. */
+function DaySeparatorRow({ label, muted }: { label: string; muted: ViewStyle["backgroundColor"] }) {
+  return (
+    <View accessible className="items-center py-2">
+      <Typography.Paragraph type="body-sm" style={{ color: muted }}>
+        {label}
+      </Typography.Paragraph>
+    </View>
+  );
+}
+
+/** Where unread messages start, as the desktop divider shows it. */
+function UnreadDividerRow({ muted }: { muted: ViewStyle["backgroundColor"] }) {
+  const { t } = useText();
+  return (
+    <View
+      accessible
+      accessibilityLabel={t("mobile.chat.unread.dividerLabel")}
+      className="flex-row items-center gap-3 py-2"
+    >
+      <View className="h-px flex-1" style={{ backgroundColor: muted, opacity: 0.35 }} />
+      <Typography.Paragraph type="body-xs" className="font-semibold uppercase tracking-wide" style={{ color: muted }}>
+        {t("mobile.chat.unread.dividerBadge")}
+      </Typography.Paragraph>
+      <View className="h-px flex-1" style={{ backgroundColor: muted, opacity: 0.35 }} />
     </View>
   );
 }
@@ -409,6 +473,18 @@ function ContextResetMarkerRow({ muted }: { muted: ViewStyle["backgroundColor"] 
 
 /** The status card of a coding dispatch: a muted line, as the desktop marker shows it. */
 function DispatchMarkerRow({ text, muted }: { text: string; muted: ViewStyle["backgroundColor"] }) {
+  const { sourceText } = useText();
+  return (
+    <View accessible className="items-center py-2">
+      <Typography.Paragraph type="body-sm" style={{ color: muted }}>
+        {sourceText(text)}
+      </Typography.Paragraph>
+    </View>
+  );
+}
+
+/** A system note with readable text: a model switch, a skill install, and the like. */
+function SystemMarkerRow({ text, muted }: { text: string; muted: ViewStyle["backgroundColor"] }) {
   const { sourceText } = useText();
   return (
     <View accessible className="items-center py-2">
@@ -450,11 +526,14 @@ const MessageRow = memo(function MessageRow({
   isFirstUser,
   source,
   questionForm,
+  uiBlockForm,
+  searchHighlight,
   upload,
   outbox,
   selecting = false,
   arriving,
   revealed,
+  grouped = false,
   shared,
 }: {
   message: VisibleMessage;
@@ -466,12 +545,16 @@ const MessageRow = memo(function MessageRow({
   source?: ChatMessage;
   /** Set only on the row of the question it controls. */
   questionForm?: QuestionPromptController;
+  uiBlockForm?: UiBlockPromptController;
+  searchHighlight?: { ranges: readonly { start: number; end: number }[]; active?: ChatSearchMatch };
   /** Set only on the row whose files are uploading. */
   upload?: ChatUpload;
   /** Set only on a message that waits on the phone or failed. */
   outbox?: OutboxRowStatus;
   /** The reader selects the text of this message in its bubble. */
   selecting?: boolean;
+  /** The message continues a run of messages by one sender, so it draws no time of its own. */
+  grouped?: boolean;
   shared: MessageRowShared;
 }) {
   const { t } = useText();
@@ -558,11 +641,20 @@ const MessageRow = memo(function MessageRow({
     message.kind === "message" && message.author === "agent" && !upload ? files.filter(isViewableImage) : [];
   const rendered =
     message.kind === "routine" ? (
-      <RoutineMarkerRow key={message.id} message={message} muted={muted} />
+      <RoutineMarkerRow
+        key={message.id}
+        message={message}
+        muted={muted}
+        target={{ kind: shared.targetKind, id: shared.targetId, serverId: shared.serverId }}
+      />
     ) : message.kind === "context-reset" ? (
       <ContextResetMarkerRow key={message.id} muted={muted} />
     ) : message.kind === "dispatch" ? (
       <DispatchMarkerRow key={message.id} text={message.text} muted={muted} />
+    ) : message.kind === "marker" ? (
+      <SystemMarkerRow key={message.id} text={message.text} muted={muted} />
+    ) : message.kind === "marketplace-suggestion" ? (
+      <ChatMarketplaceSuggestion key={message.id} message={message} serverId={serverId} />
     ) : message.kind === "exchange-group" ? (
       <ChatExchangeGroup key={message.id} group={message} agents={agents} agentsById={agentsById} muted={muted} />
     ) : message.kind === "exchange" || message.kind === "channel-routing" ? (
@@ -577,6 +669,14 @@ const MessageRow = memo(function MessageRow({
         canSend={canSend}
         onActivate={shared.canSelectQuestion ? () => actions.selectQuestion(message.id) : undefined}
       />
+    ) : message.kind === "uiBlock" ? (
+      <ChatUiBlock
+        key={message.id}
+        block={message.block}
+        controller={uiBlockForm}
+        canSend={canSend}
+        onActivate={shared.canSelectQuestion ? () => actions.selectQuestion(message.id) : undefined}
+      />
     ) : (
       <Animated.View
         key={message.id}
@@ -588,12 +688,12 @@ const MessageRow = memo(function MessageRow({
         }
         style={[{ borderCurve: "circular" }, isFirstUser ? firstMessageStyle : undefined]}
       >
-        {memberColor && message.sender ? (
+        {memberColor && message.sender && !grouped ? (
           <Typography.Paragraph type="body-xs" className="shrink px-1" numberOfLines={1} style={{ color: memberColor }}>
             {message.sender.name.trim() || t("mobile.chat.speaker.memberFallback")}
           </Typography.Paragraph>
         ) : null}
-        {message.speaker && message.author !== "user" ? (
+        {message.speaker && message.author !== "user" && !grouped ? (
           <View className="flex-row items-center gap-1 px-1">
             {message.speaker.kind === "agent" ? (
               <BloubAvatarThumbnail
@@ -673,16 +773,27 @@ const MessageRow = memo(function MessageRow({
                 accessibilityElementsHidden={overlaySelecting}
                 importantForAccessibility={overlaySelecting ? "no-hide-descendants" : "auto"}
               >
-                <ChatMarkdown
-                  agents={agents}
-                  body={message.body}
-                  finished={!isStreamingReply(message)}
-                  selectable={message.author === "user"}
-                  color={textColor}
-                  playback={playback}
-                  animationEnabled={shared.animationActive && arriving}
-                  nativeSelection={nativeSelection}
-                />
+                {searchHighlight?.ranges.length ? (
+                  <ChatSearchHighlightText
+                    segments={chatSearchHighlightSegments(
+                      chatSearchText(message),
+                      searchHighlight.ranges,
+                      searchHighlight.active,
+                    )}
+                    color={String(textColor)}
+                  />
+                ) : (
+                  <ChatMarkdown
+                    agents={agents}
+                    body={message.body}
+                    finished={!isStreamingReply(message)}
+                    selectable={message.author === "user"}
+                    color={textColor}
+                    playback={playback}
+                    animationEnabled={shared.animationActive && arriving}
+                    nativeSelection={nativeSelection}
+                  />
+                )}
               </View>
               {overlaySelecting ? (
                 <ChatSelectableText
@@ -763,6 +874,7 @@ const MessageRow = memo(function MessageRow({
           onReply={shared.canReply ? () => actions.reply(message) : undefined}
           onSelectText={selectable ? () => actions.selectText(message) : undefined}
           selecting={selecting}
+          showTime={!grouped}
         />
       ) : null}
     </View>
@@ -784,9 +896,16 @@ interface RowContextValue {
   firstUserId: string | null;
   messagesById: ReadonlyMap<string, ChatMessage>;
   promptController: QuestionPromptController | undefined;
+  uiBlockController: UiBlockPromptController | undefined;
+  searchMatches: readonly ChatSearchMatch[] | undefined;
+  activeSearchMatch: ChatSearchMatch | undefined;
   upload: ChatUpload | null | undefined;
   outboxStatuses: ReadonlyMap<string, OutboxRowStatus> | undefined;
   selectingMessageId: string | null;
+  dayMarkers: ReadonlyMap<string, string>;
+  unreadBoundaryMessageId: string | null;
+  /** The rows that continue a run of messages by one sender, and so draw no time of their own. */
+  groupedRows: ReadonlySet<string>;
 }
 
 const RowContext = createContext<RowContextValue | null>(null);
@@ -795,12 +914,17 @@ function ChatRow({ message }: { message: VisibleMessage }) {
   const row = useContext(RowContext);
   if (!row) return null;
   const response = row.responseIds.has(message.id);
+  const dayLabel = row.dayMarkers.get(message.id);
+  const unreadDivider = message.id === row.unreadBoundaryMessageId;
+  const grouped = row.groupedRows.has(message.id);
   return (
     <Animated.View
-      style={[ROW_STYLE, response ? row.responseStyle : undefined]}
+      style={[ROW_STYLE, grouped ? GROUPED_ROW_STYLE : undefined, response ? row.responseStyle : undefined]}
       accessibilityElementsHidden={response && !row.responseVisible}
       importantForAccessibility={response && !row.responseVisible ? "no-hide-descendants" : "auto"}
     >
+      {dayLabel ? <DaySeparatorRow label={dayLabel} muted={row.shared.muted} /> : null}
+      {unreadDivider ? <UnreadDividerRow muted={row.shared.muted} /> : null}
       <MessageRow
         message={message}
         isFirstUser={message.id === row.firstUserId}
@@ -810,11 +934,21 @@ function ChatRow({ message }: { message: VisibleMessage }) {
             : undefined
         }
         questionForm={message.id === row.promptController?.messageId ? row.promptController : undefined}
+        uiBlockForm={message.id === row.uiBlockController?.messageId ? row.uiBlockController : undefined}
+        searchHighlight={
+          row.searchMatches?.some((match) => match.messageId === message.id)
+            ? {
+                ranges: row.searchMatches.filter((match) => match.messageId === message.id),
+                active: row.activeSearchMatch?.messageId === message.id ? row.activeSearchMatch : undefined,
+              }
+            : undefined
+        }
         upload={row.upload?.messageId === message.id ? row.upload : undefined}
         outbox={row.outboxStatuses?.get(message.id)}
         selecting={message.id === row.selectingMessageId}
         arriving={row.arrivals.has(message.id)}
         revealed={row.revealedIds.has(message.id)}
+        grouped={grouped}
         shared={row.shared}
       />
     </Animated.View>
@@ -920,6 +1054,10 @@ export const ChatMessageList = memo(function ChatMessageList({
   appActive,
   activeTurnId,
   questionForm,
+  uiBlockForm,
+  searchMatches,
+  activeSearchMatch,
+  searchFocusMessageId = null,
   onSelectQuestion,
   activityAccessory,
   approvals = NO_APPROVALS,
@@ -952,8 +1090,9 @@ export const ChatMessageList = memo(function ChatMessageList({
   onDismissSelection,
   focusMessageId = null,
   onFocusPlaced,
+  firstUnreadMessageId = null,
 }: ChatMessageListProps) {
-  const { t, sourceText } = useText();
+  const { t, sourceText, format } = useText();
   const isFocused = useIsFocused();
   const agentsById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
   const messagesById = useMemo(
@@ -1049,6 +1188,33 @@ export const ChatMessageList = memo(function ChatMessageList({
     () => groupExchangeMarkers(messages.filter((message) => message.kind !== "thinking")),
     [messages],
   );
+  const transcriptRows = useMemo(
+    (): TranscriptRow[] =>
+      visibleMessages.map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        createdAt: row.kind === "message" ? row.createdAt : undefined,
+      })),
+    [visibleMessages],
+  );
+  const dayMarkers = useMemo(() => {
+    const markers = new Map<string, string>();
+    let previous: string | undefined;
+    for (const row of transcriptRows) {
+      if (row.createdAt) {
+        const label = dayMarkerLabel(previous, row.createdAt, { t, format });
+        if (label) markers.set(row.id, label);
+        previous = row.createdAt;
+      } else if (previous === undefined) {
+        markers.set(row.id, t("mobile.chat.day.now"));
+      }
+    }
+    return markers;
+  }, [transcriptRows, t, format]);
+  const unreadBoundaryMessageId = useMemo(
+    () => resolveUnreadBoundaryMessageId(transcriptRows, firstUnreadMessageId),
+    [transcriptRows, firstUnreadMessageId],
+  );
   // Every image of the loaded messages, in chat order, for the viewer's carousel.
   const images = useMemo(() => conversationImages(visibleMessages), [visibleMessages]);
   // On Android the first commit of the chat has no rows, so the open animation starts at once. The
@@ -1067,7 +1233,8 @@ export const ChatMessageList = memo(function ChatMessageList({
     [rowsShown, openingShown, startsAtEnd, visibleMessages],
   );
   const tailIndex = rows.findLastIndex((message) => message.kind === "message" && message.author === "user");
-  const focusIndex = focusMessageId ? chatRowIndex(rows, focusMessageId) : -1;
+  const scrollTargetId = searchFocusMessageId ?? focusMessageId;
+  const focusIndex = scrollTargetId ? chatRowIndex(rows, scrollTargetId) : -1;
   const canLoadOlder = online && hasOlder && !olderLoading;
   // The chat opens at the row of a message from search after the list has its rows in place.
   const placedFocus = useRef<string | null>(null);
@@ -1075,11 +1242,16 @@ export const ChatMessageList = memo(function ChatMessageList({
   const focusHandlers = useRef({ openAt: motion.openAt, onFocusPlaced });
   focusHandlers.current = { openAt: motion.openAt, onFocusPlaced };
   useEffect(() => {
-    if (!focusId || !motion.listPlaced || placedFocus.current === focusId) return;
+    if (!scrollTargetId || !motion.listPlaced || focusIndex < 0) return;
+    if (searchFocusMessageId) {
+      void motion.openAt(focusIndex);
+      return;
+    }
+    if (!focusId || placedFocus.current === focusId) return;
     placedFocus.current = focusId;
     // The search hold ends after the row is in view, so the chat does not move to the latest message first.
     void focusHandlers.current.openAt(focusIndex).then(() => focusHandlers.current.onFocusPlaced?.());
-  }, [focusId, focusIndex, motion.listPlaced]);
+  }, [scrollTargetId, searchFocusMessageId, focusId, focusIndex, motion.listPlaced, motion.openAt]);
   const header = topInset + 84;
   // The latest user message can always move to the top of the chat: the list adds blank space
   // under it while the rows after it are shorter than the screen.
@@ -1160,6 +1332,8 @@ export const ChatMessageList = memo(function ChatMessageList({
       agents,
       agentsById,
       serverId: target.serverId,
+      targetKind: target.kind,
+      targetId: target.id,
       canSend,
       muted,
       themeMuted,
@@ -1189,6 +1363,7 @@ export const ChatMessageList = memo(function ChatMessageList({
       agents,
       agentsById,
       target.kind,
+      target.id,
       target.serverId,
       canSend,
       muted,
@@ -1220,7 +1395,22 @@ export const ChatMessageList = memo(function ChatMessageList({
   // The prompt controller is a new object on each render. Without a prompt it is left out, so the
   // list does not render every row again.
   const promptController = questionForm?.messageId ? questionForm : undefined;
+  const uiBlockController = uiBlockForm?.messageId ? uiBlockForm : undefined;
   const responseIds = useMemo(() => new Set(rows.slice(tailIndex + 1).map((row) => row.id)), [rows, tailIndex]);
+  // The rows that continue a run of messages by one sender. They draw no time of their own: the
+  // run carries one time at its top, as on the desktop.
+  const groupedRows = useMemo(
+    () =>
+      senderRuns(
+        rows.map((row) => ({
+          id: row.id,
+          author: chatRunAuthor(row),
+          createdAt: row.kind === "message" ? row.createdAt : undefined,
+          drawsTime: row.kind === "message",
+        })),
+      ),
+    [rows],
+  );
   // The opening rows do not start at the first message of the chat.
   const firstUserId = rowsShown && tailIndex === 0 && !hasOlder ? (rows[0]?.id ?? null) : null;
   const rowContext = useMemo<RowContextValue>(
@@ -1234,9 +1424,15 @@ export const ChatMessageList = memo(function ChatMessageList({
       firstUserId,
       messagesById,
       promptController,
+      uiBlockController,
+      searchMatches,
+      activeSearchMatch,
       upload,
       outboxStatuses,
       selectingMessageId,
+      dayMarkers,
+      unreadBoundaryMessageId,
+      groupedRows,
     }),
     [
       shared,
@@ -1248,9 +1444,15 @@ export const ChatMessageList = memo(function ChatMessageList({
       firstUserId,
       messagesById,
       promptController,
+      uiBlockController,
+      searchMatches,
+      activeSearchMatch,
       upload,
       outboxStatuses,
       selectingMessageId,
+      dayMarkers,
+      unreadBoundaryMessageId,
+      groupedRows,
     ],
   );
   const activitySpec = (activity?: MobileAgentActivity): ChatActivitySpec | null => {
@@ -1278,8 +1480,8 @@ export const ChatMessageList = memo(function ChatMessageList({
             activity.reason === "question" ||
             messages.some(
               (message) =>
-                message.kind === "question" &&
-                !message.prompt.resolution &&
+                ((message.kind === "question" && !message.prompt.resolution) ||
+                  (message.kind === "uiBlock" && message.block.state.status === "pending")) &&
                 message.turnId === (activity.turnId ?? activeTurnId),
             )
             ? t("mobile.chat.activity.waitingForAnswer")

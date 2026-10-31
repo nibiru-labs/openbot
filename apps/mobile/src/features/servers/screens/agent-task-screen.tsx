@@ -29,6 +29,7 @@ import { ChatMessageList } from "@/features/chat/components/chat-message-list";
 import { useRowsAfterOpenTransition } from "@/features/chat/components/chat-view";
 import { useChatMotion } from "@/features/chat/components/use-chat-motion";
 import { useQuestionPrompt } from "@/features/chat/components/use-question-prompt";
+import { useUiBlockPrompt } from "@/features/chat/components/use-ui-block-prompt";
 import { useVoiceMode } from "@/features/chat/components/use-voice-mode";
 import { VoiceOverlay } from "@/features/chat/components/voice-overlay";
 import { mentionDraft } from "@/features/chat/model/chat-mentions";
@@ -156,16 +157,34 @@ function AgentTaskChat({ target, taskId }: { target: AgentChatTarget; taskId: st
   );
   const activeTurnId = task?.activeTurnId ?? null;
   // As in the agent's chat: the open question of the running turn has the form; earlier ones show their result.
+  const activeUiBlock = messages.findLast(
+    (row) =>
+      row.kind === "uiBlock" &&
+      row.block.state.status === "pending" &&
+      activeTurnId !== null &&
+      row.turnId === activeTurnId,
+  );
   const activePrompt = messages.findLast(
-    (row) => row.kind === "question" && !row.prompt.resolution && activeTurnId !== null && row.turnId === activeTurnId,
+    (row) =>
+      !activeUiBlock &&
+      row.kind === "question" &&
+      !row.prompt.resolution &&
+      activeTurnId !== null &&
+      row.turnId === activeTurnId,
   );
   const respond = useCallback(
     (_agentId: string, input: RespondToPromptInput) => respondToTaskPrompt(input, serverId),
     [respondToTaskPrompt, serverId],
   );
+  const uiBlockForm = useUiBlockPrompt(
+    agentId,
+    activeUiBlock?.kind === "uiBlock" ? activeUiBlock : undefined,
+    online,
+    respond,
+  );
   const questionForm = useQuestionPrompt(
     agentId,
-    activePrompt?.kind === "question" ? activePrompt : undefined,
+    !activeUiBlock && activePrompt?.kind === "question" ? activePrompt : undefined,
     online,
     respond,
   );
@@ -181,7 +200,8 @@ function AgentTaskChat({ target, taskId }: { target: AgentChatTarget; taskId: st
         : browserRequests.filter((request) => request.agentId === agentId && request.threadId === threadId),
     [browserRequests, agentId, threadId],
   );
-  const waitReason = questionForm.question ? "question" : taskBrowserRequests.length > 0 ? "takeover" : null;
+  const waitReason =
+    uiBlockForm.block || questionForm.question ? "question" : taskBrowserRequests.length > 0 ? "takeover" : null;
   // A task turn is not in the agent's live activity, so the row comes from the task.
   const activity = useMemo<MobileAgentActivity | undefined>(
     () =>
@@ -449,6 +469,7 @@ function AgentTaskChat({ target, taskId }: { target: AgentChatTarget; taskId: st
           appActive={appActive}
           activeTurnId={activeTurnId}
           questionForm={questionForm}
+          uiBlockForm={uiBlockForm}
           activityAccessory={taskNotes}
           approvals={approvals}
           browserRequests={taskBrowserRequests}

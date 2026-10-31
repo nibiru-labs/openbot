@@ -20,6 +20,7 @@ import { messages as mobileWorkflow } from "./mobile/workflow";
 import { messages as mobileWorkspace } from "./mobile/workspace";
 import { shared } from "./shared";
 import { source } from "./source";
+import { messages as uiBlock } from "./uiBlock";
 
 export const esMobile = {
   ...shared,
@@ -42,4 +43,5 @@ export const esMobile = {
   ...mobileWorkflow,
   ...mobileShare,
   ...mobileShared,
+  ...uiBlock,
 } as const satisfies PartialTranslation<AppMobileMessages>;

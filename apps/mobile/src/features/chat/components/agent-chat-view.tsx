@@ -20,6 +20,8 @@ import { ChatTaskRows, useOpenAgentTasks } from "./chat-task-rows";
 import { ChatView } from "./chat-view";
 import { useChatQueue } from "./use-chat-queue";
 import { useQuestionPrompt } from "./use-question-prompt";
+import { useUiBlockPrompt } from "./use-ui-block-prompt";
+import { useVisitUnread } from "./use-visit-unread";
 
 /** `focusMessageId` opens the chat at a message from search instead of at the latest message. */
 export function MobileChatView({
@@ -182,24 +184,42 @@ export function MobileChatView({
     void loadOlderMessages(agent.id, agent.serverId);
   }, [agent.id, agent.serverId, loadOlderMessages]);
   const target = useMemo(() => ({ ...agent, kind: "agent" as const }), [agent]);
+  const conversationKey = `${agent.serverId}:agent:${agent.id}`;
+  const visitUnread = useVisitUnread(conversationKey, conversation?.readState);
+  const firstUnreadMessageId = visitUnread.firstUnreadMessageId;
   const latest = latestReadableMessage(conversation?.messages ?? []);
   const latestId = latest?.id;
   const markRead = useCallback(() => {
     if (latestId) markAgentRead(agent.id, latestId, agent.serverId);
   }, [agent.id, agent.serverId, latestId, markAgentRead]);
+  const activeTurnId = conversation?.activeTurnId ?? null;
+  const activeUiBlock = messages.findLast(
+    (message) =>
+      message.kind === "uiBlock" &&
+      message.block.state.status === "pending" &&
+      Boolean(activeTurnId) &&
+      message.turnId === activeTurnId,
+  );
   const activePrompt = messages.findLast(
     (message) =>
       message.kind === "question" &&
       !message.prompt.resolution &&
-      Boolean(conversation?.activeTurnId) &&
-      message.turnId === conversation?.activeTurnId,
+      Boolean(activeTurnId) &&
+      message.turnId === activeTurnId,
   );
   const viewOnly = useAgentViewOnly(agent.serverId, agent.id);
   const mentionSkills = useAgentMentionSkills(agent.id, agent.serverId, showsOnline(server));
+  const canAnswer = showsOnline(server) && !viewOnly;
+  const uiBlockForm = useUiBlockPrompt(
+    agent.id,
+    activeUiBlock?.kind === "uiBlock" ? activeUiBlock : undefined,
+    canAnswer,
+    respondToPrompt,
+  );
   const questionForm = useQuestionPrompt(
     agent.id,
-    activePrompt?.kind === "question" ? activePrompt : undefined,
-    showsOnline(server) && !viewOnly,
+    !activeUiBlock && activePrompt?.kind === "question" ? activePrompt : undefined,
+    canAnswer,
     respondToPrompt,
   );
   const workActivity = workChannel ? liveActivity : undefined;
@@ -233,6 +253,7 @@ export function MobileChatView({
       activeTurnId={conversation?.activeTurnId ?? null}
       stopTurn={stopTurn}
       questionForm={questionForm}
+      uiBlockForm={uiBlockForm}
       activityAccessory={activityAccessory}
       threadId={threadId}
       approvals={approvals}
@@ -251,6 +272,7 @@ export function MobileChatView({
       detached={detached}
       showLatestMessages={showLatestMessages}
       onLeave={onLeave}
+      firstUnreadMessageId={firstUnreadMessageId}
     />
   );
 }

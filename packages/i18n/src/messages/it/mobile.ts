@@ -20,6 +20,7 @@ import { messages as mobileWorkflow } from "./mobile/workflow";
 import { messages as mobileWorkspace } from "./mobile/workspace";
 import { shared } from "./shared";
 import { source } from "./source";
+import { messages as uiBlock } from "./uiBlock";
 
 /** The mobile catalog: shared keys, source text, and the mobile areas only. */
 export const itMobile = {
@@ -43,4 +44,5 @@ export const itMobile = {
   ...mobileWorkflow,
   ...mobileShare,
   ...mobileShared,
+  ...uiBlock,
 } as const satisfies PartialTranslation<AppMobileMessages>;
