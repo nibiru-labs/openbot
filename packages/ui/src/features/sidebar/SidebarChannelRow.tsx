@@ -11,6 +11,7 @@ import type { ChannelSummary } from "@openbot/contracts/ipc";
 import { Badge, buttonVariants, ContextMenu } from "@openbot/ui";
 import type { JSX } from "@solidjs/web";
 import { createSignal, Show } from "solid-js";
+import type { VirtualRowProps } from "../../components/VirtualListbox";
 import { useText } from "../../text";
 import { ChannelAvatar } from "../channels/ChannelAvatar";
 import { SidebarAgentIndicator, SidebarWaitChip, SidebarWaitTooltip } from "./SidebarAgentIndicator";
@@ -19,7 +20,11 @@ import { sidebarAgentStateLabel, sidebarMessageTime } from "./sidebar-filtering"
 import { useSidebarScope } from "./sidebar-scope";
 
 /** `waiting` is set by the "Needs you" group, as on `SidebarAgentRow`. */
-export function SidebarChannelRow(rowProps: { channel: ChannelSummary; waiting?: boolean }) {
+export function SidebarChannelRow(rowProps: {
+  channel: ChannelSummary;
+  waiting?: boolean;
+  virtual?: VirtualRowProps | undefined;
+}) {
   const {
     dragOffset,
     draggedChatId,
@@ -132,7 +137,12 @@ export function SidebarChannelRow(rowProps: { channel: ChannelSummary; waiting?:
           "sidebar-drag-shifting": dragOffset(rowProps.channel.id).y !== 0,
         },
       ]}
-      style={`--sidebar-drag-y: ${dragOffset(rowProps.channel.id).y}px;`}
+      data-index={rowProps.virtual?.["data-index"]}
+      style={{
+        ...rowProps.virtual?.style,
+        "--sidebar-drag-y": `${dragOffset(rowProps.channel.id).y}px`,
+      }}
+      ref={rowProps.virtual?.ref}
       data-chat-id={rowProps.waiting ? undefined : rowProps.channel.id}
       draggable={draggable() ? "true" : "false"}
       onDragStart={(event: DragEvent & { currentTarget: HTMLElement }) => startChatDragging(event, rowProps.channel.id)}

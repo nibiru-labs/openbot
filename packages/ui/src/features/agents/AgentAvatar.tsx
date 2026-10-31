@@ -41,9 +41,9 @@ const DEFAULT_CYCLE: Block[] = [
 // replaces the body, while sampling only `frame.arcs` keeps the silhouette.
 const RING_POSE = "orbit";
 
-// Motions that rest until pointer/focus arrives. The sidebar is not virtualized, so every
-// row would otherwise animate on screen; idle-window profiles showed 83 recalcs/s from
-// four resting avatars. A mood with its own motion keeps animating as the busy signal.
+// Motions that rest until pointer/focus arrives. Off-screen sidebar rows no longer mount, but
+// every visible row would still animate without this gate; idle-window profiles showed 83
+// recalcs/s from four resting avatars. A mood with its own motion keeps animating as the busy signal.
 const STATIC_MOTIONS: ReadonlySet<AvatarMotion> = new Set(["hover", "idle"]);
 
 // Hover group lookup: the first `[data-avatar-hover]`/control ancestor, since dialogs and

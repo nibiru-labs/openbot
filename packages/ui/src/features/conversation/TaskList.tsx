@@ -3,17 +3,9 @@ import { createMemo, createSignal, createUniqueId, For, onSettled, Show, untrack
 import { createDigitRoll } from "../../digit-roll";
 import { useText } from "../../text";
 
-export type TaskListItemState = "pending" | "active" | "done";
-/** The glyph states. `failed` is for work that another agent could not finish. */
-export type TaskMarkState = TaskListItemState | "failed";
+import type { TaskListItem, TaskMarkState } from "./task-list-types";
 
-export interface TaskListItem {
-  id: string;
-  label: string;
-  state: TaskListItemState;
-  /** The part of an active task that is complete, from 0 to 1. Other states ignore it. */
-  progress?: number | undefined;
-}
+export type { TaskListItem, TaskListItemState, TaskMarkState } from "./task-list-types";
 
 export interface TaskListProps {
   items: readonly TaskListItem[];

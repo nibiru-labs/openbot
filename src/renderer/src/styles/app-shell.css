@@ -1672,6 +1672,17 @@ textarea {
   overflow: hidden;
 }
 
+/* A virtual section body: a spacer gives the list its full height, and each row keeps its place. */
+.sidebar-section-body[data-virtualized] {
+  position: relative;
+}
+
+.sidebar-section-body[data-virtualized] > [data-index] {
+  position: absolute;
+  right: 0;
+  left: 0;
+}
+
 .sidebar-section-editor-wrap {
   position: relative;
   width: 100%;

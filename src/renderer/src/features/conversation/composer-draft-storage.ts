@@ -1,6 +1,6 @@
 import { rewriteAttachmentReferences } from "@openbot/contracts/attachment-references";
 import { isDynamicRecord, isString } from "@openbot/contracts/runtime-values";
-import { createEffect, onCleanup } from "solid-js";
+import { createEffect, onCleanup, type Store } from "solid-js";
 import { EMPTY_DRAFT } from "./composer-draft";
 import { composerDraftKey } from "./conversation-keys";
 import type { ComposerDraft } from "./conversation-types";
@@ -16,8 +16,8 @@ export interface StoredComposerDrafts {
 }
 
 interface ComposerDraftOwner {
-  drafts: () => Drafts;
-  channelDrafts: () => Drafts;
+  drafts: Store<Drafts>;
+  channelDrafts: Store<Drafts>;
   editingAgentId: () => string | null;
   editingServerId: () => string | null;
   editingDraftBackup: () => ComposerDraft | null;
@@ -58,7 +58,7 @@ export function writeComposerDraftsOnChange(owner: ComposerDraftOwner): void {
   const write = () => {
     clearTimeout(timer);
     timer = undefined;
-    const agents = { ...owner.drafts() };
+    const agents = { ...owner.drafts };
     const editAgentId = owner.editingAgentId();
     const editServerId = owner.editingServerId();
     if (editAgentId && editServerId)
@@ -73,7 +73,7 @@ export function writeComposerDraftsOnChange(owner: ComposerDraftOwner): void {
     try {
       window.localStorage.setItem(
         COMPOSER_DRAFTS_STORAGE_KEY,
-        JSON.stringify({ agents: storableDrafts(agents), channels: storableDrafts(owner.channelDrafts()) }),
+        JSON.stringify({ agents: storableDrafts(agents), channels: storableDrafts(owner.channelDrafts) }),
       );
     } catch {
       // Storage is full or unavailable. The drafts stay in memory for this session.
@@ -82,8 +82,8 @@ export function writeComposerDraftsOnChange(owner: ComposerDraftOwner): void {
   createEffect(
     () =>
       [
-        owner.drafts(),
-        owner.channelDrafts(),
+        owner.drafts,
+        owner.channelDrafts,
         owner.editingAgentId(),
         owner.editingDraftBackup(),
         owner.unsentTexts(),

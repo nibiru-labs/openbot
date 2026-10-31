@@ -671,3 +671,10 @@
 .files-story-chat {
   height: 100vh;
 }
+
+.files-story-scroll-panel {
+  max-width: 760px;
+  height: 640px;
+  margin-inline: auto;
+  overflow-y: auto;
+}

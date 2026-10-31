@@ -13,6 +13,8 @@
     "./qr-code": "./src/qr-code.tsx",
     "./questionnaire": "./src/questionnaire.tsx",
     "./text": "./src/text.tsx",
+    "./text-value": "./src/text-value.ts",
+    "./features/conversation/task-list-types": "./src/features/conversation/task-list-types.ts",
     "./reference-chip": "./src/reference-chip.tsx",
     "./progress": "./src/progress.tsx",
     "./surface": "./src/surface.tsx",

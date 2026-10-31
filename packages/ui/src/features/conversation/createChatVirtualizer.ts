@@ -37,7 +37,7 @@ export interface ChatVirtualizer<TItemElement extends Element> {
   scrollToOffset: (offset: number) => void;
 }
 
-const STATIC_CHAT_LIMIT = 100;
+export const STATIC_CHAT_LIMIT = 20;
 const SCROLL_END_THRESHOLD = 80;
 
 export function createChatVirtualizer<TScrollElement extends Element, TItemElement extends Element>(
@@ -231,13 +231,22 @@ function virtualItemsEqual(left: VirtualItem, right: VirtualItem): boolean {
   );
 }
 
+/** Returns the row count the virtualizer draws before measurements settle. */
+export function chatVirtualizerFallbackRowCount(
+  count: number,
+  estimateSize: (index: number) => number = () => 128,
+  scrollMargin = 0,
+): number {
+  return fallbackItems(count, estimateSize, (index) => index, scrollMargin).length;
+}
+
 function fallbackItems(
   count: number,
   estimateSize: (index: number) => number,
   getItemKey: (index: number) => string | number,
   scrollMargin: number,
 ): VirtualItem[] {
-  const startIndex = count <= 100 ? 0 : Math.max(0, count - 10);
+  const startIndex = count <= STATIC_CHAT_LIMIT ? 0 : Math.max(0, count - 10);
   return Array.from({ length: count - startIndex }, (_, offset): VirtualItem => {
     const index = startIndex + offset;
     const size = estimateSize(index);

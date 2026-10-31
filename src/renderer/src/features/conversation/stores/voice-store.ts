@@ -95,9 +95,9 @@ export interface VoiceStoreDeps {
   setVoiceElapsedSeconds: (seconds: number) => void;
   setVoiceLiveTranscript: (transcript: VoiceLiveTranscript | null) => void;
   setVoiceLevels: (levels: number[]) => void;
-  drafts: () => Record<string, ComposerDraft>;
-  setDrafts: (update: (current: Record<string, ComposerDraft>) => Record<string, ComposerDraft>) => void;
-  setConversationErrors: (update: (current: Record<string, string>) => Record<string, string>) => void;
+  drafts: import("solid-js").Store<Record<string, ComposerDraft>>;
+  setDrafts: import("solid-js").StoreSetter<Record<string, ComposerDraft>>;
+  setConversationErrors: import("solid-js").StoreSetter<Record<string, string>>;
   setComposerError: (error: string | null, targetOverride?: ConversationTarget) => void;
   setComposerFocusRequest: (update: (current: number) => number) => void;
   clearConversationError: (target: ConversationTarget) => void;
@@ -461,7 +461,7 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
       if (resources.voiceDisposed) return;
       const recordingTarget = { agentId: targetAgentId, serverId: targetServerId };
       deps.clearConversationError(recordingTarget);
-      const draft = submitRequest?.draft ?? deps.drafts()[composerDraftKey(recordingTarget)] ?? EMPTY_DRAFT;
+      const draft = submitRequest?.draft ?? deps.drafts[composerDraftKey(recordingTarget)] ?? EMPTY_DRAFT;
       const transcribedDraft = { ...draft, text: appendVoiceTranscript(draft.text, result.text) };
       // Only the desktop app reads replies aloud; the web client has its own runtime.
       const spokenReply = !deps.props.runtime;
@@ -488,7 +488,9 @@ export function createVoiceStore(deps: VoiceStoreDeps) {
       } else {
         if (spokenReply) noteDictatedMessage(recordingTarget, result.text);
         const key = composerDraftKey(recordingTarget);
-        deps.setDrafts((current) => ({ ...current, [key]: transcribedDraft }));
+        deps.setDrafts((current) => {
+          current[key] = transcribedDraft;
+        });
         if (atLimit) deps.setVoiceLimitReached?.(recordingTarget, true);
         if (deps.props.agent?.id === targetAgentId && (deps.props.server?.id ?? "local") === targetServerId) {
           deps.setComposerFocusRequest((current) => current + 1);

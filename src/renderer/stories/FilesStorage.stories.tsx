@@ -16,6 +16,7 @@ import {
   FILES_CHIEF_CONVERSATIONS,
   FILES_CHIEF_ROWS,
   FILES_CONVERSATIONS,
+  FILES_LARGE_ROWS,
   FILES_LAUNCH_ROWS,
   FILES_LONG_NAME_ROWS,
   FILES_NOW,
@@ -357,5 +358,26 @@ export const ListError: Story = {
   name: "File list: Error",
   render: () => (
     <ListStage error="The attachment index is not available. Restart OpenBot and try again." onRetry={fn()} />
+  ),
+};
+
+export const ListLarge: Story = {
+  name: "File list: Large",
+  render: () => (
+    <main class="files-story-stage">
+      <div class="files-story-scroll-panel">
+        <FileList
+          label="All files"
+          files={FILES_LARGE_ROWS}
+          agents={FILES_AGENTS}
+          showConversation
+          groupByDay
+          now={FILES_NOW}
+          canDelete
+          onPreview={fn()}
+          onAction={fn(async () => undefined)}
+        />
+      </div>
+    </main>
   ),
 };

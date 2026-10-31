@@ -6,7 +6,7 @@ import { classifyFailure } from "@openbot/telemetry";
 import { toast } from "@openbot/ui";
 import { currentText } from "@openbot/ui/text";
 import { classifyUserError } from "@openbot/user-errors";
-import { flush, onSettled } from "solid-js";
+import { flush, onSettled, reconcile } from "solid-js";
 import { withoutAgent } from "../../app-message-projection";
 import { playCompletionSoundForAgentEvent } from "../../completion-sound";
 import { usePlatform } from "../../platform";
@@ -255,9 +255,10 @@ export function AgentEventBridge() {
             pending?.type === "prompt" &&
             promptRequestKey(pending.turnId, pending.requestId) === submittedRequestKey
           ) {
-            return current;
+            return;
           }
-          return pending ? withoutAttention(current, (candidate) => attentionEventKey(candidate) === key) : current;
+          if (!pending) return;
+          reconcile(withoutAttention(current, (candidate) => attentionEventKey(candidate) === key))(current);
         });
         // Only the approvals of this turn's thread: a task of the agent can still wait for one.
         setApprovals((current) =>
@@ -269,7 +270,9 @@ export function AgentEventBridge() {
         }
         return;
       case "prompt":
-        setPendingPrompts((current) => ({ ...current, [attentionEventKey(event)]: event }));
+        setPendingPrompts((current) => {
+          current[attentionEventKey(event)] = event;
+        });
         // The answer marks belong to the agent's own chat. A side thread's question keeps them.
         if (agentList().some((agent) => agent.id === event.agentId && agent.threadId === event.threadId)) {
           setPresentedPromptResolutions((current) => ({ ...current, [event.agentId]: undefined }));
@@ -278,15 +281,17 @@ export function AgentEventBridge() {
         return;
       case "agent-input-resolved":
         if (event.kind === "prompt") {
-          setPendingPrompts((current) =>
-            withoutAttention(
-              current,
-              (prompt) =>
-                prompt.type === "prompt" &&
-                prompt.agentId === event.agentId &&
-                String(prompt.requestId) === String(event.requestId),
-            ),
-          );
+          setPendingPrompts((current) => {
+            reconcile(
+              withoutAttention(
+                current,
+                (prompt) =>
+                  prompt.type === "prompt" &&
+                  prompt.agentId === event.agentId &&
+                  String(prompt.requestId) === String(event.requestId),
+              ),
+            )(current);
+          });
         } else {
           forgetApproval(event.agentId, event.requestId);
         }
@@ -306,18 +311,22 @@ export function AgentEventBridge() {
         applyAgentRuntimeSnapshot(event.snapshot);
         return;
       case "browser-takeover-requested":
-        setPendingPrompts((current) => ({ ...current, [attentionEventKey(event)]: event }));
+        setPendingPrompts((current) => {
+          current[attentionEventKey(event)] = event;
+        });
         return;
       case "browser-takeover-resolved":
-        setPendingPrompts((current) =>
-          withoutAttention(
-            current,
-            (pending) =>
-              pending.type === "browser-takeover-requested" &&
-              attentionAgentId(pending) === event.agentId &&
-              pending.request.requestId === event.requestId,
-          ),
-        );
+        setPendingPrompts((current) => {
+          reconcile(
+            withoutAttention(
+              current,
+              (pending) =>
+                pending.type === "browser-takeover-requested" &&
+                attentionAgentId(pending) === event.agentId &&
+                pending.request.requestId === event.requestId,
+            ),
+          )(current);
+        });
         return;
       case "error": {
         // A provider reports an expired account as a 401 quoted inside the whole HTTP exchange, so
@@ -339,16 +348,19 @@ export function AgentEventBridge() {
           // reader one line whatever its length, and dismissing it clears the whole run.
           const key = composerDraftKey({ agentId, serverId: activeServerId() });
           const message = readableAgentError(event.message);
-          setConversationErrors((current) => ({ ...current, [key]: message }));
+          setConversationErrors((current) => {
+            current[key] = message;
+          });
           // The provider and model above the error let the user report which run failed (#2858).
           const provider = event.provider ? providerDisplayName(event.provider) : null;
           const run =
             provider && event.model ? currentText().t("agent.error.run", { provider, model: event.model }) : provider;
           setConversationErrorRuns((current) => {
-            if (run) return { ...current, [key]: { message, run } };
-            if (!(key in current)) return current;
-            const { [key]: _replaced, ...next } = current;
-            return next;
+            if (run) {
+              current[key] = { message, run };
+              return;
+            }
+            delete current[key];
           });
           return;
         }
@@ -399,7 +411,9 @@ export function AgentEventBridge() {
     );
     setUsageLimitedModels(snapshot.usageLimitedModels ?? []);
     setQueues((current) => reconcileQueuesWithRuntimeWork(current, snapshot.work, runtimeTurns));
-    setPendingPrompts((current) => reconcileAttentionPrompts(current, snapshot, submittedPromptRequests()));
+    setPendingPrompts((current) => {
+      reconcile(reconcileAttentionPrompts(current, snapshot, submittedPromptRequests()))(current);
+    });
     setApprovals((current) => reconcileAttentionApprovals(current, snapshot));
     applyRuntimeMessages(snapshot.latestMessages);
   }

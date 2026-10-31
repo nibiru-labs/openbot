@@ -125,7 +125,6 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     setAgentAvatar,
   } = useAgents();
   const {
-    contextStates,
     activeQueue,
     activeWaits,
     activeRoutineIds,
@@ -133,8 +132,8 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     pendingPrompts,
     approvals,
     approvalOfThread,
-    activeTurns,
-    turnProgress,
+    agentRows,
+    ensureQueueLoaded,
     turnStepLines,
     answerPrompt,
     respondToApproval,
@@ -152,9 +151,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     stopActiveTurn,
     usageLimits,
     usageLimitedModels,
-    waitedUsageLimits,
     setWaitedUsageLimits,
-    queues,
   } = useTurns();
   const {
     activeMessages,
@@ -187,7 +184,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
 
   const activePrompt = createMemo(() => {
     const agent = activeAgent();
-    const event = agent ? pendingPrompts()[attentionKey(agent.id, agent.threadId)] : undefined;
+    const event = agent ? pendingPrompts[attentionKey(agent.id, agent.threadId)] : undefined;
     return event?.type === "prompt" && event.threadId === agent?.threadId ? event : undefined;
   });
 
@@ -206,7 +203,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
   const agentWaits = createMemo(() =>
     sidebarAgentWaits({
       agentIds: agentList().map((agent) => agent.id),
-      ...agentThreadAttention({ agents: agentList(), pendingPrompts: pendingPrompts(), approvals: approvals() }),
+      ...agentThreadAttention({ agents: agentList(), pendingPrompts, approvals: approvals() }),
       usageLimits: usageLimits(),
     }),
   );
@@ -218,7 +215,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
 
   const activeBrowserTakeover = createMemo(() => {
     const agent = activeAgent();
-    const event = agent ? pendingPrompts()[attentionKey(agent.id, agent.threadId)] : undefined;
+    const event = agent ? pendingPrompts[attentionKey(agent.id, agent.threadId)] : undefined;
     return event?.type === "browser-takeover-requested" && event.request.threadId === agent?.threadId
       ? event.request
       : undefined;
@@ -385,11 +382,12 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     // Only this computer holds a message at a usage limit, and its agents use the providers it knows.
     if (!agent || activeServer()?.kind !== "local" || !isKnownAgentProvider(agent.provider)) return undefined;
     const provider = agent.provider;
-    const limits = usageLimits();
-    if (!(agent.id in limits)) return undefined;
-    const resetsAt = limits[agent.id] ?? null;
-    if (waitedUsageLimits()[agent.id] === resetsAt && agent.id in waitedUsageLimits()) return undefined;
-    if (!queues()[agent.id]?.deliveries.some((delivery) => delivery.status === "queued")) return undefined;
+    const row = agentRows[agent.id];
+    if (row?.usageLimit === undefined) return undefined;
+    const resetsAt = row.usageLimit ?? null;
+    if (row.waitedUsageLimit === resetsAt && row.waitedUsageLimit !== undefined) return undefined;
+    ensureQueueLoaded(agent.id);
+    if (!row.queue?.deliveries.some((delivery) => delivery.status === "queued")) return undefined;
     const source: BackupModelSource = {
       modelOptions: modelOptions(),
       providers: agentStatus().providers,
@@ -455,10 +453,26 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
     },
   );
 
+  const mentionAgents = createMemo(() => agentList().filter((agent) => !userHiddenAgentIds().has(agent.id)));
+  const emptyMessageReferences = {};
+  const messageReferences = createMemo(() => {
+    const agent = activeAgent();
+    if (!agent) return emptyMessageReferences;
+    return conversations[agent.id]?.references ?? emptyMessageReferences;
+  });
+  const isOwnSender = (senderId: string) => {
+    const state = auth.centralAuth();
+    return isReaderAuthor(senderId, {
+      memberId: currentTeamMember()?.id ?? null,
+      accountUserId: state.status === "signed_in" ? state.user.id : null,
+      onOwnComputer: activeServer()?.kind === "local",
+    });
+  };
+
   return (
     <>
       <Conversation
-        contextState={contextStates()[activeAgent()?.id ?? ""]}
+        contextState={agentRows[activeAgent()?.id ?? ""]?.contextState}
         platform={platform.appInfo()?.platform}
         onOpenMarketplace={() => setSkillsMarketplaceOpen(true)}
         connectors={connectors.active}
@@ -500,12 +514,12 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         onManageBrowserProfiles={manageBrowserProfiles() ? openBrowserProfileSettings : undefined}
         agent={conversationAgent()}
         agents={agentList()}
-        mentionAgents={agentList().filter((agent) => !userHiddenAgentIds().has(agent.id))}
+        mentionAgents={mentionAgents()}
         availableRoutineIds={activeRoutineIds()}
         routines={activeRoutines()}
         modelOptions={modelOptions()}
         messages={activeMessages()}
-        messageReferences={activeAgent() ? (conversations[activeAgent()?.id ?? ""]?.references ?? {}) : {}}
+        messageReferences={messageReferences()}
         missingMessageReferences={activeAgent() ? conversations[activeAgent()?.id ?? ""]?.missingReferences : undefined}
         unreadCount={activeAgent() ? (conversations[activeAgent()?.id ?? ""]?.read?.unreadCount ?? 0) : 0}
         firstUnreadMessageId={
@@ -530,14 +544,7 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         server={activeServer()}
         presence={teamPresence()}
         currentUserEmail={props.account().email}
-        isOwnSender={(senderId) => {
-          const state = auth.centralAuth();
-          return isReaderAuthor(senderId, {
-            memberId: currentTeamMember()?.id ?? null,
-            accountUserId: state.status === "signed_in" ? state.user.id : null,
-            onOwnComputer: activeServer()?.kind === "local",
-          });
-        }}
+        isOwnSender={isOwnSender}
         // The browser and the remote desktop show in the main window only.
         browserEnabled={
           !platform.landingPreview && !platform.chatWindow && activeServerSupportsCapability("browser-control")
@@ -554,9 +561,9 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         usageLimitAsk={usageLimitAsk()}
         usageLimited={activeServer()?.kind === "local" ? usageLimited : undefined}
         browserTakeover={activeBrowserTakeover()}
-        activeTurnId={activeAgent() ? activeTurns()[activeAgent()?.id ?? ""] : null}
-        activityDetail={activeAgent() ? turnProgress()[activeAgent()?.id ?? ""]?.detail : undefined}
-        turnStepLines={turnStepLines()}
+        activeTurnId={activeAgent() ? (agentRows[activeAgent()?.id ?? ""]?.activeTurn ?? null) : null}
+        activityDetail={activeAgent() ? agentRows[activeAgent()?.id ?? ""]?.turnProgress?.detail : undefined}
+        turnStepLines={turnStepLines}
         skillsMarketplaceOpen={skillsMarketplaceOpen()}
         mcpSettingsOpen={serverSettingsOpen() || skillsMarketplaceOpen()}
         globalOverlayOpen={

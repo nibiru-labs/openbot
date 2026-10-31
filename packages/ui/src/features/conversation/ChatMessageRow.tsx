@@ -105,6 +105,7 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
 
 function ChatMessageContentRow(props: ChatMessageRowProps): JSX.Element {
   const { t } = useText();
+  const agentsById = createMemo(() => new Map(props.agents.map((agent) => [agent.id, agent])));
   const own = () => props.author.kind === "you";
   const member = () => props.author.kind === "member";
   const person = () => own() || member();
@@ -264,9 +265,9 @@ function ChatMessageContentRow(props: ChatMessageRowProps): JSX.Element {
                           role="img"
                           aria-label={t("chat.row.agentReaction", {
                             name:
-                              props.agents.find(
-                                (agent) => reaction.actor.kind === "agent" && agent.id === reaction.actor.agentId,
-                              )?.name ?? t("chat.message.agentFallback"),
+                              (reaction.actor.kind === "agent"
+                                ? agentsById().get(reaction.actor.agentId)?.name
+                                : undefined) ?? t("chat.message.agentFallback"),
                             emoji: reaction.emoji,
                           })}
                         >

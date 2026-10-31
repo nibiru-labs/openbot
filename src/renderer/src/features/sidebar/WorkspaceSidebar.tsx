@@ -89,7 +89,8 @@ export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
   // The host refuses a member: a hidden agent stops for every member, as a deleted one does.
   const hideAllowed = () =>
     activeServerSupportsCapability(AGENT_HIDDEN_CAPABILITY) && serverRoleCanAdminister(activeServer());
-  const { activeTurns, queues, failedTurns, usageLimits, pendingPrompts, pendingApprovals, approvals } = useTurns();
+  const { agentRows, ensureQueueLoaded, failedTurns, usageLimits, pendingPrompts, pendingApprovals, approvals } =
+    useTurns();
   const { unreadReplies, recentReplies, markAllAgentMessagesRead } = useConversation();
   const { directPeople } = usePresence();
   const { activeDirectMember, activeDirectMemberId, directThreads } = useDirectMessages();
@@ -156,23 +157,30 @@ export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
 
   /* The agent conversation shows only the waits of the agent's own thread. A wait in a channel
    * thread stays out of "Needs you", because selecting the row cannot answer it. */
-  const sidebarAgentStates = createMemo(() =>
-    computeSidebarAgentStates({
-      agentIds: agentList().map((agent) => agent.id),
-      activeTurns: activeTurns(),
-      queues: queues(),
+  const sidebarAgentStates = createMemo(() => {
+    const agentIds = agentList().map((agent) => agent.id);
+    for (const agentId of agentIds) ensureQueueLoaded(agentId);
+    return computeSidebarAgentStates({
+      agentIds,
+      activeTurns: Object.fromEntries(agentIds.map((agentId) => [agentId, agentRows[agentId]?.activeTurn ?? null])),
+      queues: Object.fromEntries(
+        agentIds.flatMap((agentId) => {
+          const queue = agentRows[agentId]?.queue;
+          return queue ? [[agentId, queue] as const] : [];
+        }),
+      ),
       unreadReplies: unreadReplies(),
       recentReplies: recentReplies(),
-      ...agentThreadAttention({ agents: agentList(), pendingPrompts: pendingPrompts(), approvals: approvals() }),
+      ...agentThreadAttention({ agents: agentList(), pendingPrompts, approvals: approvals() }),
       failedTurns: failedTurns(),
       usageLimits: usageLimits(),
-    }),
-  );
+    });
+  });
 
   /* A wait in a channel thread goes to the channel instead. Selecting the channel opens the view
    * that answers it. */
   const channelWaits = createMemo(() => {
-    const prompts = Object.values(pendingPrompts());
+    const prompts = Object.values(pendingPrompts);
     return sidebarChannelWaits({
       channels: visibleChannels(),
       prompts: prompts.flatMap((event) => (event?.type === "prompt" ? [event] : [])),
@@ -183,17 +191,24 @@ export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
 
   /* The badge says what an agent is doing; the face says how it is going. `isAgentWorking` is
    * shared, and a routine mark only replaces the badge for that same agent. */
-  const agentMoods = createMemo(() =>
-    computeAgentAvatarMoods({
-      agentIds: agentList().map((agent) => agent.id),
-      activeTurns: activeTurns(),
-      queues: queues(),
+  const agentMoods = createMemo(() => {
+    const agentIds = agentList().map((agent) => agent.id);
+    for (const agentId of agentIds) ensureQueueLoaded(agentId);
+    return computeAgentAvatarMoods({
+      agentIds,
+      activeTurns: Object.fromEntries(agentIds.map((agentId) => [agentId, agentRows[agentId]?.activeTurn ?? null])),
+      queues: Object.fromEntries(
+        agentIds.flatMap((agentId) => {
+          const queue = agentRows[agentId]?.queue;
+          return queue ? [[agentId, queue] as const] : [];
+        }),
+      ),
       failedTurns: failedTurns(),
-      pendingPrompts: attentionByAgent(pendingPrompts(), agentList()),
+      pendingPrompts: attentionByAgent(pendingPrompts, agentList()),
       pendingApprovals: pendingApprovals(),
       recentReplies: recentReplies(),
-    }),
-  );
+    });
+  });
 
   return (
     <Sidebar

@@ -211,20 +211,21 @@ export function createConversationViewScope(props: ConversationProps) {
     const key = composerDraftKey(target);
     const reference = error === null || cause === undefined ? null : errorReference(cause);
     setComposerErrorReferences((current) => {
-      if (reference && error) return { ...current, [key]: { message: error, reference } };
-      if (!(key in current)) return current;
-      const { [key]: _removed, ...next } = current;
-      return next;
+      if (reference && error) {
+        current[key] = { message: error, reference };
+        return;
+      }
+      delete current[key];
     });
     if (error === null) {
       setComposerErrors((current) => {
-        if (!(key in current)) return current;
-        const { [key]: _removed, ...next } = current;
-        return next;
+        delete current[key];
       });
       return;
     }
-    setComposerErrors((current) => (current[key] === error ? current : { ...current, [key]: error }));
+    setComposerErrors((current) => {
+      if (current[key] !== error) current[key] = error;
+    });
   };
   const panels = createPanelsStore({
     props,
@@ -340,7 +341,7 @@ export function createConversationViewScope(props: ConversationProps) {
     const target = currentTarget();
     const message = currentComposerError();
     if (!target || !message) return null;
-    const entry = composerErrorReferences()[composerDraftKey(target)];
+    const entry = composerErrorReferences[composerDraftKey(target)];
     return entry?.message === message ? entry.reference : null;
   });
   /** The provider and model of the run behind the shown error. A later error of another run shows none. */
@@ -348,7 +349,7 @@ export function createConversationViewScope(props: ConversationProps) {
     const target = currentTarget();
     const message = currentChatError();
     if (!target || !message) return null;
-    const entry = conversationErrorRuns()[composerDraftKey(target)];
+    const entry = conversationErrorRuns[composerDraftKey(target)];
     return entry?.message === message ? entry.run : null;
   });
   const queue = createQueueStore({ props, hiddenAwaitingReplyIds });
@@ -844,10 +845,9 @@ export function createConversationViewScope(props: ConversationProps) {
         setAttachmentBusy(resources.importTargetAgents.size > 0);
         if (target) {
           importSounds.finished(event.requestId, "error");
-          setConversationErrors((current) => ({
-            ...current,
-            [composerDraftKey(target)]: event.message,
-          }));
+          setConversationErrors((current) => {
+            current[composerDraftKey(target)] = event.message;
+          });
         }
       } else {
         const target = resources.importTargetAgents.get(event.requestId);
@@ -1271,10 +1271,14 @@ export function createConversationViewScope(props: ConversationProps) {
     const preview = untrack(sidebarFilePreview);
     if (preview && preview.ownerAgentId !== agentId) {
       setSidebarFilePreview(null);
-      setRightPanels((current) => ({ ...current, [preview.ownerAgentId]: "none" }));
+      setRightPanels((current) => {
+        current[preview.ownerAgentId] = "none";
+      });
     }
     if (!previousAgentId || !agentId || (panel !== "settings" && panel !== "file-preview" && panel !== "files")) return;
-    setRightPanels((current) => ({ ...current, [agentId]: "none" }));
+    setRightPanels((current) => {
+      current[agentId] = "none";
+    });
   }
 
   // One effect, so a settings request that selects the agent opens its panel after the agent change
@@ -1282,7 +1286,7 @@ export function createConversationViewScope(props: ConversationProps) {
   createEffect(
     () => {
       const agentId = conversationOwnerId(props);
-      return { agentId, panel: agentId ? rightPanels()[agentId] : undefined, request: props.settingsRequest };
+      return { agentId, panel: agentId ? rightPanels[agentId] : undefined, request: props.settingsRequest };
     },
     ({ agentId, panel, request }) => {
       const settingsRequested =

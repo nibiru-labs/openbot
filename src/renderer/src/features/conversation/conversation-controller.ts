@@ -125,12 +125,12 @@ export function createStableConversationState(
 ) {
   const restoredEdit = persistDrafts ? readStoredQueueEdit() : null;
   // A restored queue edit wins over the composer draft stored for the same agent.
-  const [drafts, setDrafts] = createSignal<Record<string, ComposerDraft>>({
+  const [drafts, setDrafts] = createStore<Record<string, ComposerDraft>>({
     ...storedDrafts?.agents,
     ...(restoredEdit ? { [composerDraftKey(restoredEdit)]: restoredEdit.draft } : {}),
   });
   /** Keyed by channel id. A channel id is a UUID, so it does not need its server in the key. */
-  const [channelDrafts, setChannelDrafts] = createSignal<Record<string, ComposerDraft>>(storedDrafts?.channels ?? {});
+  const [channelDrafts, setChannelDrafts] = createStore<Record<string, ComposerDraft>>(storedDrafts?.channels ?? {});
   const [editingAgentId, setEditingAgentId] = createSignal<string | null>(restoredEdit?.agentId ?? null);
   const [editingServerId, setEditingServerId] = createSignal<string | null>(restoredEdit?.serverId ?? null);
   const [editingEditId, setEditingEditId] = createSignal<string | null>(restoredEdit?.editId ?? null);
@@ -145,9 +145,9 @@ export function createStableConversationState(
   const [composerFocusRequest, setComposerFocusRequest] = createSignal(0);
   // A send in flight belongs to the server it was sent to, so it outlives a server switch.
   const pendingSends = createPendingSendStore();
-  const [conversationErrors, setConversationErrors] = createSignal<Record<string, string>>({});
+  const [conversationErrors, setConversationErrors] = createStore<Record<string, string>>({});
   /** The provider and model of the run behind each conversation error, keyed like `conversationErrors`. */
-  const [conversationErrorRuns, setConversationErrorRuns] = createSignal<
+  const [conversationErrorRuns, setConversationErrorRuns] = createStore<
     Record<string, { message: string; run: string }>
   >({});
   createEffect(
@@ -164,7 +164,7 @@ export function createStableConversationState(
             editId,
             originalAttachmentIds: editingOriginalAttachmentIds(),
             backup: editingDraftBackup() ?? EMPTY_DRAFT,
-            draft: drafts()[composerDraftKey({ agentId, serverId })] ?? EMPTY_DRAFT,
+            draft: drafts[composerDraftKey({ agentId, serverId })] ?? EMPTY_DRAFT,
             pendingSave: editingPendingSave() ?? undefined,
           }
         : null;
@@ -186,16 +186,15 @@ export function createStableConversationState(
           editId,
           originalAttachmentIds: editingOriginalAttachmentIds(),
           backup: editingDraftBackup() ?? EMPTY_DRAFT,
-          draft: drafts()[composerDraftKey({ agentId, serverId })] ?? EMPTY_DRAFT,
+          draft: drafts[composerDraftKey({ agentId, serverId })] ?? EMPTY_DRAFT,
           pendingSave: editingPendingSave() ?? undefined,
         };
         try {
           window.localStorage.setItem(QUEUE_EDIT_STORAGE_KEY, JSON.stringify(current));
         } catch {
-          setConversationErrors((currentErrors) => ({
-            ...currentErrors,
-            [composerDraftKey(current)]: currentText().t("composer.error.saveEditLocally"),
-          }));
+          setConversationErrors((currentErrors) => {
+            currentErrors[composerDraftKey(current)] = currentText().t("composer.error.saveEditLocally");
+          });
         }
       };
       const timer = setTimeout(persist, 300);
@@ -214,9 +213,9 @@ export function createStableConversationState(
       editingDraftBackup,
       unsentTexts: pendingSends.unsentTexts,
     });
-  const [composerErrors, setComposerErrors] = createSignal<Record<string, string>>({});
+  const [composerErrors, setComposerErrors] = createStore<Record<string, string>>({});
   /** The code of each composer error that came from a failure, keyed like `composerErrors`. */
-  const [composerErrorReferences, setComposerErrorReferences] = createSignal<Record<string, UserErrorDetails>>({});
+  const [composerErrorReferences, setComposerErrorReferences] = createStore<Record<string, UserErrorDetails>>({});
   const [voicePhase, setVoicePhase] = createSignal<"idle" | "preparing" | "requesting" | "recording" | "transcribing">(
     "idle",
   );
@@ -286,7 +285,9 @@ export function createStableConversationState(
   return {
     startSkillCreation(target: { serverId: string; agentId: string }) {
       const key = composerDraftKey(target);
-      setDrafts((current) => ({ ...current, [key]: appendSkillCreationRequest(current[key] ?? EMPTY_DRAFT) }));
+      setDrafts((current) => {
+        current[key] = appendSkillCreationRequest(current[key] ?? EMPTY_DRAFT);
+      });
       setComposerFocusRequest((value) => value + 1);
     },
     appendSkillExample(
@@ -294,12 +295,16 @@ export function createStableConversationState(
       skill: Pick<MarketplaceSkillDetail, "id" | "name" | "examplePrompt">,
     ) {
       const key = composerDraftKey(target);
-      setDrafts((current) => ({ ...current, [key]: appendSkillExample(current[key] ?? EMPTY_DRAFT, skill) }));
+      setDrafts((current) => {
+        current[key] = appendSkillExample(current[key] ?? EMPTY_DRAFT, skill);
+      });
       setComposerFocusRequest((value) => value + 1);
     },
     appendPluginPrompt(target: { serverId: string; agentId: string }, prompt: string) {
       const key = composerDraftKey(target);
-      setDrafts((current) => ({ ...current, [key]: appendPluginPrompt(current[key] ?? EMPTY_DRAFT, prompt) }));
+      setDrafts((current) => {
+        current[key] = appendPluginPrompt(current[key] ?? EMPTY_DRAFT, prompt);
+      });
       setComposerFocusRequest((value) => value + 1);
     },
     stopComposerTyping,
@@ -383,7 +388,7 @@ export function createServerConversationState() {
   const [submitting, setSubmitting] = createSignal(false);
   const [markingRead, setMarkingRead] = createSignal(false);
   const [dropActive, setDropActive] = createSignal(false);
-  const [rightPanels, setRightPanels] = createSignal<Record<string, RightPanelMode>>({});
+  const [rightPanels, setRightPanels] = createStore<Record<string, RightPanelMode>>({});
   const [sidePanels, setSidePanels] = createStore<SidePanelsState>({ side: {}, subagents: {} });
   const [settingsProvider, setSettingsProvider] = createSignal<AgentProviderId>("codex");
   const [settingsModel, setSettingsModel] = createSignal<AgentModelId>("gpt-6-luna");

@@ -19,19 +19,16 @@ import {
   unreadMessagesDividerIsVisible,
 } from "@openbot/ui/features/conversation/UnreadMessages";
 import { currentText } from "@openbot/ui/text";
-import type { VirtualItem } from "@tanstack/virtual-core";
 import { createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js";
-import { groupAgentMessageMarkers, markOpenAgentMessages } from "../agent-message-timeline";
 import type { ConversationProps, ConversationTarget } from "../conversation-types";
 import {
-  expandRoutineRunGroups,
-  groupRoutineRunMarkers,
   placeRoutineRunTurns,
   type RoutineRunOpenState,
   routineRunToggleKey,
   routineRunTurnMessages,
   summarizeRoutineRunMessages,
 } from "../routine-run-timeline";
+import { deriveTimeline } from "../timeline-derive";
 import { isTurnAnswer } from "../turn-steps";
 import { conversationOwnerId } from "./composer-store";
 
@@ -123,35 +120,43 @@ export function createScrollStore(deps: ScrollStoreDeps) {
     const drawn = new Set(drawnMessages().map((message) => message.id));
     return deps.props.messages.slice(start).find((message) => drawn.has(message.id))?.id ?? null;
   });
-  /* A group of agent messages or routine runs stops at the unread divider, so the divider keeps its row. */
-  const timelineMessages = createMemo(() => {
-    const group = (messages: readonly AgentMessage[]) =>
-      groupRoutineRunMarkers(groupAgentMessageMarkers(messages, unreadBoundaryMessageId()), unreadBoundaryMessageId());
+  const timelineDerived = createMemo(() => {
     const state = deps.props.contextState;
-    const startedAt =
+    const compactionStartedAt =
       state?.agentId === deps.props.agent?.id && state?.threadId === deps.props.agent?.threadId
         ? state?.compaction?.startedAt
         : undefined;
-    const messages = markOpenAgentMessages(drawnMessages(), openAgentMessages());
-    const boundary =
-      startedAt === undefined
-        ? -1
-        : messages.findIndex((message) => message.createdAt && Date.parse(message.createdAt) > startedAt);
-    const rows =
-      boundary < 0 ? group(messages) : [...group(messages.slice(0, boundary)), ...group(messages.slice(boundary))];
-    return expandRoutineRunGroups(rows, messages, routineRunTurns(), openRoutineRuns());
+    return deriveTimeline({
+      drawnMessages: drawnMessages(),
+      storedMessages: deps.props.messages,
+      shownMessages: shownMessages(),
+      openAgentMessages: openAgentMessages(),
+      openRoutineRuns: openRoutineRuns(),
+      unreadBoundaryMessageId: unreadBoundaryMessageId(),
+      compactionStartedAt,
+    });
   });
+  const timelineMessages = () => timelineDerived().messages;
   /*
    * A row finds its message by id. The virtualizer gives a row its new index one tick after the list
    * changes, so a lookup by index draws the neighbouring message in the row for that tick.
    */
-  const timelineIndexById = createMemo(
-    () => new Map<VirtualItem["key"], number>(timelineMessages().map((message, index) => [message.id, index])),
-  );
+  const timelineIndexById = () => timelineDerived().indexById;
   /* Every row anchors the count, but only some rows add to it. */
-  const timelineRows = createMemo(() =>
-    deps.props.messages.map((message) => ({ id: message.id, countable: countableTimelineMessage(message) })),
-  );
+  const timelineRows = createMemo<{ id: string; countable: boolean }[]>((previous) => {
+    const rows = deps.props.messages.map((message) => ({
+      id: message.id,
+      countable: countableTimelineMessage(message),
+    }));
+    if (
+      previous &&
+      previous.length === rows.length &&
+      previous.every((row, index) => row.id === rows[index]?.id && row.countable === rows[index]?.countable)
+    ) {
+      return previous;
+    }
+    return rows;
+  });
 
   function clearNewMessages(): void {
     newMessages = anchorNewMessages(timelineRows());

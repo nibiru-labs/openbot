@@ -690,3 +690,34 @@ export const DeletedChats: Story = {
     deletedChannels: storyChannels.map((channel) => ({ ...channel, id: `deleted-${channel.id}`, archived: true })),
   },
 };
+
+const perf500SectionId = "55555555-5555-4555-8555-555555555555";
+const perf500Source = requireFixture(sidebarAgents[0], "Perf sidebar agent");
+const perf500Agents = Array.from({ length: 500 }, (_, index) => ({
+  ...perf500Source,
+  id: `perf-agent-${index}`,
+  name: `Agent ${index + 1}`,
+  threadId: `perf-thread-${index}`,
+  avatarSeed: `perf-agent-${index}`,
+  preview: `Preview ${index + 1}`,
+}));
+const perf500Layout: SidebarLayoutSnapshot = {
+  revision: 1,
+  sections: [{ id: perf500SectionId, name: "All agents" }],
+  order: [perf500SectionId],
+  agentAssignments: Object.fromEntries(perf500Agents.map((agent) => [agent.id, perf500SectionId])),
+  agentOrder: perf500Agents.map((agent) => agent.id),
+};
+
+/** Five hundred agents in one section for sidebar virtualization checks. */
+export const Perf500Agents: Story = {
+  args: {
+    ...args,
+    agents: perf500Agents,
+    layout: perf500Layout,
+    pinnedItems: [],
+    people: [],
+    directThreads: [],
+  },
+  decorators: [(Story) => <div style={{ width: "280px", height: "720px" }}>{Story()}</div>],
+};

@@ -34,7 +34,13 @@ import { CodePreview } from "./CodePreview";
 import { ComparisonTable } from "./ComparisonTable";
 import { CheckIcon, CopyIcon, PlusIcon, ReactionIcon, ReplyIcon, StopIcon } from "./ConversationIcons";
 import { createSmoothHeightResize } from "./createSmoothHeightResize";
-import { DataTable, type MessageContentBlock, messageContentBlocks, reuseUnchangedBlocks } from "./DataTable";
+import {
+  cachedMessageContentBlocks,
+  DataTable,
+  type MessageContentBlock,
+  messageContentBlocks,
+  reuseUnchangedBlocks,
+} from "./DataTable";
 import { messageFileReferences } from "./FileReference";
 import { ImageGeneration } from "./ImageGeneration";
 import { ImageGallery, ImageLightbox, type ImageLightboxOpening, isLightboxImage } from "./ImageLightbox";
@@ -54,23 +60,10 @@ import {
   streamingTrailReach,
 } from "./streamingReveal";
 
-let lastContentBlocks: { body: string; streaming: boolean; blocks: MessageContentBlock[] } | undefined;
-
-/**
- * The content blocks of a body. The bubble variant and the message body both split the same body
- * for each streamed step, so the last result is kept. Callers do not change the result.
- */
-function sharedContentBlocks(body: string, streaming: boolean): MessageContentBlock[] {
-  if (lastContentBlocks?.body !== body || lastContentBlocks.streaming !== streaming) {
-    lastContentBlocks = { body, streaming, blocks: messageContentBlocks(body, streaming) };
-  }
-  return lastContentBlocks.blocks;
-}
-
 export function conversationBubbleVariant(message: AgentMessage): BubbleVariant {
   if (message.author === "you") return "secondary";
   if (message.imageGeneration || (!message.body.trim() && message.attachments?.length)) return "ghost";
-  const contentBlocks = sharedContentBlocks(message.body, message.streaming === true);
+  const contentBlocks = cachedMessageContentBlocks(message.body, message.streaming === true);
   if (contentBlocks.some((block) => block.type === "table" || block.type === "comparison-table")) return "muted";
   return contentBlocks.some((block) => block.type !== "text") ? "ghost" : "muted";
 }
@@ -395,7 +388,7 @@ export function MessageBody(props: {
     reuseUnchangedBlocks(
       previous ?? [],
       props.message.author === "agent"
-        ? sharedContentBlocks(streamedBody(), streamingBody.revealing())
+        ? cachedMessageContentBlocks(streamedBody(), streamingBody.revealing())
         : [{ type: "text", text: selectionInstruction()?.instruction ?? props.message.body }],
     ),
   );

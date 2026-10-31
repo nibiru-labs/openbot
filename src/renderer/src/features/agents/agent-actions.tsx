@@ -7,7 +7,7 @@ import { AgentDeleteUndoToast, startUndoCountdown } from "@openbot/ui/features/a
 import type { FirstAgentDraft } from "@openbot/ui/features/agents/FirstAgentSetup";
 import { duplicateSection as duplicateSectionWith } from "@openbot/ui/features/sidebar/duplicate-section";
 import { currentText } from "@openbot/ui/text";
-import { createSignal, onCleanup } from "solid-js";
+import { createSignal, onCleanup, reconcile } from "solid-js";
 import { actionToast } from "../../action-toast";
 import { desktopAnalytics } from "../../analytics";
 import { toAgentProfile, withoutAgent } from "../../app-message-projection";
@@ -302,7 +302,9 @@ const AgentActions = createSimpleContext({
         setActiveTurns((current) => withoutAgent(current, agentId));
         setFailedTurns((current) => withoutAgent(current, agentId));
         setQueues((current) => withoutAgent(current, agentId));
-        setPendingPrompts((current) => withoutAttention(current, (event) => attentionAgentId(event) === agentId));
+        setPendingPrompts((current) => {
+          reconcile(withoutAttention(current, (event) => attentionAgentId(event) === agentId))(current);
+        });
       }
 
       async function commit(): Promise<void> {

@@ -1,5 +1,5 @@
 import type { AppFormat } from "@openbot/i18n";
-import { currentText } from "../../text";
+import { currentText } from "../../text-value";
 
 /** `format` defaults to the app's interface language, for a caller outside a component. */
 export function formatChatTimestamp(date: Date, format: AppFormat = currentText().format): string {

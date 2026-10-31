@@ -471,6 +471,11 @@
   list-style: none;
 }
 
+.file-list-rows-virtual {
+  position: relative;
+  display: block;
+}
+
 .file-list-skeleton {
   height: 48px;
   border-radius: var(--openbot-radius-md);
@@ -637,6 +642,13 @@
   width: var(--openbot-icon-md);
   height: var(--openbot-icon-md);
   stroke-width: var(--openbot-icon-stroke);
+}
+
+.file-list-rows-virtual > .file-list-virtual-row,
+.file-list-rows-virtual > .file-row {
+  position: absolute;
+  inset: 0 auto auto;
+  width: 100%;
 }
 
 /* Icons next to button text: the ui-button leaves lucide at its 24px default. */

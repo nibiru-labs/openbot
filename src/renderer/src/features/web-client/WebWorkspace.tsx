@@ -107,6 +107,7 @@ import {
   Match,
   onCleanup,
   onSettled,
+  reconcile,
   Show,
   Switch,
   untrack,
@@ -391,20 +392,24 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
     ({ revocation }) => {
       const revoked = revocation !== resetRevocation;
       resetRevocation = revocation;
-      controller.setComposerErrors({});
-      controller.setConversationErrors({});
-      controller.setChannelDrafts({});
+      controller.setComposerErrors(reconcile({}));
+      controller.setConversationErrors(reconcile({}));
+      controller.setChannelDrafts(reconcile({}));
       // A queue edit holds its message on its host until Save or Cancel. Keep the edit and its draft
       // after a reload or a host change, so the user can release the hold on that host.
       const editAgentId = untrack(controller.editingAgentId);
       const editServerId = untrack(controller.editingServerId);
       if (!revoked && editAgentId && editServerId) {
         const key = composerDraftKey({ agentId: editAgentId, serverId: editServerId });
-        controller.setDrafts((drafts) => (drafts[key] ? { [key]: drafts[key] } : {}));
+        controller.setDrafts((drafts) => {
+          const kept = drafts[key];
+          for (const draftKey of Object.keys(drafts)) delete drafts[draftKey];
+          if (kept) drafts[key] = kept;
+        });
         return;
       }
       clearStoredQueueEdit();
-      controller.setDrafts({});
+      controller.setDrafts(reconcile({}));
       controller.setEditingDraftBackup(null);
       controller.setEditingOriginalAttachmentIds([]);
       controller.setEditingPendingSave(null);
@@ -1120,7 +1125,9 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
       const serverId = server()?.id;
       if (event.agentId && serverId) {
         const key = composerDraftKey({ agentId: event.agentId, serverId });
-        controller.setConversationErrors((current) => ({ ...current, [key]: readableAgentError(event.message) }));
+        controller.setConversationErrors((current) => {
+          current[key] = readableAgentError(event.message);
+        });
         return;
       }
       const description = readableAgentError(event.message);

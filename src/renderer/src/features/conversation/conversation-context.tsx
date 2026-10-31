@@ -13,6 +13,7 @@ import { currentText } from "@openbot/ui/text";
 import { createEffect, createMemo, createStore, onCleanup, untrack } from "solid-js";
 import { desktopAnalytics } from "../../analytics";
 import {
+  agentMessageNeedsReprojection,
   agentMessagesEqual,
   formatMessageTime,
   retainThinkingMessages,
@@ -181,7 +182,7 @@ const Conversation = createSimpleContext({
     const activeMessages = createMemo(() => {
       const agent = activeAgent();
       if (!agent) return [];
-      const prompt = pendingPrompts()[attentionKey(agent.id, agent.threadId)];
+      const prompt = pendingPrompts[attentionKey(agent.id, agent.threadId)];
       const requestKey = prompt?.type === "prompt" ? promptRequestKey(prompt.turnId, prompt.requestId) : null;
       const messages = (conversations[agent.id]?.messages ?? []).filter(
         (message) =>
@@ -558,7 +559,11 @@ const Conversation = createSimpleContext({
         conversation.loaded = true;
         const previous = conversation.messages;
         const previousById = new Map(previous.map((message) => [message.id, message]));
-        const allMappedMessages = toAgentMessages(sourceMessages, snapshot.agentId);
+        const allMappedMessages = toAgentMessages(sourceMessages, snapshot.agentId, (message) => {
+          const existing = previousById.get(message.id);
+          if (existing && !agentMessageNeedsReprojection(message, existing, snapshot.agentId)) return existing;
+          return toAgentMessage(message, snapshot.agentId, existing);
+        });
         const mappedMessages = retainThinkingMessages(
           previous,
           windowedSnapshotMessages(previous, allMappedMessages, {
@@ -584,7 +589,7 @@ const Conversation = createSimpleContext({
       });
       const presentedRequestKey = presentedPromptResolutions()[agentId];
       const promptKey = ownChatAttentionKey(agentId);
-      const pendingPrompt = pendingPrompts()[promptKey];
+      const pendingPrompt = pendingPrompts[promptKey];
       const pendingRequestKey =
         pendingPrompt?.type === "prompt" ? promptRequestKey(pendingPrompt.turnId, pendingPrompt.requestId) : null;
       const submittedRequestKey = submittedPromptRequests()[agentId];
@@ -601,14 +606,18 @@ const Conversation = createSimpleContext({
             messagePromptRequestKey(message) === presentedRequestKey && message.questionPrompt?.resolution !== null,
         )
       ) {
-        setPendingPrompts((current) => ({ ...current, [promptKey]: undefined }));
+        setPendingPrompts((current) => {
+          delete current[promptKey];
+        });
         setPresentedPromptResolutions((current) => ({ ...current, [agentId]: undefined }));
         setSubmittedPromptRequests((current) => ({ ...current, [agentId]: undefined }));
       } else if (
         resolvedPendingPrompt &&
         (activeAgent()?.id !== agentId || !submittedRequestKey || submittedRequestKey !== pendingRequestKey)
       ) {
-        setPendingPrompts((current) => ({ ...current, [promptKey]: undefined }));
+        setPendingPrompts((current) => {
+          delete current[promptKey];
+        });
         setPresentedPromptResolutions((current) => ({ ...current, [agentId]: undefined }));
         setSubmittedPromptRequests((current) => ({ ...current, [agentId]: undefined }));
       }
@@ -642,10 +651,14 @@ const Conversation = createSimpleContext({
         if (message.author !== "user" && message.status === "streaming") rawAgentMessageBodies.set(key, message.text);
         else rawAgentMessageBodies.delete(key);
       }
-      const mapped = toAgentMessages(page.messages, page.agentId);
       updateConversation(page.agentId, (conversation) => {
         const currentMessages = conversation.messages;
         const currentById = new Map(currentMessages.map((message) => [message.id, message]));
+        const mapped = toAgentMessages(page.messages, page.agentId, (message) => {
+          const existing = currentById.get(message.id);
+          if (existing && !agentMessageNeedsReprojection(message, existing, page.agentId)) return existing;
+          return toAgentMessage(message, page.agentId, existing);
+        });
         const pageMessages = mapped.map((message) => {
           const stored = currentById.get(message.id);
           if (!stored) return createStoredMessage({ ...message, animate: false });
@@ -968,7 +981,7 @@ const Conversation = createSimpleContext({
       const requestKey = promptRequestKey(turnId, requestId);
       if (!requestKey) return;
       const promptKey = ownChatAttentionKey(agentId);
-      const currentPrompt = pendingPrompts()[promptKey];
+      const currentPrompt = pendingPrompts[promptKey];
       if (
         currentPrompt?.type !== "prompt" ||
         promptRequestKey(currentPrompt.turnId, currentPrompt.requestId) !== requestKey
@@ -979,7 +992,9 @@ const Conversation = createSimpleContext({
         (message) => messagePromptRequestKey(message) === requestKey && message.questionPrompt?.resolution !== null,
       );
       if (persisted) {
-        setPendingPrompts((current) => ({ ...current, [promptKey]: undefined }));
+        setPendingPrompts((current) => {
+          delete current[promptKey];
+        });
         setPresentedPromptResolutions((current) => ({ ...current, [agentId]: undefined }));
         setSubmittedPromptRequests((current) => ({ ...current, [agentId]: undefined }));
         return;

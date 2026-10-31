@@ -60,7 +60,11 @@ export function CodePreview(props: {
     diagramRun += 1;
   });
   // The block eases to the height of the view that the switch selects.
-  createSmoothHeightResize({ container: () => resize, content: () => views });
+  createSmoothHeightResize({
+    container: () => resize,
+    content: () => views,
+    enabled: () => !props.streaming,
+  });
 
   const diagramFailure = () => {
     const state = diagram();

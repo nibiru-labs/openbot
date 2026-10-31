@@ -258,9 +258,9 @@ export function ComposerEditor(props: ComposerEditorProps) {
   );
   let editor: HTMLDivElement | undefined;
   let lastAgentId: string | undefined;
-  let lastAttachmentKey = "";
-  let lastSkillKey = "";
-  let lastMcpKey = "";
+  let lastAttachments: NonNullable<typeof props.attachments> = [];
+  let lastSkills: NonNullable<typeof props.skills> = [];
+  let lastMcpServers: NonNullable<typeof props.mcpServers> = [];
   let lastEmittedValue = "";
   let lastFocusRequest = 0;
   let lastSkillPickerRequest = 0;
@@ -322,13 +322,8 @@ export function ComposerEditor(props: ComposerEditorProps) {
       disabled,
     }) => {
       if (!editor || (isComposing && agentId === lastAgentId)) return;
-      const attachmentKey = attachments.map((attachment) => `${attachment.id}:${attachment.name}`).join("|");
-      const skillKey = skills
-        .map((skill) => `${skill.skillId}:${skill.name}:${skill.state}:${skill.enabled}:${skill.description ?? ""}`)
-        .join("|");
-      const mcpKey = mcpServers.map((server) => `${server.id}:${server.name}:${server.enabled}`).join("|");
       const draftChanged = agentId !== lastAgentId;
-      const attachmentsChanged = attachmentKey !== lastAttachmentKey;
+      const attachmentsChanged = attachments !== lastAttachments;
       const renderedAttachments = new Set(
         Array.from(
           editor.querySelectorAll<HTMLElement>("[data-attachment-reference-id]"),
@@ -344,8 +339,8 @@ export function ComposerEditor(props: ComposerEditorProps) {
       const selection =
         !draftChanged && editor.ownerDocument.activeElement === editor ? readEditorSelection(editor) : null;
       const scrollTop = draftChanged ? 0 : editor.scrollTop;
-      const skillsChanged = skillKey !== lastSkillKey;
-      const mcpChanged = mcpKey !== lastMcpKey;
+      const skillsChanged = skills !== lastSkills;
+      const mcpChanged = mcpServers !== lastMcpServers;
       const focusRequested = focusRequest > lastFocusRequest;
       if (draftChanged) savedCaret = null;
       if (contentChanged) {
@@ -364,9 +359,9 @@ export function ComposerEditor(props: ComposerEditorProps) {
         scheduleCaretScroll();
       }
       editor.scrollTop = scrollTop;
-      lastAttachmentKey = attachmentKey;
-      lastSkillKey = skillKey;
-      lastMcpKey = mcpKey;
+      lastAttachments = attachments;
+      lastSkills = skills;
+      lastMcpServers = mcpServers;
       if (focusRequested) {
         lastFocusRequest = focusRequest;
         // Text that the user selected in the draft stays selected, for example when they click Reply on a message.
