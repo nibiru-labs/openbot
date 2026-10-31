@@ -30,6 +30,10 @@ const terminalStatus = Schema.Literals([
   "unroutable",
   "dry-run",
 ]);
+const watchTestMode = process.env.OPENBOT_DISPATCH_WATCH_TEST === "1";
+const WATCH_POLL_INITIAL_MS = watchTestMode ? 50 : 2_000;
+const WATCH_POLL_MAX_MS = watchTestMode ? 200 : 5 * 60_000;
+const WATCH_MAX_MS = watchTestMode ? 1_000 : 4 * 60 * 60_000;
 const verifySchema = Schema.Struct({
   rc: Schema.optional(Schema.Number),
   cmd: Schema.optional(Schema.String),
@@ -52,7 +56,7 @@ const recordSchema = Schema.Struct({
   title: Schema.String,
   binary: Schema.String,
   idempotencyKey: Schema.String,
-  status: Schema.Union([terminalStatus, Schema.Literals(["running", "cancelling"])]),
+  status: Schema.Union([terminalStatus, Schema.Literals(["running", "cancelling", "unknown"])]),
   branch: Schema.NullOr(Schema.String),
   commit: Schema.NullOr(Schema.String),
   startedAt: Schema.String,
@@ -175,7 +179,10 @@ const parseCommandJson = <S extends Schema.ConstraintDecoder<unknown>>(schema: S
         exitCode: command.exitCode,
       }),
   });
-const isTerminal = (record: DispatchRecord) => record.status !== "running" && record.status !== "cancelling";
+const isTerminal = (record: DispatchRecord) =>
+  record.status !== "running" && record.status !== "cancelling" && record.status !== "unknown";
+const shouldWatch = (record: DispatchRecord) =>
+  !record.delivered && (record.status === "running" || record.status === "cancelling");
 const expandHome = (path: string) => (path.startsWith("~/") ? join(homedir(), path.slice(2)) : path);
 
 /** Redacts executor-controlled text again before it reaches the local dispatch record. */
@@ -237,7 +244,7 @@ export class DispatchService {
       else this.#runs = safeRuns;
     }
     this.#started = true;
-    for (const record of this.#runs) if (!record.delivered) yield* this.#watch(record.host, record.runId);
+    for (const record of this.#runs) if (shouldWatch(record)) yield* this.#watch(record.host, record.runId);
   });
 
   readonly dispose = Effect.fn("DispatchService.dispose")(function* (this: DispatchService) {
@@ -417,6 +424,7 @@ export class DispatchService {
           ),
           output.exitCode,
         );
+        yield* this.#watch(record.host, record.runId);
         return { runId, host: record.host, status: "cancelling" };
       }),
     );
@@ -514,12 +522,39 @@ export class DispatchService {
   });
 
   readonly #poll = Effect.fn("DispatchService.poll")(function* (this: DispatchService, host: string, runId: string) {
+    const watchStarted = Date.now();
+    let delayMs = WATCH_POLL_INITIAL_MS;
     while (this.#started) {
       const result = yield* Effect.result(this.#refresh(host, runId));
       if (result._tag === "Success" && result.success) return;
+      if (Date.now() - watchStarted >= WATCH_MAX_MS) {
+        yield* this.#markUnknown(host, runId);
+        return;
+      }
       // A transport failure is unknown, never a successful result. The next poll can reconnect.
-      yield* Effect.sleep("2 seconds");
+      yield* Effect.sleep(`${delayMs} millis`);
+      delayMs = Math.min(WATCH_POLL_MAX_MS, delayMs * 2);
     }
+  });
+
+  readonly #markUnknown = Effect.fn("DispatchService.markUnknown")(function* (
+    this: DispatchService,
+    host: string,
+    runId: string,
+  ) {
+    const key = runKey(host, runId);
+    yield* this.#writes.withPermit(
+      Effect.gen({ self: this }, function* () {
+        const current = this.#runs.find((run) => runKey(run.host, run.runId) === key);
+        if (!current || current.delivered || current.status !== "running") return;
+        const unknown: DispatchRecord = {
+          ...current,
+          status: "unknown",
+          summary: sourceText("status.agent.dispatchWatchExpired"),
+        };
+        yield* this.#save(this.#runs.map((run) => (runKey(run.host, run.runId) === key ? unknown : run)));
+      }),
+    );
   });
 
   readonly #refresh = Effect.fn("DispatchService.refresh")(function* (
@@ -529,7 +564,7 @@ export class DispatchService {
   ) {
     const key = runKey(host, runId);
     const current = this.#runs.find((run) => runKey(run.host, run.runId) === key);
-    if (!current || current.delivered) return true;
+    if (!current || current.delivered || current.status === "unknown") return true;
     let finished = current;
     let exitCode: number | null = null;
     if (!isTerminal(current)) {
