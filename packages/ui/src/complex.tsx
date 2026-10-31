@@ -17,6 +17,25 @@ import { createPressedPopupCue } from "./utils";
 
 type OpenChangeHandler = (open: boolean) => void;
 
+function isContextMenuKeyboardEvent(event: KeyboardEvent): boolean {
+  return event.key === "ContextMenu" || (event.shiftKey && event.key === "F10");
+}
+
+/** Opens a Kobalte context menu from Shift+F10 or the ContextMenu key. */
+function openContextMenuFromKeyboard(event: KeyboardEvent & { currentTarget: HTMLElement }): void {
+  if (!isContextMenuKeyboardEvent(event)) return;
+  event.preventDefault();
+  const bounds = event.currentTarget.getBoundingClientRect();
+  event.currentTarget.dispatchEvent(
+    new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: bounds.right,
+      clientY: bounds.top,
+    }),
+  );
+}
+
 function withBaseClass(baseClass: string, className: string | undefined): string {
   return className ? `${baseClass} ${className}` : baseClass;
 }
@@ -354,7 +373,16 @@ export const ContextMenu: ContextMenuApi = {
     );
   },
   Portal: (props) => <ContextMenuPrimitive.Portal {...props} />,
-  Trigger: (props) => <ContextMenuPrimitive.Trigger {...props} />,
+  Trigger: (props) => {
+    const forwarded = merge(props, {
+      "aria-keyshortcuts": props["aria-keyshortcuts"] ?? "Shift+F10",
+      onKeyDown: (event: KeyboardEvent & { currentTarget: HTMLElement }) => {
+        props.onKeyDown?.(event);
+        openContextMenuFromKeyboard(event);
+      },
+    });
+    return <ContextMenuPrimitive.Trigger {...forwarded} />;
+  },
   Content: (props) => {
     const motion = useMenuMotion();
     const focus = useContext(MenuFocusContext);

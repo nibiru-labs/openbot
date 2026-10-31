@@ -32,6 +32,7 @@ import {
 } from "./diagram-text";
 
 export interface DiagramInspectorProps {
+  id?: string | undefined;
   diagram: Diagram;
   agents: AgentProfile[];
   selectedNodeId: string | null;
@@ -87,7 +88,7 @@ export function DiagramInspector(props: DiagramInspectorProps) {
   };
 
   return (
-    <aside class="diagram-inspector" aria-label={t("diagram.inspector.label")}>
+    <aside id={props.id} class="diagram-inspector" aria-label={t("diagram.inspector.label")}>
       <header class="window-drag diagram-inspector-header">
         <Show when={selected()} fallback={<h2 class="diagram-inspector-title">{t("diagram.inspector.label")}</h2>}>
           {(node) => (

@@ -85,7 +85,12 @@ export function SidebarNav() {
         }
       >
         <ContextMenu.Root modal={false}>
-          <ContextMenu.Trigger class="sidebar-list-context-trigger" aria-label={t("sidebar.nav.freeArea")} />
+          <ContextMenu.Trigger
+            as="button"
+            type="button"
+            class="sidebar-list-context-trigger"
+            aria-label={t("sidebar.nav.freeArea")}
+          />
           <ContextMenu.Portal>
             <ContextMenu.Content class="agent-context-menu" aria-label={t("sidebar.nav.actions")}>
               <Show when={props.createSupported !== false}>

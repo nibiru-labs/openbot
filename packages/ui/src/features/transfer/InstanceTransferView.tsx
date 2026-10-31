@@ -138,6 +138,7 @@ function ExportScreen(props: InstanceTransferViewProps) {
   const { t } = useText();
   const [excluded, setExcluded] = createSignal<ReadonlySet<string>>(new Set());
   const [choosing, setChoosing] = createSignal(false);
+  const agentsPanelId = createUniqueId();
   const [files, setFiles] = createSignal(true);
   const [settings, setSettings] = createSignal(true);
   const agents = () => props.summary?.agents ?? [];
@@ -195,6 +196,7 @@ function ExportScreen(props: InstanceTransferViewProps) {
           variant="link"
           class="instance-transfer-link"
           aria-expanded={choosing() ? "true" : "false"}
+          aria-controls={agentsPanelId}
           onClick={() => setChoosing(!choosing())}
         >
           {choosing()
@@ -202,23 +204,25 @@ function ExportScreen(props: InstanceTransferViewProps) {
             : t("settings.transfer.export.chooseAgents", { selected: selected().length, total: agents().length })}
         </Button>
         <Show when={choosing()}>
-          <AgentChecklist
-            label={t("settings.transfer.export.agentsLabel")}
-            agents={agents().map((agent) => ({
-              key: agent.id,
-              name: agent.name,
-              avatar: <AgentAvatar agent={agent} class="storage-row-avatar" />,
-              skillCount: agent.skillCount,
-              routineCount: agent.routineCount,
-              memoryCount: agent.memoryCount,
-              fileCount: files() ? agent.fileCount : 0,
-              fileBytes: files() ? agent.fileBytes : 0,
-              nameExists: false,
-            }))}
-            excluded={excluded()}
-            disabled={busy()}
-            onToggle={(key, include) => setExcluded(toggled(excluded(), key, include))}
-          />
+          <div id={agentsPanelId}>
+            <AgentChecklist
+              label={t("settings.transfer.export.agentsLabel")}
+              agents={agents().map((agent) => ({
+                key: agent.id,
+                name: agent.name,
+                avatar: <AgentAvatar agent={agent} class="storage-row-avatar" />,
+                skillCount: agent.skillCount,
+                routineCount: agent.routineCount,
+                memoryCount: agent.memoryCount,
+                fileCount: files() ? agent.fileCount : 0,
+                fileBytes: files() ? agent.fileBytes : 0,
+                nameExists: false,
+              }))}
+              excluded={excluded()}
+              disabled={busy()}
+              onToggle={(key, include) => setExcluded(toggled(excluded(), key, include))}
+            />
+          </div>
         </Show>
         <NotMoved />
         <div class="agent-import-actions instance-transfer-start">

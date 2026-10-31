@@ -16,6 +16,7 @@ export function SidebarSearch() {
         class="search-field sidebar-search-trigger"
         aria-label={t("conversation.globalSearch.title")}
         aria-haspopup="dialog"
+        aria-expanded={props.searchOpen ? "true" : "false"}
         aria-hidden={props.compact ? "true" : undefined}
         tabindex={props.compact ? -1 : 0}
         onClick={props.onOpenSearch}
@@ -29,6 +30,7 @@ export function SidebarSearch() {
         class="sidebar-compact-search"
         aria-label={t("conversation.globalSearch.title")}
         aria-haspopup="dialog"
+        aria-expanded={props.searchOpen ? "true" : "false"}
         aria-hidden={props.compact ? undefined : "true"}
         tabindex={props.compact ? 0 : -1}
         onClick={props.onOpenSearch}

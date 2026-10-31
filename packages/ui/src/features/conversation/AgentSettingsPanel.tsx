@@ -1490,6 +1490,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
                     type="button"
                     aria-label={t("agentSettings.newChat.confirm")}
                     aria-haspopup="dialog"
+                    aria-expanded={newChatOpen() ? "true" : "false"}
                     disabled={props.working}
                     onClick={() => setNewChatOpen(true)}
                   >

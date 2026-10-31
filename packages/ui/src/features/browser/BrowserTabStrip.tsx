@@ -1,5 +1,5 @@
 import type { BrowserTabProfile } from "@openbot/contracts/ipc";
-import { Button, buttonVariants, ChevronDown, ContextMenu, DropdownMenu, Tabs, X } from "@openbot/ui";
+import { Button, buttonVariants, ChevronDown, ContextMenu, DropdownMenu, X } from "@openbot/ui";
 import { useText } from "@openbot/ui/text";
 import { clamp, motionDuration, prefersReducedMotion } from "@openbot/ui/utils";
 import { createEffect, createSignal, createStore, For, onSettled, Show } from "solid-js";
@@ -129,6 +129,33 @@ export function BrowserTabStrip(props: {
   const chip = (id: string) => chips().find((el) => el.dataset.tabId === id);
   const motion = createChipMotion(chips);
   const hiddenTabs = () => props.view.tabs.filter((tab) => row.hidden.includes(tab.id));
+  const tabIds = () => props.view.tabs.map((tab) => tab.id);
+  const focusTab = (id: string) => {
+    chip(id)?.querySelector<HTMLElement>(".side-panel-tab-select")?.focus();
+  };
+  const onTabKeyDown = (event: KeyboardEvent, tabId: string) => {
+    const tabs = tabIds();
+    const index = tabs.indexOf(tabId);
+    if (index < 0) return;
+    if (event.key === "Delete") {
+      if (!canClose()) return;
+      event.preventDefault();
+      close([tabId]);
+      return;
+    }
+    let next = -1;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % tabs.length;
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (index - 1 + tabs.length) % tabs.length;
+    if (event.key === "Home") next = 0;
+    if (event.key === "End") next = tabs.length - 1;
+    if (next < 0) return;
+    event.preventDefault();
+    const id = tabs[next];
+    if (id) {
+      props.view.onActivateTab(id);
+      focusTab(id);
+    }
+  };
 
   /** Scrolls only the row, not the window, until the chip of the tab shows whole. */
   const reveal = (id: string) => {
@@ -366,9 +393,9 @@ export function BrowserTabStrip(props: {
 
   return (
     <>
-      {/* The tab list moves the focus with the arrow keys, Home and End; the focus selects the tab. */}
-      <Tabs.List
-        ref={(element: HTMLDivElement) => {
+      {/* The tab row moves the focus with the arrow keys, Home and End; the focus selects the tab. */}
+      <fieldset
+        ref={(element: HTMLFieldSetElement) => {
           strip = element;
         }}
         class="side-panel-tabs browser-full-chips no-drag"
@@ -432,10 +459,11 @@ export function BrowserTabStrip(props: {
                     </span>
                     <X class="side-panel-tab-x" aria-hidden="true" />
                   </Button>
-                  <Tabs.Trigger
-                    as="button"
-                    value={tab().id}
-                    class={buttonVariants({ variant: "ghost", class: "side-panel-tab-select" })}
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    class="side-panel-tab-select"
+                    aria-pressed={selected() ? "true" : "false"}
                     onClick={() => props.view.onActivateTab(tab().id)}
                     // Focus that comes back from the page or another window has no related target.
                     // It lands on the tab the user chose before, not on a new choice.
@@ -450,24 +478,25 @@ export function BrowserTabStrip(props: {
                           })
                         : titleWithProfile()
                     }
-                    aria-description={canClose() ? t("browser.tab.closeHint") : undefined}
+                    aria-describedby={canClose() ? `browser-tab-close-hint-${tab().id}` : undefined}
                     aria-busy={tab().loading ? "true" : undefined}
                     title={titleWithProfile()}
-                    onKeyDown={(event: KeyboardEvent) => {
-                      if (event.key !== "Delete" || !canClose()) return;
-                      event.preventDefault();
-                      close([tab().id]);
-                    }}
+                    onKeyDown={(event: KeyboardEvent) => onTabKeyDown(event, tab().id)}
                   >
                     <span class="side-panel-tab-label">{title()}</span>
-                  </Tabs.Trigger>
+                    <Show when={canClose()}>
+                      <span id={`browser-tab-close-hint-${tab().id}`} class="sr-only">
+                        {t("browser.tab.closeHint")}
+                      </span>
+                    </Show>
+                  </Button>
                 </ContextMenu.Trigger>
                 <BrowserTabMenu view={props.view} tab={tab()} onNewTab={props.onNewTab} onClose={close} />
               </ContextMenu.Root>
             );
           }}
         </For>
-      </Tabs.List>
+      </fieldset>
       <Show when={row.hidden.length > 0}>
         <DropdownMenu.Root modal={false} placement="bottom-end" gutter={4} onOpenChange={setHiddenMenuOpen}>
           <DropdownMenu.Trigger

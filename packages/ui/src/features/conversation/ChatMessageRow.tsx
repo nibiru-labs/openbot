@@ -324,20 +324,6 @@ function ChatMessageContentRow(props: ChatMessageRowProps): JSX.Element {
           <ContextMenu.Trigger
             as="div"
             ref={keepNativeMenu}
-            aria-keyshortcuts="Shift+F10"
-            onKeyDown={(event: KeyboardEvent & { currentTarget: HTMLElement }) => {
-              if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
-              event.preventDefault();
-              const bounds = event.currentTarget.getBoundingClientRect();
-              event.currentTarget.dispatchEvent(
-                new MouseEvent("contextmenu", {
-                  bubbles: true,
-                  cancelable: true,
-                  clientX: bounds.left,
-                  clientY: bounds.top,
-                }),
-              );
-            }}
             role="article"
             // The trigger is the row, so it draws the `Message` primitive's element itself:
             // `as={Message}` would spread Kobalte's own props onto the DOM.

@@ -8,8 +8,10 @@ import {
   ArrowRight,
   Bot,
   Button,
+  CheckCheck,
   CircleFadingArrowUp,
   DropdownMenu,
+  Ellipsis,
   FolderPlus,
   Hash,
   IconButton,
@@ -108,6 +110,35 @@ export function SidebarTopbar() {
               </Button>
             );
           }}
+        </Show>
+        <Show when={props.onMarkAllRead || props.onToggleArchivedChannels}>
+          <DropdownMenu.Root placement="bottom-end" gutter={4}>
+            <DropdownMenu.Trigger
+              class="sidebar-icon-button no-drag"
+              aria-label={t("sidebar.nav.actions")}
+              aria-hidden={props.compact ? "true" : undefined}
+              tabindex={props.compact ? -1 : 0}
+            >
+              <Ellipsis aria-hidden="true" />
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content aria-label={t("sidebar.nav.actions")}>
+                <Show when={props.onMarkAllRead}>
+                  <DropdownMenu.Item disabled={!props.hasUnread} onSelect={() => props.onMarkAllRead?.()}>
+                    <CheckCheck aria-hidden="true" />
+                    {t("sidebar.markAllRead")}
+                  </DropdownMenu.Item>
+                </Show>
+                <Show when={props.onToggleArchivedChannels}>
+                  <DropdownMenu.Item onSelect={() => props.onToggleArchivedChannels?.()}>
+                    {props.showingArchivedChannels
+                      ? t("sidebar.deletedChannels.hide")
+                      : t("sidebar.deletedChannels.title")}
+                  </DropdownMenu.Item>
+                </Show>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         </Show>
         {/* The menu view needs the room for the server name. The page rail also opens the marketplace. */}
         <Show when={props.compact || (props.marketplaceSupported !== false && props.serverMenu?.view !== "menu")}>

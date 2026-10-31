@@ -93,7 +93,7 @@ export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
   const { unreadReplies, recentReplies, markAllAgentMessagesRead } = useConversation();
   const { directPeople } = usePresence();
   const { activeDirectMember, activeDirectMemberId, directThreads } = useDirectMessages();
-  const { selectAgent, selectDirectMember, setGlobalSearchVisibility, chatHistory } = useNavigation();
+  const { selectAgent, selectDirectMember, globalSearchOpen, setGlobalSearchVisibility, chatHistory } = useNavigation();
   const agentTasks = useAgentTasks();
   const agentThreads = useAgentThreads();
   /**
@@ -296,6 +296,7 @@ export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
       compact={layout.leftPanelCompact()}
       onExpand={layout.expandSidebar}
       onOpenSearch={() => setGlobalSearchVisibility(true)}
+      searchOpen={globalSearchOpen()}
       footer={
         <>
           {/* One card at a time. A disk that is almost full comes first; the community card waits

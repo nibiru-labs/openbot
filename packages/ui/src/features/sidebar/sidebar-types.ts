@@ -123,6 +123,8 @@ export interface SidebarProps {
   onExpand: () => void;
   /** Opens the global search. The search field and the compact search button both call it. */
   onOpenSearch: () => void;
+  /** Whether the global search dialog is open. The search triggers report it with `aria-expanded`. */
+  searchOpen?: boolean | undefined;
   onOpenMarketplace: () => void;
   /** The agents are still on their way, so an empty list says that it connects rather than that it is empty. */
   agentsConnecting?: boolean | undefined;

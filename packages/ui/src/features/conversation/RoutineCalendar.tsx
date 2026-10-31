@@ -25,7 +25,7 @@ import {
   CirclePause,
   IconButton,
   Skeleton,
-  SlidingTabs,
+  SlidingRadioGroup,
   X,
 } from "@openbot/ui";
 import { createMemo, createStore, For, Match, onSettled, Show, Switch, untrack } from "solid-js";
@@ -316,16 +316,15 @@ export function RoutineCalendar(props: RoutineCalendarProps) {
                 {rangeLabel()}
               </p>
             </div>
-            <SlidingTabs.Root
+            <SlidingRadioGroup.Root
+              aria-label={t("routine.calendar.view")}
               value={state.view}
               onChange={(value) => moveTo(state.anchor, value === "day" || value === "month" ? value : "week")}
             >
-              <SlidingTabs.List aria-label={t("routine.calendar.view")}>
-                <SlidingTabs.Trigger value="day">{t("routine.calendar.viewDay")}</SlidingTabs.Trigger>
-                <SlidingTabs.Trigger value="week">{t("routine.calendar.viewWeek")}</SlidingTabs.Trigger>
-                <SlidingTabs.Trigger value="month">{t("routine.calendar.viewMonth")}</SlidingTabs.Trigger>
-              </SlidingTabs.List>
-            </SlidingTabs.Root>
+              <SlidingRadioGroup.Item value="day">{t("routine.calendar.viewDay")}</SlidingRadioGroup.Item>
+              <SlidingRadioGroup.Item value="week">{t("routine.calendar.viewWeek")}</SlidingRadioGroup.Item>
+              <SlidingRadioGroup.Item value="month">{t("routine.calendar.viewMonth")}</SlidingRadioGroup.Item>
+            </SlidingRadioGroup.Root>
           </div>
         </Show>
         <Show when={!empty() && clockChange()}>
@@ -566,7 +565,6 @@ function RoutineCalendarEntry(props: RoutineCalendarEntryProps) {
       <Button
         variant="ghost"
         class="routine-planner-entry-main"
-        aria-label={t("routine.card.open", { name: props.entry.routine.name })}
         onClick={() => props.onOpenRoutine(props.entry.routine.id)}
       >
         <RoutineCalendarStatusMark status={props.entry.run.status} />

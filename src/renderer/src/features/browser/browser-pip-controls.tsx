@@ -1,5 +1,6 @@
 import { IconButton, PanelRight, X } from "@openbot/ui";
 import { useText } from "@openbot/ui/text";
+import { onToolbarFocusIn, onToolbarKeyDown, syncToolbarTabindex } from "@openbot/ui/utils";
 import { render } from "@solidjs/web";
 import { createSignal } from "solid-js";
 import "../../styles.css";
@@ -21,7 +22,14 @@ function BrowserPictureInPictureControls() {
   }
 
   return (
-    <div class="browser-pip-hover-controls" role="toolbar" aria-label={t("browser.pip.controls")}>
+    <div
+      class="browser-pip-hover-controls"
+      role="toolbar"
+      aria-label={t("browser.pip.controls")}
+      ref={(element) => syncToolbarTabindex(element)}
+      onFocusIn={onToolbarFocusIn}
+      onKeyDown={onToolbarKeyDown}
+    >
       <IconButton
         variant="ghost"
         type="button"

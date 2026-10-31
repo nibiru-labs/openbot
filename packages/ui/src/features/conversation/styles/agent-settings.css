@@ -314,7 +314,6 @@
 /* The shared field puts the label first and fills the row. Here the switch comes first, beside its state word. */
 .ui-switch-field.agent-routine-active-toggle {
   width: auto;
-  flex-direction: row-reverse;
   justify-content: flex-end;
 }
 

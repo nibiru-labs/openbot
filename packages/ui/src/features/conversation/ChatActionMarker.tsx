@@ -421,6 +421,10 @@ function SingleChatActionMarker(
   const routineHistory = () => (props.marker.kind === "routine-run" ? props.marker.previousTransitions : undefined);
   const historyId = () =>
     props.marker.kind === "routine-run" ? `routine-run-history-${props.marker.runId}` : undefined;
+  const runPanelId = () =>
+    props.marker.kind === "routine-run" ? `routine-run-panel-${props.marker.runId}` : undefined;
+  const textPanelId = () =>
+    props.marker.kind === "agent-message" ? `agent-message-text-${props.marker.messageId}` : undefined;
   // A run with messages in the chat opens and closes them with its toggle. An open run also shows its
   // earlier states, with no animation, because its messages also show with none.
   const messagesRun = () =>
@@ -535,6 +539,7 @@ function SingleChatActionMarker(
                 class="chat-action-history-toggle"
                 type="button"
                 aria-expanded={run().expanded ? "true" : "false"}
+                aria-controls={runPanelId()}
                 aria-label={t(run().expanded ? "chat.marker.hideRunMessages" : "chat.marker.showRunMessages", {
                   name: run().routineName,
                 })}
@@ -550,6 +555,7 @@ function SingleChatActionMarker(
               <AgentMessageTextToggle
                 marker={marker()}
                 agents={props.agents}
+                controlsId={textPanelId()}
                 onToggle={() => props.onToggleAgentMessage?.(marker().messageId)}
               />
             )}
@@ -581,7 +587,7 @@ function SingleChatActionMarker(
         <Show when={historyShown() && routineHistory()}>
           {(transitions) => (
             <RoutineRunHistory
-              id={historyId()}
+              id={runPanelId() ?? historyId()}
               transitions={transitions()}
               animated={messagesRun() === undefined}
               open={messagesRun() !== undefined || historyExpanded()}
@@ -591,7 +597,11 @@ function SingleChatActionMarker(
         </Show>
         {/* Keyed on the id: each timeline update makes a new marker, which would build the text again. */}
         <Show when={openTextMessage()?.messageId}>
-          {(messageId) => <div class="chat-action-message-text">{props.agentMessageText?.(messageId())}</div>}
+          {(messageId) => (
+            <div id={textPanelId()} class="chat-action-message-text">
+              {props.agentMessageText?.(messageId())}
+            </div>
+          )}
         </Show>
       </div>
     </Marker>
@@ -602,6 +612,7 @@ function SingleChatActionMarker(
 function AgentMessageTextToggle(props: {
   marker: AgentMessageMarkerModel;
   agents: AgentProfile[];
+  controlsId: string | undefined;
   onToggle: () => void;
 }) {
   const { t } = useText();
@@ -622,6 +633,7 @@ function AgentMessageTextToggle(props: {
       class="chat-action-history-toggle"
       type="button"
       aria-expanded={expandedState()}
+      aria-controls={props.controlsId}
       aria-label={label()}
       data-cuelume-tap={tap()}
       onClick={() => props.onToggle()}
@@ -654,6 +666,7 @@ function RoutineRunHistory(props: {
   const { t, format } = useText();
   return (
     <div
+      id={props.id}
       class="chat-action-history-panel"
       data-state={props.animated ? (props.open ? "open" : "closed") : undefined}
       inert={!props.open}
@@ -665,7 +678,7 @@ function RoutineRunHistory(props: {
       }}
     >
       <div class="chat-action-history-clip">
-        <ol id={props.id} class="chat-action-history" aria-label={t("chat.marker.earlierStates")}>
+        <ol class="chat-action-history" aria-label={t("chat.marker.earlierStates")}>
           {/* The states only grow, so an entry keeps its element by position. A rebuilt list of the
               same states does not fade its entries in again. */}
           <For each={props.transitions} keyed={false}>

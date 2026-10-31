@@ -49,7 +49,17 @@ import { teamMemberName } from "@openbot/ui/features/team/TeamPersonAvatar";
 import { useText } from "@openbot/ui/text";
 import { prefersReducedMotion } from "@openbot/ui/utils";
 import type { JSX } from "@solidjs/web";
-import { createEffect, createMemo, createSignal, createStore, For, onCleanup, Show, untrack } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  createStore,
+  createUniqueId,
+  For,
+  onCleanup,
+  Show,
+  untrack,
+} from "solid-js";
 import { desktopAnalytics } from "../../analytics";
 import { ServerInvitesEmpty } from "./ServerInvitesEmpty";
 import type { ServerRolesSection } from "./ServerRolesSection";
@@ -131,6 +141,7 @@ export function createServerMembersSection(
   });
   /** A clock, not panel state: it retires an invite row as its `expiresAt` passes. */
   const [now, setNow] = createSignal(Date.now());
+  const inviteQrPanelId = createUniqueId();
   /** The full license that the next invite would add a user to, while the owner confirms it. */
   const [licenseStep, setLicenseStep] = createSignal<{ license: License; used: number; error: string | null } | null>(
     null,
@@ -655,6 +666,7 @@ export function createServerMembersSection(
                         variant="default"
                         aria-label={t("server.invite.showQr")}
                         aria-expanded={panels.invite.showQr ? "true" : "false"}
+                        aria-controls={inviteQrPanelId}
                         onClick={() => {
                           if (!panels.invite.showQr) trackInvite("invite_qr_shown");
                           setPanels((state) => {
@@ -689,7 +701,7 @@ export function createServerMembersSection(
               }
             >
               {(result) => (
-                <div class="server-settings-invite-qr">
+                <div id={inviteQrPanelId} class="server-settings-invite-qr">
                   <QrCode value={result().inviteUrl} label={t("server.invite.qrLabel")} />
                   <Text variant="caption" tone="muted">
                     {t("server.invite.qrDescription")}

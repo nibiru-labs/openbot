@@ -129,11 +129,11 @@ export function DiagramCanvas(props: { url: string; title: string }) {
 
   return (
     <div class="message-preview-canvas">
+      {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would restyle the pannable preview canvas. */}
       <div
         ref={(element) => (viewport = element)}
         class="message-preview-canvas-viewport"
-        // The canvas takes the arrow keys, so a screen reader passes them through to it.
-        role="application"
+        role="group"
         aria-label={t("chat.preview.canvasLabel", { title: props.title })}
         tabindex="0"
         onDblClick={(event: MouseEvent) => {

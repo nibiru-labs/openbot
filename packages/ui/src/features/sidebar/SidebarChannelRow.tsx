@@ -25,6 +25,7 @@ export function SidebarChannelRow(rowProps: { channel: ChannelSummary; waiting?:
     draggedChatId,
     endChatDragging,
     layoutMutable,
+    moveChatByKeyboard,
     props,
     sidebarClickIsSuppressed,
     startChatDragging,
@@ -33,9 +34,14 @@ export function SidebarChannelRow(rowProps: { channel: ChannelSummary; waiting?:
   const active = () => props.activeChannelId === rowProps.channel.id;
   const channelWait = () => props.channelWaits?.[rowProps.channel.id];
   const wait = () => (rowProps.waiting ? channelWait() : undefined);
-  const waitLabel = () => {
+  const rowAriaLabel = () => {
+    const parts = [`${rowProps.channel.name}${title() ? `, ${title()}` : ""}`, preview()];
     const current = channelWait();
-    return current ? `. ${sidebarAgentStateLabel(current, t, format)}` : "";
+    if (current) parts.push(sidebarAgentStateLabel(current, t, format));
+    if (rowProps.channel.unreadCount > 0) {
+      parts.push(t("sidebar.channel.unread", { count: rowProps.channel.unreadCount }));
+    }
+    return parts.join(". ");
   };
   const draggable = () => !rowProps.channel.archived && layoutMutable() && !props.compact && !rowProps.waiting;
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -59,11 +65,22 @@ export function SidebarChannelRow(rowProps: { channel: ChannelSummary; waiting?:
             "sidebar-agent-row-dragging": draggedChatId() === rowProps.channel.id,
           },
         ]}
-        aria-label={`${rowProps.channel.name}${title() ? `, ${title()}` : ""}. ${preview()}${waitLabel()}`}
+        aria-label={rowAriaLabel()}
         aria-pressed={active() ? "true" : "false"}
+        aria-keyshortcuts={draggable() ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
         data-cuelume-navigate=""
         onClick={(event: MouseEvent) => {
           if (!sidebarClickIsSuppressed(event)) props.onSelectChannel?.(rowProps.channel.id);
+        }}
+        onKeyDown={(event: KeyboardEvent) => {
+          if (!draggable() || !event.altKey) return;
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            moveChatByKeyboard(rowProps.channel.id, -1);
+          } else if (event.key === "ArrowDown") {
+            event.preventDefault();
+            moveChatByKeyboard(rowProps.channel.id, 1);
+          }
         }}
       >
         <span class="agent-row-avatar">

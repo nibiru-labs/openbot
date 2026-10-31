@@ -31,6 +31,7 @@ export function SidebarAgentRow(rowProps: { agent: AgentProfile; waiting?: boole
     draggedChatId,
     endChatDragging,
     layoutMutable,
+    moveChatByKeyboard,
     props,
     sidebarClickIsSuppressed,
     startChatDragging,
@@ -70,6 +71,19 @@ export function SidebarAgentRow(rowProps: { agent: AgentProfile; waiting?: boole
       ? sidebarAgentStateLabel(current, t, format)
       : "";
   };
+  const ariaStateLabel = () => {
+    const current = state();
+    return current ? sidebarAgentStateLabel(current, t, format) : "";
+  };
+  const rowAriaLabel = () => {
+    const parts = [
+      `${rowProps.agent.name}${title() ? `, ${title()}` : ""}${accessLabel()}${windowLabel()}`,
+      hiddenLabel() + detail(),
+    ];
+    const stateText = ariaStateLabel();
+    if (stateText) parts.push(stateText);
+    return parts.filter(Boolean).join(". ");
+  };
   const routineLabel = () => (state()?.kind === "routine" || limit() ? stateLabel() : "");
   // Only a waiting row has a tooltip, so the rows in the sections do not each carry one.
   const row = (): JSX.Element => (
@@ -85,12 +99,23 @@ export function SidebarAgentRow(rowProps: { agent: AgentProfile; waiting?: boole
             "sidebar-agent-row-dragging": draggedChatId() === rowProps.agent.id,
           },
         ]}
-        aria-label={`${rowProps.agent.name}${title() ? `, ${title()}` : ""}${accessLabel()}${windowLabel()}. ${hiddenLabel()}${detail()}${stateLabel() ? `. ${stateLabel()}` : ""}`}
+        aria-label={rowAriaLabel()}
         title={routineLabel() || undefined}
         aria-pressed={props.activeAgentId === rowProps.agent.id ? "true" : "false"}
+        aria-keyshortcuts={draggable() ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
         data-cuelume-navigate=""
         onClick={(event: MouseEvent) => {
           if (!sidebarClickIsSuppressed(event)) props.onSelectAgent(rowProps.agent.id);
+        }}
+        onKeyDown={(event: KeyboardEvent) => {
+          if (!draggable() || !event.altKey) return;
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            moveChatByKeyboard(rowProps.agent.id, -1);
+          } else if (event.key === "ArrowDown") {
+            event.preventDefault();
+            moveChatByKeyboard(rowProps.agent.id, 1);
+          }
         }}
       >
         <span class="agent-row-avatar">

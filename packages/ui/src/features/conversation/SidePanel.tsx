@@ -11,7 +11,6 @@ import {
   PanelRight,
   Plus,
   Settings,
-  Tabs,
   Workflow,
   X,
 } from "@openbot/ui";
@@ -54,6 +53,9 @@ function PaneIcon(props: { pane: SidePanelPane }): JSX.Element {
   }
 }
 
+/** The region the header panel button opens and closes. */
+export const CONVERSATION_SIDE_PANEL_ID = "conversation-side-panel";
+
 export interface SidePanelToggleProps {
   open: boolean;
   /** The name of the agent that controls the browser now. */
@@ -81,6 +83,7 @@ export function SidePanelToggle(props: SidePanelToggleProps) {
       aria-label={label()}
       title={label()}
       aria-expanded={props.open ? "true" : "false"}
+      aria-controls={CONVERSATION_SIDE_PANEL_ID}
       onClick={() => props.onToggle()}
     >
       <PanelRight aria-hidden="true" class="size-[14px]" />
@@ -112,27 +115,67 @@ export interface SidePanelHeaderProps {
  * open, and goes away when all of them are.
  *
  * The tabs are one tab stop. The arrow keys, Home and End select a tab; Delete closes it. The close
- * button is for the pointer only, so the tab list holds only tabs. The panes are labeled regions of
- * their own, so no tab panel is registered.
+ * button is for the pointer only, so the tab row holds only pane switches. The panes are labeled
+ * regions of their own, not tab panels.
  */
 export function SidePanelHeader(props: SidePanelHeaderProps) {
   const { t } = useText();
-  let tabList: HTMLDivElement | undefined;
+  let tabList: HTMLFieldSetElement | undefined;
   const closedPanes = () => props.available.filter((pane) => !props.panes.includes(pane));
   const paneLabel = (pane: SidePanelPane) =>
     pane === "settings" && props.settingsLabel !== undefined ? props.settingsLabel : t(PANE_LABELS[pane]);
+  const focusPaneTab = (pane: SidePanelPane) => {
+    tabList?.querySelector<HTMLElement>(`[data-key="${pane}"]`)?.focus();
+  };
   /** Delete closes the tab. The closed tab leaves the list, so focus moves to the tab that takes its place. */
   const onTabKeyDown = (event: KeyboardEvent, pane: SidePanelPane) => {
+    const panes = props.panes;
+    const index = panes.indexOf(pane);
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      const next = panes[(index + 1) % panes.length];
+      if (next) {
+        props.onSelect(next);
+        focusPaneTab(next);
+      }
+      return;
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const next = panes[(index - 1 + panes.length) % panes.length];
+      if (next) {
+        props.onSelect(next);
+        focusPaneTab(next);
+      }
+      return;
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      const next = panes[0];
+      if (next) {
+        props.onSelect(next);
+        focusPaneTab(next);
+      }
+      return;
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      const next = panes[panes.length - 1];
+      if (next) {
+        props.onSelect(next);
+        focusPaneTab(next);
+      }
+      return;
+    }
     if (event.key !== "Delete" && event.key !== "Backspace") return;
     event.preventDefault();
-    const index = props.panes.indexOf(pane);
     flush(() => props.onClose(pane));
     const next = props.panes[Math.min(index, props.panes.length - 1)];
-    if (next) tabList?.querySelector<HTMLElement>(`[data-key="${next}"]`)?.focus();
+    if (next) focusPaneTab(next);
   };
   return (
-    <Tabs.Root class="window-drag side-panel-header" value={props.selected ?? "__none"} activationMode="automatic">
-      <Tabs.List ref={tabList} class="side-panel-tabs" aria-label={t("conversation.sidePanel.label")}>
+    <div id={CONVERSATION_SIDE_PANEL_ID} class="window-drag side-panel-header">
+      <fieldset ref={tabList} class="side-panel-tabs" aria-label={t("conversation.sidePanel.label")}>
         <For each={props.panes}>
           {(pane) => {
             const label = () => paneLabel(pane);
@@ -153,28 +196,25 @@ export function SidePanelHeader(props: SidePanelHeaderProps) {
                   </span>
                   <X class="side-panel-tab-x" aria-hidden="true" />
                 </Button>
-                <Tabs.Trigger
-                  as="button"
+                <Button
+                  variant="ghost"
                   type="button"
-                  value={pane}
-                  class={buttonVariants({ variant: "ghost", class: "side-panel-tab-select" })}
+                  class="side-panel-tab-select"
+                  data-key={pane}
+                  aria-pressed={selected() ? "true" : "false"}
                   aria-keyshortcuts="Delete"
                   title={label()}
-                  // As in the browser panel, only the user selects a pane: while the tabs register,
-                  // the controlled selection can be absent and suggest the first tab.
                   onClick={() => props.onSelect(pane)}
-                  // The arrow keys, Home and End move the focus. Focus that comes back from another
-                  // window has no related target and keeps the selected pane.
                   onFocus={(event) => event.relatedTarget !== null && !selected() && props.onSelect(pane)}
                   onKeyDown={(event) => onTabKeyDown(event, pane)}
                 >
                   <span class="side-panel-tab-label">{label()}</span>
-                </Tabs.Trigger>
+                </Button>
               </div>
             );
           }}
         </For>
-      </Tabs.List>
+      </fieldset>
       <div class="side-panel-actions no-drag">
         <Show when={props.panes.length > 0 && closedPanes().length > 0}>
           <DropdownMenu.Root placement="bottom-end" gutter={4}>
@@ -226,7 +266,7 @@ export function SidePanelHeader(props: SidePanelHeaderProps) {
           </Button>
         </Show>
       </div>
-    </Tabs.Root>
+    </div>
   );
 }
 
