@@ -27,12 +27,24 @@ export interface ResolvedWorkspaceFile extends ResolvedSharedFile {
 /** A line or column reference that agents write after a path: `:12`, `:12:3`, `#L12`, `#L12-L20`, `#L12C3`. */
 const LOCATION_SUFFIX = /(?::\d+(?::\d+)?|#L\d+(?:C\d+)?(?:-L?\d+(?:C\d+)?)?)$/u;
 
+/**
+ * A Windows path that a Unix-style shell wrote: `/c/Users/...` names drive C, but Windows reads a
+ * leading `/` as a path on the current drive, so the file is looked up under `<drive>:\c\Users\...`
+ * and is never found (#4564). Only on Windows: on Unix, `/c/...` is a real directory named `c`.
+ */
+export function normalizeWindowsDrivePath(inputPath: string, platform: NodeJS.Platform = process.platform): string {
+  if (platform !== "win32") return inputPath;
+  const match = /^\/([A-Za-z])\/(.*)$/u.exec(inputPath);
+  return match ? `${match[1]}:/${match[2]}` : inputPath;
+}
+
 export function sharedPathFromInput(sharedRoot: string, inputPath: string): string {
-  const normalized = inputPath.replaceAll("\\", "/");
+  const absolute = normalizeWindowsDrivePath(inputPath);
+  const normalized = absolute.replaceAll("\\", "/");
   for (const prefix of ["~/OpenBot/Shared/", "OpenBot/Shared/", "Shared/"]) {
     if (normalized.startsWith(prefix)) return join(sharedRoot, normalized.slice(prefix.length));
   }
-  return isAbsolute(inputPath) ? inputPath : join(sharedRoot, normalized);
+  return isAbsolute(absolute) ? absolute : join(sharedRoot, normalized);
 }
 
 /**
@@ -44,7 +56,7 @@ export function sharedPathFromInput(sharedRoot: string, inputPath: string): stri
  * resolves somewhere else.
  */
 export function workspacePathFromInput(workspaceRoot: string, agentId: string, inputPath: string): string {
-  const decoded = decodePath(inputPath.trim());
+  const decoded = normalizeWindowsDrivePath(decodePath(inputPath.trim()));
   const normalized = decoded.replaceAll("\\", "/");
   const legacyId = legacyAgentId(agentId);
   for (const prefix of [

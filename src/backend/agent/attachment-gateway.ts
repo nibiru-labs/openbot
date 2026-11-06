@@ -13,7 +13,13 @@ import {
   attachmentSync,
 } from "../attachment-effects";
 import type { GeneratedAttachmentSource, MailboxStore } from "../mailbox-store";
-import { isWithin, rebaseLegacyWorkspacePath, sharedPathFromInput, workspacePathFromInput } from "../workspace-paths";
+import {
+  isWithin,
+  normalizeWindowsDrivePath,
+  rebaseLegacyWorkspacePath,
+  sharedPathFromInput,
+  workspacePathFromInput,
+} from "../workspace-paths";
 import type { ConversationRuntime } from "./conversation-runtime";
 import { type OpenBotToolResponse, openBotToolResult } from "./routine-tools";
 
@@ -307,7 +313,9 @@ export class AttachmentGateway {
     scope: AttachmentSourceScope,
   ): Effect.fn.Return<GeneratedAttachmentSource, AttachmentOperationError> {
     const agent = yield* attachmentSync(() => this.#conversation.requireKnownAgent(agentId));
-    const value = inputPath.trim();
+    // A Unix-style shell on Windows writes `/c/...` for drive C. Windows reads that as a path on the
+    // current drive, so normalize it first, or the absolute path below never resolves (#4564).
+    const value = normalizeWindowsDrivePath(inputPath.trim());
     const [workspaceRoot, sharedRoot] = yield* attachmentCall(() =>
       Promise.all([realpath(agent.workspacePath), realpath(this.#sharedRoot)]),
     );
